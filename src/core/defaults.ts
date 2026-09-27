@@ -103,3 +103,14 @@ export function defaultProject(): Project {
     layers: [newLayer('Bottom tray', 56, bottom), newLayer('Top tray', 33, top)],
   };
 }
+
+/**
+ * An empty box: one tray layer with a single compartment. Box size and material, construction
+ * and notch settings carry over from `from` when given, since a new design is usually for the
+ * same kind of board and often the same box.
+ */
+export function blankProject(from?: Project): Project {
+  const base = from ? structuredClone(from) : defaultProject();
+  const height = Math.max(10, base.box.height - 10);
+  return { ...base, name: 'Untitled insert', layers: [newLayer('Tray', height)] };
+}
