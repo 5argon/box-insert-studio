@@ -3,6 +3,7 @@
   import type { Solved } from '../core/layout';
   import type { Project } from '../core/types';
   import NumberField from './NumberField.svelte';
+  import NumberInput from './NumberInput.svelte';
   import { studio } from './state.svelte';
 
   let { project, solved }: { project: Project; solved: Solved } = $props();
@@ -53,17 +54,7 @@
   {#each project.layers as layer (layer.id)}
     <div class="layer" class:current={layer.id === studio.layerId}>
       <input bind:value={layer.name} aria-label="Layer name" onfocus={() => (studio.layerId = layer.id)} />
-      <input
-        type="number"
-        min="5"
-        step="0.5"
-        value={layer.height}
-        aria-label="{layer.name} height"
-        oninput={(e) => {
-          const v = e.currentTarget.valueAsNumber;
-          if (Number.isFinite(v) && v >= 5) layer.height = v;
-        }}
-      />
+      <NumberInput value={layer.height} min={5} label="{layer.name} height" onchange={(v) => (layer.height = v)} />
       <span class="unit">mm</span>
       <button class="small" onclick={() => removeLayer(layer.id)} disabled={project.layers.length <= 1} aria-label="Remove {layer.name}">✕</button>
     </div>
@@ -86,18 +77,7 @@
       {#each THICKNESS_PRESETS as t (t)}
         <button class="small" class:on={project.foam.thickness === t} onclick={() => (project.foam.thickness = t)}>{t}</button>
       {/each}
-      <input
-        type="number"
-        class="thick"
-        min="1"
-        step="0.5"
-        value={project.foam.thickness}
-        aria-label="Foam thickness"
-        oninput={(e) => {
-          const v = e.currentTarget.valueAsNumber;
-          if (Number.isFinite(v) && v > 0) project.foam.thickness = v;
-        }}
-      />
+      <span class="thick"><NumberInput value={project.foam.thickness} min={1} max={20} label="Foam thickness" onchange={(v) => (project.foam.thickness = v)} /></span>
     </span>
   </label>
   <label class="field">
@@ -170,7 +150,6 @@
   }
   .thick {
     width: 56px;
-    text-align: right;
   }
   .layer {
     display: grid;
@@ -183,9 +162,6 @@
   }
   .layer.current {
     background: var(--accent-soft);
-  }
-  .layer input[type='number'] {
-    text-align: right;
   }
   .unit {
     color: var(--muted);

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import NumberInput from './NumberInput.svelte';
+
   let {
     label,
     value,
@@ -20,16 +22,11 @@
     disabled?: boolean;
     hint?: string;
   } = $props();
-
-  function input(e: Event & { currentTarget: HTMLInputElement }) {
-    const v = e.currentTarget.valueAsNumber;
-    if (Number.isFinite(v)) onchange(Math.min(max, Math.max(min, v)));
-  }
 </script>
 
 <label class="field" title={hint}>
   <span class="label">{label}</span>
-  <input type="number" value={Number(value.toFixed(2))} {step} {min} {max} {disabled} oninput={input} />
+  <NumberInput {value} {onchange} {step} {min} {max} {disabled} />
   <span class="unit">{unit}</span>
 </label>
 
@@ -43,10 +40,6 @@
   }
   .label {
     color: var(--text);
-  }
-  input {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
   }
   .unit {
     color: var(--muted);
