@@ -305,6 +305,14 @@ describe('boxes inside compartments', () => {
     expect(inner.filter((x) => x.kind === 'divider').map((x) => x.height)).toEqual([46]);
   });
 
+  it('gives compartments inside a box one floor less height', () => {
+    const { p, s } = boxedProject();
+    const T = p.foam.thickness;
+    const H = p.layers[0].height;
+    expect(s.compartments.find((c) => c.label === 'F')!.height).toBe(H - T);
+    expect(s.compartments.find((c) => c.label === 'G1')!.height).toBe(H - 2 * T);
+  });
+
   it('labels compartments inside a box after their well', () => {
     const { s, g } = boxedProject();
     const inner = s.compartments.filter((c) => c.wellId === g.id);
