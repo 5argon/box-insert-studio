@@ -9,7 +9,10 @@ export const SHEET_PRESETS: SheetSpec[] = [
   { preset: '20 × 30 in', width: 508, height: 762 },
 ];
 
-export const THICKNESS_PRESETS = [3, 5, 10];
+export const THICKNESS_PRESETS = [3, 5, 6, 10];
+
+/** Suggestions for the material name; any text is allowed. */
+export const MATERIAL_NAMES = ['Foam board', 'MDF', 'Greyboard', 'Plywood', 'Corrugated card', 'Acrylic'];
 
 /** Compartment colours, indexed by label order. Hues spaced so neighbours differ. */
 export const SECTION_HUES = [205, 28, 140, 330, 262, 55, 180, 0, 95, 300, 230, 15];
@@ -94,7 +97,7 @@ export function defaultProject(): Project {
     version: 2,
     name: 'DOOM-style insert',
     box: { width: 286, depth: 286, height: 96 },
-    foam: { thickness: 5, sheet: { ...SHEET_PRESETS[0] }, trim: 5, kerf: 0.5 },
+    material: { name: 'Foam board', thickness: 5, sheet: { ...SHEET_PRESETS[0] }, trim: 5, kerf: 0.5 },
     precision: 0.5,
     clearance: 1,
     base: 'under',
@@ -113,4 +116,21 @@ export function blankProject(from?: Project): Project {
   const base = from ? structuredClone(from) : defaultProject();
   const height = Math.max(10, base.box.height - 10);
   return { ...base, name: 'Untitled insert', layers: [newLayer('Tray', height)] };
+}
+
+/**
+ * Bring a saved project up to date. Projects from before the material setting kept it under
+ * `foam`; those become `material` named "Foam board". Returns undefined for anything that is not
+ * a project from this app.
+ */
+export function migrateProject(raw: unknown): Project | undefined {
+  const p = raw as (Project & { foam?: Omit<Project['material'], 'name'> }) | null;
+  if (!p || p.version !== 2 || !Array.isArray(p.layers) || !p.box) return undefined;
+  if (!p.material && p.foam) {
+    p.material = { name: 'Foam board', ...p.foam };
+    delete p.foam;
+  }
+  if (!p.material) return undefined;
+  p.material.name ??= 'Foam board';
+  return p;
 }

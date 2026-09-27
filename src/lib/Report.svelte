@@ -59,7 +59,7 @@
     let offset = 0;
     return s.cuts.map((c) => {
       const seg = horizontal ? { x: item.x + offset, y: item.y, w: c.length, h: item.h } : { x: item.x, y: item.y + offset, w: item.w, h: c.length };
-      offset += c.length + project.foam.kerf;
+      offset += c.length + project.material.kerf;
       return { ...seg, group: c.group };
     });
   }
@@ -92,12 +92,12 @@
       <div>
         <h1>{project.name}</h1>
         <p class="facts">
-          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.foam.thickness} mm foam board ·
+          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.material.thickness} mm {project.material.name} ·
           {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {solved.headroom.toFixed(1)} mm left above
         </p>
         <p class="facts">
           <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from <b>{plan.sheets.length}</b>
-          {project.foam.sheet.preset} sheet{plan.sheets.length === 1 ? '' : 's'} ({project.foam.sheet.width} × {project.foam.sheet.height} mm)
+          {project.material.sheet.preset} sheet{plan.sheets.length === 1 ? '' : 's'} ({project.material.sheet.width} × {project.material.sheet.height} mm)
         </p>
       </div>
       <div class="actions no-print">
@@ -136,15 +136,15 @@
     <section>
       <h2>Cutting plan</h2>
       <p class="muted small">
-        Trim {project.foam.trim} mm off each sheet edge. Cut the bases, then cut each strip to its width across the sheet and chop it into the listed lengths.
+        Trim {project.material.trim} mm off each sheet edge. Cut the bases, then cut each strip to its width across the sheet and chop it into the listed lengths.
       </p>
       {#each plan.sheets as sheet (sheet.index)}
-        {@const W = project.foam.sheet.width}
-        {@const H = project.foam.sheet.height}
+        {@const W = project.material.sheet.width}
+        {@const H = project.material.sheet.height}
         <div class="sheet">
           <svg viewBox="-2 -2 {W + 4} {H + 4}" class="sheet-svg" role="img" aria-label="Sheet {sheet.index + 1} layout">
             <rect width={W} height={H} class="paper" />
-            <rect x={project.foam.trim} y={project.foam.trim} width={W - 2 * project.foam.trim} height={H - 2 * project.foam.trim} class="trim" />
+            <rect x={project.material.trim} y={project.material.trim} width={W - 2 * project.material.trim} height={H - 2 * project.material.trim} class="trim" />
             {#each sheet.items as item, i (i)}
               {#if item.kind === 'base'}
                 <rect x={item.x} y={item.y} width={item.w} height={item.h} class="base" />
@@ -180,8 +180,8 @@
     <section>
       <h2>Assembly</h2>
       <p class="muted small">
-        Glue with thick PVA along the whole edge; hold pieces with pins pushed in at opposite angles while it dries. Check each corner is square before
-        the glue sets.
+        Glue along the whole edge (thick PVA or wood glue) and hold pieces in place until it dries: pins pushed in at opposite angles for foam
+        board, clamps or masking tape for wood. Check each corner is square before the glue sets.
       </p>
       {#each solved.trays.filter((t) => !t.copyOf) as t (t.id)}
         {@const pieces = solved.pieces.filter((p) => p.trayId === t.id)}

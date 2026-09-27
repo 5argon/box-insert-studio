@@ -1,7 +1,8 @@
 # Box Insert Studio
 
-Design foam board inserts for board game boxes: lay out compartments, and get the cut list,
-a cutting plan for your sheets, and glue-by-glue assembly steps. Everything runs in the browser.
+Design inserts for board game boxes from sheet material (foam board, MDF, greyboard, …): lay out
+compartments, and get the cut list, a cutting plan for your sheets, and glue-by-glue assembly steps.
+Everything runs in the browser.
 
 **Use it online: https://5argon.github.io/box-insert-studio/**
 

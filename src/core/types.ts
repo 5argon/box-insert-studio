@@ -9,7 +9,7 @@ export type Side = 'left' | 'right' | 'back' | 'front';
 export type ChildSize = { mode: 'flex'; weight: number } | { mode: 'fixed'; mm: Mm };
 
 /**
- * `divider`: children are compartments separated by glued foam dividers; sizes are compartment insides.
+ * `divider`: children are compartments separated by glued dividers; sizes are compartment insides.
  * `trays`: children become separate lift-out trays with their own base and walls; sizes are tray outsides.
  */
 export type Join = 'divider' | 'trays';
@@ -66,7 +66,9 @@ export interface Project {
   version: 2;
   name: string;
   box: { width: Mm; depth: Mm; height: Mm };
-  foam: {
+  /** The sheet material everything is cut from: foam board, MDF, greyboard… */
+  material: {
+    name: string;
     thickness: Mm;
     sheet: SheetSpec;
     /** Damaged edge trimmed off every side of a sheet before cutting. */

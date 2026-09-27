@@ -130,7 +130,7 @@
       let cursor = row ? sp.rect.x : sp.rect.y;
       const spans = sp.childSizes.map((size) => {
         const from = trays ? cursor + c / 2 : cursor;
-        cursor += trays ? size + c : size + project.foam.thickness;
+        cursor += trays ? size + c : size + project.material.thickness;
         return { from, to: from + size, label: mm(size) };
       });
       return row ? { x: spans, y: [] } : { x: [], y: spans };

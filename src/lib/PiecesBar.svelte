@@ -13,7 +13,7 @@
   <div class="summary">
     <b>{total}</b> pieces in <b>{cut.groups.length}</b> cut sizes · {stripWidths} strip width{stripWidths === 1 ? '' : 's'} ·
     <b>{plan.sheets.length}</b>
-    {project.foam.sheet.preset} sheet{plan.sheets.length === 1 ? '' : 's'} ({Math.round(plan.efficiency * 100)}% used)
+    {project.material.sheet.preset} sheet{plan.sheets.length === 1 ? '' : 's'} ({Math.round(plan.efficiency * 100)}% used)
     <label class="toggle"><input type="checkbox" bind:checked={studio.showNumbers} /> Show piece numbers</label>
   </div>
   <div class="body">

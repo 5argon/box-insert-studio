@@ -16,7 +16,7 @@
   const hostLabel = $derived(host ? solvedLayer.compartments.find((c) => c.id === host.id)?.label : undefined);
   const unit = $derived(host ? 'box' : 'tray');
   const units = $derived(host ? 'boxes' : 'trays');
-  const maxLower = $derived(layer.height - project.foam.thickness * (host ? 2 : 1) - 5);
+  const maxLower = $derived(layer.height - project.material.thickness * (host ? 2 : 1) - 5);
 </script>
 
 <div class="panel-section">
@@ -25,10 +25,10 @@
     {trays ? `${unit} split` : 'dividers'}{host ? ` inside the box in ${hostLabel}` : ''}
   </div>
   <div class="row join">
-    <button class="small" class:on={!trays} onclick={() => setJoin(layer, node, 'divider', project.foam.thickness)}>
+    <button class="small" class:on={!trays} onclick={() => setJoin(layer, node, 'divider', project.material.thickness)}>
       {host ? 'One box with dividers' : 'Glued dividers'}
     </button>
-    <button class="small" class:on={trays} disabled={!traysAllowed} onclick={() => setJoin(layer, node, 'trays', project.foam.thickness)}>
+    <button class="small" class:on={trays} disabled={!traysAllowed} onclick={() => setJoin(layer, node, 'trays', project.material.thickness)}>
       Separate {units}
     </button>
   </div>

@@ -28,7 +28,7 @@
     onselect: (sel: Selection) => void;
   } = $props();
 
-  const T = $derived(project.foam.thickness);
+  const T = $derived(project.material.thickness);
   const tray = $derived(solved.trays.find((t) => t.id === c.trayId));
   /** The compartment a box stands in: this one if it holds a box, or the one around this box. */
   const well = $derived(c.wellId ? solved.compartments.find((x) => x.id === c.wellId) : c.node.insert ? c : undefined);

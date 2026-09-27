@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
-import { blankProject, defaultProject, labelFor, newLayer, newSection } from './defaults';
+import { blankProject, defaultProject, labelFor, migrateProject, newLayer, newSection } from './defaults';
 import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from './edit';
 import { allocate, solveProject } from './layout';
 import { pack } from './pack';
@@ -67,7 +67,7 @@ describe('foam solver', () => {
     const p = defaultProject();
     const layer = newLayer('Trays', 40);
     p.layers = [layer];
-    splitSection(layer, layer.root.id, 'row', p.foam.thickness);
+    splitSection(layer, layer.root.id, 'row', p.material.thickness);
     if (layer.root.kind !== 'split') throw new Error();
     expect(setJoin(layer, layer.root, 'trays', 5)).toBe(true);
     const s = solveProject(p);
@@ -115,8 +115,8 @@ describe('cut list', () => {
     const p = defaultProject();
     const layer = newLayer('Mirror', 40, newSection());
     p.layers = [layer];
-    const second = splitSection(layer, layer.root.id, 'row', p.foam.thickness)!;
-    splitSection(layer, second, 'row', p.foam.thickness);
+    const second = splitSection(layer, layer.root.id, 'row', p.material.thickness)!;
+    splitSection(layer, second, 'row', p.material.thickness);
     if (layer.root.kind !== 'split') throw new Error();
     distributeEqually(layer.root);
     const [l, , r] = layer.root.children.map((c) => c.node);
@@ -144,13 +144,13 @@ describe('cut list', () => {
     const p = defaultProject();
     const layer = newLayer('Near', 40);
     p.layers = [layer];
-    const right = splitSection(layer, layer.root.id, 'row', p.foam.thickness)!;
-    const below = splitSection(layer, right, 'column', p.foam.thickness)!;
-    splitSection(layer, below, 'column', p.foam.thickness);
+    const right = splitSection(layer, layer.root.id, 'row', p.material.thickness)!;
+    const below = splitSection(layer, right, 'column', p.material.thickness)!;
+    splitSection(layer, below, 'column', p.material.thickness);
     if (layer.root.kind !== 'split') throw new Error();
     // Left column 136 wide with one divider, right column 134 wide with two: 136 vs 134 mm dividers.
     const leftId = layer.root.children[0].node.id;
-    splitSection(layer, leftId, 'column', p.foam.thickness);
+    splitSection(layer, leftId, 'column', p.material.thickness);
     layer.root.children[0].size = { mode: 'fixed', mm: 136 };
     const cut = buildCutList(solveProject(p), p.precision);
     expect(cut.hints.some((h) => /equal lengths/.test(h.message))).toBe(true);
@@ -165,7 +165,7 @@ describe('cut list', () => {
     const cut = buildCutList(s, p.precision);
     const plan = planCuts(p, cut);
     expect(plan.issues).toEqual([]);
-    const maxLen = Math.max(p.foam.sheet.width, p.foam.sheet.height) - 2 * p.foam.trim;
+    const maxLen = Math.max(p.material.sheet.width, p.material.sheet.height) - 2 * p.material.trim;
     for (const st of plan.strips) expect(st.used).toBeLessThanOrEqual(maxLen + 1e-6);
     const stripPieces = plan.strips.reduce((a, st) => a + st.cuts.length, 0);
     const bases = plan.sheets.flatMap((sh) => sh.items).filter((i) => i.kind === 'base').length;
@@ -175,7 +175,7 @@ describe('cut list', () => {
 
   it('reports bases that do not fit the sheet', () => {
     const p = defaultProject();
-    p.foam.sheet = { preset: 'A4', width: 210, height: 297 };
+    p.material.sheet = { preset: 'A4', width: 210, height: 297 };
     const plan = planCuts(p, buildCutList(solveProject(p), p.precision));
     expect(plan.issues.some((i) => /does not fit/.test(i.message))).toBe(true);
   });
@@ -251,13 +251,13 @@ describe('switching to separate trays', () => {
     const p = defaultProject();
     const top = p.layers[1];
     if (top.root.kind !== 'split') throw new Error();
-    setJoin(top, top.root, 'trays', p.foam.thickness);
+    setJoin(top, top.root, 'trays', p.material.thickness);
     const s = solveProject(p);
     const trays = s.layers[1].trays;
     expect(trays).toHaveLength(2);
     expect(trays[0].inner.w).toBeCloseTo(103, 6);
     expect(s.layers[1].compartments.find((c) => c.label === 'H')!.rect.w).toBeCloseTo(49, 6);
-    setJoin(top, top.root, 'divider', p.foam.thickness);
+    setJoin(top, top.root, 'divider', p.material.thickness);
     expect(top.root.children[0].size).toEqual({ mode: 'fixed', mm: 103 });
   });
 });
@@ -292,7 +292,7 @@ describe('boxes inside compartments', () => {
 
   it('stands a box in the compartment with clearance, its top flush with the walls', () => {
     const { p, s, g, box } = boxedProject();
-    const T = p.foam.thickness;
+    const T = p.material.thickness;
     expect(box.depth).toBe(1);
     expect(box.outer.w).toBeCloseTo(g.rect.w - p.clearance, 6);
     expect(box.outer.h).toBeCloseTo(g.rect.h - p.clearance, 6);
@@ -307,7 +307,7 @@ describe('boxes inside compartments', () => {
 
   it('gives compartments inside a box one floor less height', () => {
     const { p, s } = boxedProject();
-    const T = p.foam.thickness;
+    const T = p.material.thickness;
     const H = p.layers[0].height;
     expect(s.compartments.find((c) => c.label === 'F')!.height).toBe(H - T);
     expect(s.compartments.find((c) => c.label === 'G1')!.height).toBe(H - 2 * T);
@@ -329,7 +329,7 @@ describe('boxes inside compartments', () => {
     expect(insertMode(well)).toBe('single');
     const root = well.insert!.root;
     if (root.kind !== 'split') throw new Error();
-    expect(setJoin(layer, root, 'trays', p.foam.thickness)).toBe(true);
+    expect(setJoin(layer, root, 'trays', p.material.thickness)).toBe(true);
     expect(insertMode(well)).toBe('multiple');
     const s = solveProject(p);
     const boxes = s.trays.filter((t) => t.wellId === g.id);
@@ -363,13 +363,13 @@ describe('boxes inside compartments', () => {
 describe('new project', () => {
   it('starts with one empty tray and keeps box and material settings', () => {
     const from = defaultProject();
-    from.foam.thickness = 3;
+    from.material.thickness = 3;
     from.box.width = 300;
     const p = blankProject(from);
     expect(p.layers).toHaveLength(1);
     expect(p.layers[0].root.kind).toBe('section');
     expect(p.layers[0].height).toBe(from.box.height - 10);
-    expect(p.foam.thickness).toBe(3);
+    expect(p.material.thickness).toBe(3);
     expect(p.box.width).toBe(300);
     const s = solveProject(p);
     expect(s.compartments).toHaveLength(1);
@@ -452,7 +452,7 @@ describe('stacked boxes', () => {
   it('makes two identical half-height boxes, each with its own floor', () => {
     const { p, g } = stackedProject();
     const s = solveProject(p);
-    const T = p.foam.thickness;
+    const T = p.material.thickness;
     const H = p.layers[0].height;
     const boxes = s.trays.filter((t) => t.wellId === g.id);
     expect(boxes).toHaveLength(2);
@@ -530,5 +530,23 @@ describe('shared notches', () => {
     s = solveProject(p);
     expect(hasNotch(s, find(s, 'G'), 'back')).toBe(true);
     expect(hasNotch(s, find(s, 'A'), 'front')).toBe(true);
+  });
+});
+
+describe('material', () => {
+  it('migrates projects saved with the old foam setting', () => {
+    const old = JSON.parse(JSON.stringify(defaultProject()));
+    const sheet = old.material.sheet;
+    old.foam = { thickness: 3, sheet, trim: 5, kerf: 0.5 };
+    delete old.material;
+    const p = migrateProject(old)!;
+    expect(p.material).toEqual({ name: 'Foam board', thickness: 3, sheet, trim: 5, kerf: 0.5 });
+    expect('foam' in p).toBe(false);
+    expect(solveProject(p).issues).toEqual([]);
+  });
+
+  it('rejects files that are not projects', () => {
+    expect(migrateProject({ hello: 1 })).toBeUndefined();
+    expect(migrateProject(null)).toBeUndefined();
   });
 });
