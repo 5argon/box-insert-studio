@@ -1,0 +1,353 @@
+import { describe, expect, it } from 'vitest';
+import { trayInstructions } from './assembly';
+import { defaultProject, labelFor, newLayer, newSection } from './defaults';
+import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, splitSection } from './edit';
+import { allocate, solveProject } from './layout';
+import { pack } from './pack';
+import { buildCutList, planCuts } from './pieces';
+import type { LayoutNode, Project } from './types';
+
+function clearNotches(n: LayoutNode) {
+  if (n.kind === 'section') n.notches = [];
+  else n.children.forEach((c) => clearNotches(c.node));
+}
+
+function summary(project: Project, layerIndex: number) {
+  const solved = solveProject(project);
+  const layerId = project.layers[layerIndex].id;
+  const cut = buildCutList({ ...solved, pieces: solved.pieces.filter((p) => p.layerId === layerId) }, project.precision);
+  return cut.groups.map((g) => `${g.pieces.length}× ${g.length}x${g.height}${g.notches.length ? '*' : ''}`);
+}
+
+describe('allocate', () => {
+  it('gives locked sizes first and shares the rest by weight', () => {
+    expect(allocate(100, [{ mode: 'fixed', mm: 40 }, { mode: 'flex', weight: 1 }, { mode: 'flex', weight: 2 }]).sizes).toEqual([40, 20, 40]);
+  });
+  it('flags locked sizes that overflow', () => {
+    expect(allocate(50, [{ mode: 'fixed', mm: 60 }, { mode: 'flex', weight: 1 }]).issue).toMatch(/more than/);
+  });
+});
+
+describe('labels', () => {
+  it('counts past Z', () => {
+    expect([0, 25, 26, 27].map(labelFor)).toEqual(['A', 'Z', 'AA', 'AB']);
+  });
+});
+
+describe('foam solver', () => {
+  it('reproduces the DOOM top tray cut list', () => {
+    const p = defaultProject();
+    p.layers.forEach((l) => clearNotches(l.root));
+    expect(summary(p, 1)).toEqual(['1× 285x285', '2× 285x28', '3× 275x28', '1× 167x28', '6× 103x28', '1× 45x28', '3× 28x28']);
+  });
+
+  it('accounts for board thickness in every compartment', () => {
+    const p = defaultProject();
+    const s = solveProject(p);
+    const top = s.layers[1];
+    const widths = top.compartments.filter((c) => c.rect.y < 50).map((c) => c.rect.w);
+    // 49 + 5 + 49 in the left column, then the 167 mm tile compartment.
+    expect(widths).toEqual([49, 49, 167]);
+    for (const c of s.compartments) expect(c.rect.w).toBeGreaterThan(0);
+  });
+
+  it('builds walls on the base or around it', () => {
+    const p = defaultProject();
+    p.layers = [newLayer('Only', 40)];
+    expect(summary(p, 0)).toEqual(['1× 285x285', '2× 285x35', '2× 275x35']);
+    p.base = 'inside';
+    expect(summary(p, 0)).toEqual(['1× 275x275', '2× 285x40', '2× 275x40']);
+    p.fullWalls = 'y';
+    const s = solveProject(p);
+    expect(s.pieces.find((x) => x.role === 'left wall')!.length).toBe(285);
+    expect(s.pieces.find((x) => x.role === 'back wall')!.length).toBe(275);
+  });
+
+  it('makes separate trays with their own walls and a clearance gap', () => {
+    const p = defaultProject();
+    const layer = newLayer('Trays', 40);
+    p.layers = [layer];
+    splitSection(layer, layer.root.id, 'row', p.foam.thickness);
+    if (layer.root.kind !== 'split') throw new Error();
+    expect(setJoin(layer, layer.root, 'trays', 5)).toBe(true);
+    const s = solveProject(p);
+    expect(s.trays).toHaveLength(2);
+    expect(s.trays[0].outer.w).toBeCloseTo(142, 6);
+    expect(s.trays[1].outer.x - (s.trays[0].outer.x + s.trays[0].outer.w)).toBeCloseTo(p.clearance, 6);
+    expect(summary(p, 0)).toEqual(['2× 285x142', '4× 275x35', '4× 142x35']);
+  });
+
+  it('only allows separate trays where every enclosing split is separate trays', () => {
+    const p = defaultProject();
+    const bottom = p.layers[0];
+    if (bottom.root.kind !== 'split') throw new Error();
+    const inner = bottom.root.children[0].node;
+    if (inner.kind !== 'split') throw new Error();
+    expect(canUseTrays(bottom.root, inner.id)).toBe(false);
+    expect(setJoin(bottom, inner, 'trays', 5)).toBe(false);
+    expect(setJoin(bottom, bottom.root, 'trays', 5)).toBe(true);
+    expect(canUseTrays(bottom.root, inner.id)).toBe(true);
+    setJoin(bottom, inner, 'trays', 5);
+    setJoin(bottom, bottom.root, 'divider', 5);
+    expect(inner.join).toBe('divider');
+  });
+
+  it('cuts finger notches into the piece on each chosen side', () => {
+    const p = defaultProject();
+    const s = solveProject(p);
+    const a = s.compartments.find((c) => c.label === 'A')!;
+    const back = s.pieces.find((x) => x.id === a.bounds.back)!;
+    expect(back.role).toBe('back wall');
+    expect(back.notches).toHaveLength(2);
+    expect(back.notches[0].center).toBeCloseTo(a.rect.x + a.rect.w / 2 - back.start, 6);
+    expect(back.notches[0].width).toBe(30);
+  });
+
+  it('flags layers taller than the box', () => {
+    const p = defaultProject();
+    p.layers[0].height = 80;
+    expect(solveProject(p).issues.some((i) => i.level === 'error')).toBe(true);
+  });
+});
+
+describe('cut list', () => {
+  it('groups mirror-image notched pieces together', () => {
+    const p = defaultProject();
+    const layer = newLayer('Mirror', 40, newSection());
+    p.layers = [layer];
+    const second = splitSection(layer, layer.root.id, 'row', p.foam.thickness)!;
+    splitSection(layer, second, 'row', p.foam.thickness);
+    if (layer.root.kind !== 'split') throw new Error();
+    distributeEqually(layer.root);
+    const [l, , r] = layer.root.children.map((c) => c.node);
+    if (l.kind !== 'section' || r.kind !== 'section') throw new Error();
+    // A notch at the left end of the front wall and at the right end of the back wall mirror each other.
+    l.notches = ['front'];
+    r.notches = ['back'];
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const back = s.pieces.find((x) => x.role === 'back wall')!;
+    const front = s.pieces.find((x) => x.role === 'front wall')!;
+    expect(back.notches[0].center).not.toBeCloseTo(front.notches[0].center, 3);
+    expect(cut.groupOf.get(back.id)).toBe(cut.groupOf.get(front.id));
+    expect(cut.flipped.has(back.id) !== cut.flipped.has(front.id)).toBe(true);
+    // Two notches on one wall and one on the other are different pieces.
+    r.notches = ['back', 'front'];
+    const s2 = solveProject(p);
+    const cut2 = buildCutList(s2, p.precision);
+    const b2 = s2.pieces.find((x) => x.role === 'back wall')!;
+    const f2 = s2.pieces.find((x) => x.role === 'front wall')!;
+    expect(cut2.groupOf.get(b2.id)).not.toBe(cut2.groupOf.get(f2.id));
+  });
+
+  it('suggests merging pieces that differ by a millimetre or two', () => {
+    const p = defaultProject();
+    const layer = newLayer('Near', 40);
+    p.layers = [layer];
+    const right = splitSection(layer, layer.root.id, 'row', p.foam.thickness)!;
+    const below = splitSection(layer, right, 'column', p.foam.thickness)!;
+    splitSection(layer, below, 'column', p.foam.thickness);
+    if (layer.root.kind !== 'split') throw new Error();
+    // Left column 136 wide with one divider, right column 134 wide with two: 136 vs 134 mm dividers.
+    const leftId = layer.root.children[0].node.id;
+    splitSection(layer, leftId, 'column', p.foam.thickness);
+    layer.root.children[0].size = { mode: 'fixed', mm: 136 };
+    const cut = buildCutList(solveProject(p), p.precision);
+    expect(cut.hints.some((h) => /equal lengths/.test(h.message))).toBe(true);
+    layer.root.children[0].size = { mode: 'fixed', mm: 135 };
+    const cut2 = buildCutList(solveProject(p), p.precision);
+    expect(cut2.hints.some((h) => /equal lengths/.test(h.message))).toBe(false);
+  });
+
+  it('plans strips no longer than the sheet and accounts for every piece', () => {
+    const p = defaultProject();
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const plan = planCuts(p, cut);
+    expect(plan.issues).toEqual([]);
+    const maxLen = Math.max(p.foam.sheet.width, p.foam.sheet.height) - 2 * p.foam.trim;
+    for (const st of plan.strips) expect(st.used).toBeLessThanOrEqual(maxLen + 1e-6);
+    const stripPieces = plan.strips.reduce((a, st) => a + st.cuts.length, 0);
+    const bases = plan.sheets.flatMap((sh) => sh.items).filter((i) => i.kind === 'base').length;
+    expect(stripPieces + bases).toBe(s.pieces.length);
+    expect(planCuts(p, cut)).toEqual(plan);
+  });
+
+  it('reports bases that do not fit the sheet', () => {
+    const p = defaultProject();
+    p.foam.sheet = { preset: 'A4', width: 210, height: 297 };
+    const plan = planCuts(p, buildCutList(solveProject(p), p.precision));
+    expect(plan.issues.some((i) => /does not fit/.test(i.message))).toBe(true);
+  });
+});
+
+describe('edit', () => {
+  it('flattens same-direction dividers and collapses on remove', () => {
+    const layer = newLayer('x', 30);
+    const first = layer.root.id;
+    const second = splitSection(layer, first, 'row', 5)!;
+    splitSection(layer, second, 'row', 5);
+    expect(layer.root.kind === 'split' && layer.root.children.length).toBe(3);
+    removeSection(layer, second);
+    const next = removeSection(layer, first);
+    expect(layer.root.kind).toBe('section');
+    expect(next).toBe(layer.root.id);
+  });
+
+  it('keeps the layout filled when the last flex part gets locked', () => {
+    const p = defaultProject();
+    const bottom = p.layers[0];
+    if (bottom.root.kind !== 'split') throw new Error();
+    lockChild(bottom.root, 1, 101, [168, 102]);
+    const s = solveProject(p);
+    expect(s.layers[0].issues).toEqual([]);
+    expect(s.layers[0].splits.find((x) => x.id === bottom.root.id)!.childSizes).toEqual([169, 101]);
+  });
+
+  it('snaps a dragged bar to a matching size', () => {
+    const layer = newLayer('x', 30);
+    splitSection(layer, layer.root.id, 'row', 5);
+    if (layer.root.kind !== 'split') throw new Error();
+    expect(dragBar(layer.root, 0, [100, 170], 11.2, [112])).toBe(112);
+    expect(dragBar(layer.root, 0, [100, 170], 20.2, [112])).toBe(120);
+  });
+});
+
+describe('assembly', () => {
+  it('glues base, full walls, short walls, then dividers outside-in', () => {
+    const p = defaultProject();
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const top = s.trays.find((t) => t.layerId === p.layers[1].id)!;
+    const steps = trayInstructions(p, s, cut, top);
+    expect(steps[0].text).toMatch(/^Start with base #1/);
+    expect(steps[1].text).toMatch(/back and front walls #\d+ ×2 on top of the base/);
+    expect(steps[2].text).toMatch(/left and right walls #\d+ ×2 between them/);
+    expect(steps[3].text).toMatch(/^Glue divider #\d+ between .+, 103 mm from the left wall/);
+    expect(steps).toHaveLength(3 + 12);
+  });
+});
+
+describe('pack', () => {
+  const items = [
+    { id: 'a', w: 200, h: 150 },
+    { id: 'b', w: 150, h: 200 },
+    { id: 'c', w: 90, h: 90 },
+    { id: 'd', w: 300, h: 100 },
+  ];
+  it('keeps pieces inside the sheet', () => {
+    const r = pack(items, 410, 584, 1);
+    expect(r.unplaced).toEqual([]);
+    for (const pl of r.placements) {
+      const it = items.find((i) => i.id === pl.id)!;
+      expect(pl.x + (pl.rotated ? it.h : it.w)).toBeLessThanOrEqual(410 + 1e-6);
+      expect(pl.y + (pl.rotated ? it.w : it.h)).toBeLessThanOrEqual(584 + 1e-6);
+    }
+  });
+});
+
+describe('switching to separate trays', () => {
+  it('keeps locked compartments at their inside size', () => {
+    const p = defaultProject();
+    const top = p.layers[1];
+    if (top.root.kind !== 'split') throw new Error();
+    setJoin(top, top.root, 'trays', p.foam.thickness);
+    const s = solveProject(p);
+    const trays = s.layers[1].trays;
+    expect(trays).toHaveLength(2);
+    expect(trays[0].inner.w).toBeCloseTo(103, 6);
+    expect(s.layers[1].compartments.find((c) => c.label === 'H')!.rect.w).toBeCloseTo(49, 6);
+    setJoin(top, top.root, 'divider', p.foam.thickness);
+    expect(top.root.children[0].size).toEqual({ mode: 'fixed', mm: 103 });
+  });
+});
+
+describe('lock toggle', () => {
+  it('locks a flex part at its current size, unlocks it again, and never locks the last flex part', async () => {
+    const { toggleLock, isLastFlex } = await import('./edit');
+    const layer = newLayer('x', 30);
+    const b = splitSection(layer, layer.root.id, 'row', 5)!;
+    splitSection(layer, b, 'row', 5);
+    if (layer.root.kind !== 'split') throw new Error();
+    const split = layer.root;
+    toggleLock(split, 0, [90, 90, 85]);
+    expect(split.children[0].size).toEqual({ mode: 'fixed', mm: 90 });
+    toggleLock(split, 1, [90, 90, 85]);
+    expect(isLastFlex(split, 2)).toBe(true);
+    toggleLock(split, 2, [90, 90, 85]);
+    expect(split.children[2].size.mode).toBe('flex');
+    toggleLock(split, 0, [90, 90, 85]);
+    expect(split.children[0].size.mode).toBe('flex');
+  });
+});
+
+describe('boxes inside compartments', () => {
+  function boxedProject() {
+    const p = defaultProject();
+    const s = solveProject(p);
+    const g = s.compartments.find((c) => c.label === 'G')!;
+    const box = s.trays.find((t) => t.wellId === g.id)!;
+    return { p, s, g, box };
+  }
+
+  it('stands a box in the compartment with clearance, its top flush with the walls', () => {
+    const { p, s, g, box } = boxedProject();
+    const T = p.foam.thickness;
+    expect(box.depth).toBe(1);
+    expect(box.outer.w).toBeCloseTo(g.rect.w - p.clearance, 6);
+    expect(box.outer.h).toBeCloseTo(g.rect.h - p.clearance, 6);
+    // Stands on the tray's base: total height is one thickness less, so base + box = layer height.
+    expect(box.height + T).toBe(p.layers[0].height);
+    expect(box.wallHeight).toBe(p.layers[0].height - 2 * T);
+    const inner = s.pieces.filter((x) => x.trayId === box.id);
+    expect(inner.find((x) => x.kind === 'base')!.length).toBeCloseTo(box.outer.w, 6);
+    expect(inner.filter((x) => x.kind === 'wall').every((x) => x.height === 46)).toBe(true);
+    expect(inner.filter((x) => x.kind === 'divider').map((x) => x.height)).toEqual([46]);
+  });
+
+  it('labels compartments inside a box after their well', () => {
+    const { s, g } = boxedProject();
+    const inner = s.compartments.filter((c) => c.wellId === g.id);
+    expect(inner.map((c) => c.label)).toEqual(['G1', 'G2']);
+    expect(inner.every((c) => c.index === g.index)).toBe(true);
+    const i = s.compartments.indexOf(g);
+    expect(s.compartments.slice(i + 1, i + 3)).toEqual(inner);
+  });
+
+  it('switches between one box with a divider and separate boxes', () => {
+    const { p, g } = boxedProject();
+    const layer = p.layers[0];
+    const well = g.node;
+    expect(insertMode(well)).toBe('single');
+    const root = well.insert!.root;
+    if (root.kind !== 'split') throw new Error();
+    expect(setJoin(layer, root, 'trays', p.foam.thickness)).toBe(true);
+    expect(insertMode(well)).toBe('multiple');
+    const s = solveProject(p);
+    const boxes = s.trays.filter((t) => t.wellId === g.id);
+    expect(boxes).toHaveLength(2);
+    expect(s.pieces.filter((x) => boxes.some((b) => b.id === x.trayId) && x.kind === 'divider')).toHaveLength(0);
+    expect(boxes[1].outer.x - (boxes[0].outer.x + boxes[0].outer.w)).toBeCloseTo(p.clearance, 6);
+  });
+
+  it('allows only one level of boxes and removes the box with its last compartment', () => {
+    const { p, s, g } = boxedProject();
+    const layer = p.layers[0];
+    const g1 = s.compartments.find((c) => c.label === 'G1')!;
+    expect(setInsert(layer, g1.id, true)).toBe(false);
+    const g2 = s.compartments.find((c) => c.label === 'G2')!;
+    removeSection(layer, g2.id);
+    expect(g.node.insert!.root.kind).toBe('section');
+    expect(removeSection(layer, g1.id)).toBe(g.id);
+    expect(g.node.insert).toBeUndefined();
+  });
+
+  it('lists the box as its own tray in the assembly', () => {
+    const { p, s, box } = boxedProject();
+    const cut = buildCutList(s, p.precision);
+    const steps = trayInstructions(p, s, cut, box);
+    expect(steps[0].text).toMatch(/^Start with base/);
+    expect(steps.some((st) => /Glue divider/.test(st.text))).toBe(true);
+    expect(steps[steps.length - 1].text).toMatch(/drop the box into compartment G/);
+  });
+});
