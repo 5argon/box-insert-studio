@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
-import { defaultProject, labelFor, newLayer, newSection } from './defaults';
+import { blankProject, defaultProject, labelFor, newLayer, newSection } from './defaults';
 import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, splitSection } from './edit';
 import { allocate, solveProject } from './layout';
 import { pack } from './pack';
@@ -349,5 +349,26 @@ describe('boxes inside compartments', () => {
     expect(steps[0].text).toMatch(/^Start with base/);
     expect(steps.some((st) => /Glue divider/.test(st.text))).toBe(true);
     expect(steps[steps.length - 1].text).toMatch(/drop the box into compartment G/);
+  });
+});
+
+describe('new project', () => {
+  it('starts with one empty tray and keeps box and material settings', () => {
+    const from = defaultProject();
+    from.foam.thickness = 3;
+    from.box.width = 300;
+    const p = blankProject(from);
+    expect(p.layers).toHaveLength(1);
+    expect(p.layers[0].root.kind).toBe('section');
+    expect(p.layers[0].height).toBe(from.box.height - 10);
+    expect(p.foam.thickness).toBe(3);
+    expect(p.box.width).toBe(300);
+    const s = solveProject(p);
+    expect(s.compartments).toHaveLength(1);
+    expect(s.issues).toEqual([]);
+    // The original is untouched.
+    expect(from.layers).toHaveLength(2);
+    // One base and four walls fit one A2 sheet once strips may be shorter than the sheet.
+    expect(planCuts(p, buildCutList(s, p.precision)).sheets).toHaveLength(1);
   });
 });

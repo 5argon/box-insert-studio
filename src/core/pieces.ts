@@ -132,14 +132,8 @@ export interface CutPlan {
   efficiency: number;
 }
 
-export function planCuts(project: Project, cut: CutList): CutPlan {
-  const { sheet, trim, kerf } = project.foam;
-  const usableW = sheet.width - 2 * trim;
-  const usableH = sheet.height - 2 * trim;
-  const maxLen = Math.max(usableW, usableH);
-  const issues: Issue[] = [];
-
-  // Strips: first-fit decreasing per height.
+/** First-fit decreasing: pieces of one height go into strips no longer than `limit`. */
+function buildStrips(cut: CutList, limit: Mm, kerf: Mm): Strip[] {
   const strips: Strip[] = [];
   const heights = [...new Set(cut.groups.filter((g) => g.kind === 'strip').map((g) => g.height))].sort((a, b) => b - a);
   for (const h of heights) {
@@ -149,11 +143,7 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
       .sort((a, b) => b.length - a.length || a.group - b.group);
     const mine: Strip[] = [];
     for (const it of items) {
-      if (it.length > maxLen) {
-        issues.push({ level: 'error', message: `#${it.group} is ${it.length} mm long, longer than a ${sheet.preset} sheet.` });
-        continue;
-      }
-      let s = mine.find((x) => x.used + kerf + it.length <= maxLen + 1e-6);
+      let s = mine.find((x) => x.used + kerf + it.length <= limit + 1e-6);
       if (!s) {
         s = { id: `${h}-${mine.length + 1}`, height: h, cuts: [], used: -kerf };
         mine.push(s);
@@ -163,20 +153,50 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
     }
     strips.push(...mine);
   }
+  return strips;
+}
+
+export function planCuts(project: Project, cut: CutList): CutPlan {
+  const { sheet, trim, kerf } = project.foam;
+  const usableW = sheet.width - 2 * trim;
+  const usableH = sheet.height - 2 * trim;
+  const maxLen = Math.max(usableW, usableH);
+  const issues: Issue[] = [];
+
+  // Pieces that can never fit are reported once and left out of the plan.
+  const fitting: CutList = {
+    ...cut,
+    groups: cut.groups.filter((g) => {
+      if (g.kind !== 'strip' || g.length <= maxLen) return true;
+      issues.push({ level: 'error', message: `#${g.number} is ${g.length} mm long, longer than a ${sheet.preset} sheet.` });
+      return false;
+    }),
+  };
 
   const bases = cut.groups.filter((g) => g.kind === 'base').flatMap((g) => g.pieces.map((p, i) => ({ id: `b${g.number}-${i}`, g })));
   const fitsSheet = (w: Mm, h: Mm) => (w <= usableW && h <= usableH) || (h <= usableW && w <= usableH);
-  const items: { id: string; w: Mm; h: Mm }[] = [];
+  const baseItems: { id: string; w: Mm; h: Mm }[] = [];
   for (const b of bases) {
     if (!fitsSheet(b.g.length, b.g.height)) {
       issues.push({ level: 'error', message: `Base #${b.g.number} (${b.g.length} × ${b.g.height}) does not fit a ${sheet.preset} sheet.` });
       continue;
     }
-    items.push({ id: b.id, w: b.g.length, h: b.g.height });
+    baseItems.push({ id: b.id, w: b.g.length, h: b.g.height });
   }
-  for (const s of strips) items.push({ id: `s${s.id}`, w: s.used, h: s.height });
 
-  const result = pack(items, usableW, usableH, kerf);
+  // Long strips mean fewer cuts, but shorter ones fit the gaps beside the bases. Try full-length
+  // strips, strips as long as the sheet's short side, and one piece per strip; keep the fewest sheets.
+  let best: { strips: Strip[]; items: { id: string; w: Mm; h: Mm }[]; result: ReturnType<typeof pack> } | undefined;
+  for (const limit of [maxLen, Math.min(usableW, usableH), 0]) {
+    const strips = buildStrips(fitting, limit, kerf);
+    const items = [...baseItems, ...strips.map((s) => ({ id: `s${s.id}`, w: s.used, h: s.height }))];
+    const result = pack(items, usableW, usableH, kerf);
+    if (!best || result.unplaced.length < best.result.unplaced.length || (result.unplaced.length === best.result.unplaced.length && result.sheetCount < best.result.sheetCount)) {
+      best = { strips, items, result };
+    }
+  }
+  const { strips, items, result } = best!;
+
   const sheets = Array.from({ length: result.sheetCount }, (_, index) => ({ index, items: [] as SheetItem[] }));
   const baseById = new Map(bases.map((b) => [b.id, b.g]));
   const stripById = new Map(strips.map((s) => [`s${s.id}`, s]));

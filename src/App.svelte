@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { defaultProject } from './core/defaults';
+  import { blankProject, defaultProject } from './core/defaults';
   import { solveProject } from './core/layout';
   import { buildCutList, planCuts } from './core/pieces';
   import type { Project } from './core/types';
@@ -42,7 +42,11 @@
   }
 
   function newProject() {
-    if (confirm('Start over with the example project? Unsaved changes will be lost.')) replaceProject(defaultProject());
+    if (confirm('Start a new, empty insert for this box size? Unsaved changes will be lost.')) replaceProject(blankProject($state.snapshot(studio.project) as Project));
+  }
+
+  function loadExample() {
+    if (confirm('Load the example DOOM insert? Unsaved changes will be lost.')) replaceProject(defaultProject());
   }
 
   function save() {
@@ -74,7 +78,8 @@
     </nav>
     <div class="file">
       <a class="credit" href="https://github.com/5argon/box-insert-studio" target="_blank" rel="noopener">Source · CC BY 4.0</a>
-      <button class="small" onclick={newProject}>New</button>
+      <button class="small" onclick={newProject} title="Empty insert, keeping the box size and material settings">New</button>
+      <button class="small" onclick={loadExample} title="The DOOM example insert">Example</button>
       <label class="small open">Open<input type="file" accept=".json,application/json" onchange={open} /></label>
       <button class="small" onclick={save}>Save</button>
     </div>
