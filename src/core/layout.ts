@@ -75,6 +75,8 @@ export interface Compartment {
   depth: 0 | 1;
   /** Set on compartments inside a removable box: the compartment the box stands in. */
   wellId?: string;
+  /** Usable height from this compartment's floor to the top of the walls around it. */
+  height: Mm;
   rect: Rect;
   node: SectionNode;
   /** Piece id forming each side. */
@@ -147,6 +149,7 @@ interface RawCompartment {
   trayId: string;
   depth: 0 | 1;
   wellId?: string;
+  height: Mm;
 }
 
 /** Where a tray is being built: its total height, and whether it is a box inside a compartment. */
@@ -263,7 +266,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     ctx: TrayCtx,
   ) {
     if (node.kind === 'section') {
-      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId });
+      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - T });
       if (!node.insert) return;
       if (ctx.depth === 1) {
         issues.push({ level: 'warn', message: 'A box inside a box is not supported; the inner one is ignored.' });
@@ -347,6 +350,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     trayId: r.trayId,
     depth: r.depth,
     wellId: r.wellId,
+    height: r.height,
     rect: r.rect,
     node: r.node,
     bounds: r.bounds,

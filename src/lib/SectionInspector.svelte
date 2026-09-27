@@ -107,6 +107,13 @@
   const SIDE_ORDER: Side[] = ['back', 'front', 'left', 'right'];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
   const boxHeight = $derived(layer.height - T);
+  /** Sides whose divider stands lower than the walls, with how much lower. */
+  const lowSides = $derived(
+    SIDE_ORDER.flatMap((side) => {
+      const p = pieceById.get(c.bounds[side]);
+      return p?.kind === 'divider' && p.lower ? [`${side} ${mm(p.lower)} mm`] : [];
+    }),
+  );
   const boxWall = $derived(project.base === 'under' ? boxHeight - T : boxHeight);
 </script>
 
@@ -116,9 +123,9 @@
     <div class="title">Compartment {c.label}</div>
     <div class="hint">
       {#if c.depth === 1}
-        In the box inside {well?.label} · {mm(c.rect.w)} × {mm(c.rect.h)} mm inside
+        In the box inside {well?.label} · {mm(c.rect.w)} × {mm(c.rect.h)} × {mm(c.height)} mm inside
       {:else}
-        Tray {tray?.number} · {layer.name} · {mm(c.rect.w)} × {mm(c.rect.h)} mm inside
+        Tray {tray?.number} · {layer.name} · {mm(c.rect.w)} × {mm(c.rect.h)} × {mm(c.height)} mm inside
       {/if}
     </div>
   </div>
@@ -162,6 +169,20 @@
       {/if}
     {/if}
   {/each}
+  <div class="height">
+    <span>Height</span>
+    <b>{mm(c.height)} mm</b>
+    <span class="hint">
+      {#if c.depth === 1}
+        {layer.name} {mm(layer.height)} − {mm(T)} tray floor − {mm(T)} box floor
+      {:else}
+        {layer.name} {mm(layer.height)} − {mm(T)} floor
+      {/if}
+    </span>
+  </div>
+  {#if lowSides.length}
+    <p class="hint">Lowered dividers on the {lowSides.join(', ')}.</p>
+  {/if}
   <p class="hint">
     Locked sizes stay put; flex ones share what is left, and one part in each row stays flex. Typing a size locks it.
     {#if c.depth === 1}Where nothing inside the box divides this direction, the size resizes {well?.label} to fit the box.{/if}
@@ -248,6 +269,21 @@
     grid-template-columns: 1fr 58px;
     gap: 6px;
     align-items: center;
+  }
+  .height {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 10px;
+    align-items: baseline;
+    margin: 6px 0 2px;
+  }
+  .height b {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .height .hint {
+    grid-column: 1 / -1;
+    margin: 0;
   }
   .reuse {
     display: flex;
