@@ -372,3 +372,62 @@ describe('new project', () => {
     expect(planCuts(p, buildCutList(s, p.precision)).sheets).toHaveLength(1);
   });
 });
+
+describe('history', () => {
+  it('undoes and redoes, clearing redo on a new change', async () => {
+    const { History } = await import('./history');
+    const h = new History();
+    h.record('a', 0);
+    h.breakStep();
+    h.record('b', 1000);
+    h.breakStep();
+    h.record('c', 2000);
+    expect(h.undo()).toBe('b');
+    expect(h.undo()).toBe('a');
+    expect(h.canUndo).toBe(false);
+    expect(h.redo()).toBe('b');
+    // Recording the restored state changes nothing.
+    h.record('b', 2100);
+    expect(h.canRedo).toBe(true);
+    h.breakStep();
+    h.record('d', 3000);
+    expect(h.canRedo).toBe(false);
+    expect(h.undo()).toBe('b');
+  });
+
+  it('merges a drag or a burst of typing into one step, but not separate clicks', async () => {
+    const { History } = await import('./history');
+    const h = new History();
+    h.record('0', 0);
+    h.breakStep();
+    for (let i = 1; i <= 5; i++) h.record(String(i), 100 * i);
+    expect(h.undo()).toBe('0');
+    const k = new History();
+    k.record('0', 0);
+    k.breakStep();
+    k.record('1', 100);
+    k.breakStep();
+    k.record('2', 200);
+    expect(k.undo()).toBe('1');
+  });
+
+  it('starts a new step after a pause even without a click', async () => {
+    const { History } = await import('./history');
+    const h = new History();
+    h.record('0', 0);
+    h.record('1', 100);
+    h.record('2', 5000);
+    expect(h.undo()).toBe('1');
+  });
+
+  it('keeps at most the limit of steps', async () => {
+    const { History } = await import('./history');
+    const h = new History(3);
+    h.record('0', 0);
+    for (let i = 1; i <= 5; i++) {
+      h.breakStep();
+      h.record(String(i), i * 1000);
+    }
+    expect([h.undo(), h.undo(), h.undo(), h.undo()]).toEqual(['4', '3', '2', undefined]);
+  });
+});

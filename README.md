@@ -28,7 +28,10 @@ reproduces that insert's cut list.
    one height chopped into lengths), per-tray assembly steps with a numbered diagram, and a
    true-size notch template. Print or save as PDF; export the cut list as CSV.
 
-Projects autosave in the browser; **Save** / **Open** use `.insert.json` files.
+Projects autosave in the browser; **Save** / **Open** use `.insert.json` files. **New** starts an
+empty box with the same size and board settings; **Example** loads the DOOM insert.
+**Undo** / **Redo** (⌘Z / ⇧⌘Z, or Ctrl+Z / Ctrl+Y) cover every change: each click is a step, and a
+drag or a burst of typing counts as one.
 
 ## Encouraging shared cut sizes
 
@@ -63,6 +66,7 @@ With board thickness T and tray height H (including the base):
   - `pack.ts`: MaxRects packing with rotation.
   - `assembly.ts`: glue order and divider positions per tray.
   - `edit.ts`: layout tree edits (split, remove, drag with snapping, lock, trays vs dividers).
+  - `history.ts`: undo/redo over project snapshots, merging drags and typing into single steps.
 - `src/lib/`: Svelte 5 UI.
 
 ## Deploying
@@ -79,7 +83,6 @@ you may use, adapt and share it, including commercially, as long as you give cre
 
 ## Not done yet
 
-- Undo.
 - Per-compartment notch sizes; slide-in or angled card dividers, curved token scoops, lids.
 - Mixed tray heights within one layer.
 - Cutting plan packs strips greedily; it does not yet try mixing strip heights to save a sheet.
