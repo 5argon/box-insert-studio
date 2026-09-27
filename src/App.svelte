@@ -160,7 +160,7 @@
             {#each solvedLayer.compartments as c (c.id)}
               {@const errs = c.issues.filter((i) => i.level === 'error').length}
               <button class="list-item" class:nested={c.depth === 1} onclick={() => select({ kind: 'section', id: c.id })}>
-                <b>{c.label}</b>
+                <b>{c.label}{c.stacked ? '²' : ''}</b>
                 <span>{Math.round(c.rect.w * 10) / 10} × {Math.round(c.rect.h * 10) / 10} × {Math.round(c.height * 10) / 10} mm</span>
                 {#if c.node.insert && c.depth === 0}<span class="hint">box inside</span>{/if}
                 {#if c.node.notches.length}<span class="hint">notch</span>{/if}
