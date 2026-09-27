@@ -28,7 +28,23 @@
   } = $props();
 
   let svg: SVGSVGElement;
-  const pad = 14;
+  /** Rendered size of the canvas, so dimension text can stay about 12 px on screen. */
+  let viewPx = $state({ w: 800, h: 600 });
+  $effect(() => {
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      if (r.width > 0 && r.height > 0) viewPx = { w: r.width, h: r.height };
+    });
+    ro.observe(svg);
+    return () => ro.disconnect();
+  });
+  const pxPerMm = $derived(Math.min(viewPx.w / (project.box.width * 1.2), viewPx.h / (project.box.depth * 1.25)));
+  /** Dimension text size in mm, chosen so it renders at roughly 12 px. */
+  const fs = $derived(Math.max(3, Math.min(12, 12 / pxPerMm)));
+  const padStart = $derived(fs * 4.4);
+  const padEnd = $derived(fs * 1.4);
+  const tierOuter = $derived(-fs * 3.1);
+  const tierInner = $derived(-fs * 1.3);
   const W = $derived(project.box.width);
   const D = $derived(project.box.depth);
 
@@ -85,6 +101,42 @@
   }
 
   const selectedSplit = $derived(selected?.kind === 'split' ? selected.id : null);
+
+  interface Span {
+    from: number;
+    to: number;
+    label: string;
+  }
+
+  /**
+   * Inner row of dimensions: the selected compartment's width and depth, or every part of the
+   * selected split along its axis (compartment insides for dividers, tray outsides for trays).
+   */
+  const guides = $derived.by((): { x: Span[]; y: Span[] } => {
+    if (selected?.kind === 'section') {
+      const c = solved.compartments.find((x) => x.id === selected.id);
+      if (!c) return { x: [], y: [] };
+      return {
+        x: [{ from: c.rect.x, to: c.rect.x + c.rect.w, label: mm(c.rect.w) }],
+        y: [{ from: c.rect.y, to: c.rect.y + c.rect.h, label: mm(c.rect.h) }],
+      };
+    }
+    if (selected?.kind === 'split') {
+      const sp = solved.splits.find((x) => x.id === selected.id);
+      if (!sp) return { x: [], y: [] };
+      const row = sp.node.dir === 'row';
+      const trays = sp.node.join === 'trays';
+      const c = project.clearance;
+      let cursor = row ? sp.rect.x : sp.rect.y;
+      const spans = sp.childSizes.map((size) => {
+        const from = trays ? cursor + c / 2 : cursor;
+        cursor += trays ? size + c : size + project.foam.thickness;
+        return { from, to: from + size, label: mm(size) };
+      });
+      return row ? { x: spans, y: [] } : { x: [], y: spans };
+    }
+    return { x: [], y: [] };
+  });
   const labelSize = (w: number, h: number) => Math.max(5, Math.min(30, Math.min(w, h) * 0.34));
 
   function pieceFill(p: PieceInst): string {
@@ -102,7 +154,7 @@
 <svg
   bind:this={svg}
   class="canvas"
-  viewBox="{-pad} {-pad} {W + 2 * pad} {D + 2 * pad + 6}"
+  viewBox="{-padStart} {-padStart} {W + padStart + padEnd} {D + padStart + fs * 2.4}"
   onpointermove={move}
   onpointerup={up}
   onpointercancel={up}
@@ -211,7 +263,42 @@
     />
   {/each}
 
-  <text x={W / 2} y={D + 9} class="front">FRONT</text>
+  <!-- Dimensions: box inside size on the outer row, selection on the inner row. -->
+  {#snippet hdim(from: number, to: number, y: number, label: string, strong: boolean)}
+    <g class="dim" class:strong>
+      <line x1={from} x2={to} y1={y} y2={y} />
+      <line x1={from} x2={from} y1={y - fs * 0.45} y2={y + fs * 0.45} />
+      <line x1={to} x2={to} y1={y - fs * 0.45} y2={y + fs * 0.45} />
+      {#if to - from >= fs * 1.6}
+        <text x={(from + to) / 2} y={y - fs * 0.3} font-size={fs}>{label}</text>
+      {/if}
+    </g>
+  {/snippet}
+  {#snippet vdim(from: number, to: number, x: number, label: string, strong: boolean)}
+    <g class="dim" class:strong>
+      <line x1={x} x2={x} y1={from} y2={to} />
+      <line x1={x - fs * 0.45} x2={x + fs * 0.45} y1={from} y2={from} />
+      <line x1={x - fs * 0.45} x2={x + fs * 0.45} y1={to} y2={to} />
+      {#if to - from >= fs * 1.6}
+        <text x={x - fs * 0.3} y={(from + to) / 2} font-size={fs} transform="rotate(-90 {x - fs * 0.3} {(from + to) / 2})">{label}</text>
+      {/if}
+    </g>
+  {/snippet}
+
+  {@render hdim(0, W, tierOuter, `${mm(W)} mm`, true)}
+  {@render vdim(0, D, tierOuter, `${mm(D)} mm`, true)}
+  {#each guides.x as g, i (i)}
+    <line class="ext" x1={g.from} x2={g.from} y1={tierInner - fs * 0.45} y2={0} />
+    <line class="ext" x1={g.to} x2={g.to} y1={tierInner - fs * 0.45} y2={0} />
+    {@render hdim(g.from, g.to, tierInner, g.label, false)}
+  {/each}
+  {#each guides.y as g, i (i)}
+    <line class="ext" y1={g.from} y2={g.from} x1={tierInner - fs * 0.45} x2={0} />
+    <line class="ext" y1={g.to} y2={g.to} x1={tierInner - fs * 0.45} x2={0} />
+    {@render vdim(g.from, g.to, tierInner, g.label, false)}
+  {/each}
+
+  <text x={W / 2} y={D + fs * 1.8} class="front" font-size={fs * 0.9}>FRONT</text>
 </svg>
 
 <style>
@@ -301,8 +388,37 @@
   .hit.sel {
     fill: rgba(47, 111, 219, 0.28);
   }
+  .dim line {
+    stroke: var(--accent);
+    stroke-width: 0.3;
+  }
+  .dim text {
+    fill: var(--accent);
+    text-anchor: middle;
+    font-variant-numeric: tabular-nums;
+    paint-order: stroke;
+    stroke: var(--bg);
+    stroke-width: 1.2px;
+    stroke-linejoin: round;
+  }
+  .dim.strong line {
+    stroke: #6f6a61;
+  }
+  .dim.strong text {
+    fill: #3f3b35;
+    font-weight: 600;
+  }
+  .ext {
+    stroke: var(--accent);
+    stroke-width: 0.2;
+    stroke-dasharray: 1 0.8;
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .dim {
+    pointer-events: none;
+  }
   .front {
-    font-size: 4.5px;
     font-weight: 700;
     letter-spacing: 1px;
     text-anchor: middle;
