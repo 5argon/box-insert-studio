@@ -41,6 +41,8 @@ export interface PieceInst {
   /** Box coordinate where the piece starts along its axis. */
   start: Mm;
   notches: Notch[];
+  /** Which compartment side asked for each notch, and the stretch of the piece it covers. */
+  notchFrom: { compartmentId: string; side: Side; from: Mm; to: Mm }[];
   /** Glue order inside its tray. */
   order: number;
   role: 'base' | 'back wall' | 'front wall' | 'left wall' | 'right wall' | 'divider';
@@ -240,8 +242,8 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     trays.push(tray);
     if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
     let order = 0;
-    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'depth' | 'copy'>): PieceInst => {
-      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, notches: [], depth: ctx.depth, copy: !!ctx.copy };
+    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'notchFrom' | 'depth' | 'copy'>): PieceInst => {
+      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, notches: [], notchFrom: [], depth: ctx.depth, copy: !!ctx.copy };
       order += 1;
       pieces.push(piece);
       return piece;
@@ -280,7 +282,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     rect: Rect,
     bounds: Record<Side, string>,
     tray: Tray,
-    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'depth' | 'copy'>) => PieceInst,
+    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'notchFrom' | 'depth' | 'copy'>) => PieceInst,
     ctx: TrayCtx,
   ) {
     if (node.kind === 'section') {
@@ -472,6 +474,7 @@ export function solveProject(project: Project): Solved {
         }
         const center = (p.axis === 'x' ? c.rect.x + w / 2 : c.rect.y + h / 2) - p.start;
         p.notches.push({ center, width, depth });
+        p.notchFrom.push({ compartmentId: c.id, side, from: center - width / 2, to: center + width / 2 });
       }
     }
     for (const p of sl.pieces) if (p.notches.length > 1) p.notches = mergeNotches(p.notches);
@@ -495,4 +498,19 @@ export function solveProject(project: Project): Solved {
     issues,
     headroom,
   };
+}
+
+/** The stretch of a wall or divider (from its start) that borders a compartment. */
+export function spanOn(p: PieceInst, c: Compartment): [Mm, Mm] {
+  return p.axis === 'x' ? [c.rect.x - p.start, c.rect.x + c.rect.w - p.start] : [c.rect.y - p.start, c.rect.y + c.rect.h - p.start];
+}
+
+/**
+ * The compartment sides whose notches cut into the stretch of this piece facing `c`. A notch goes
+ * through the whole board, so a divider notched for one compartment is notched for the one
+ * across it too.
+ */
+export function notchesFacing(p: PieceInst, c: Compartment): PieceInst['notchFrom'] {
+  const [a, b] = spanOn(p, c);
+  return p.notchFrom.filter((n) => n.from < b - 1e-6 && a < n.to - 1e-6);
 }

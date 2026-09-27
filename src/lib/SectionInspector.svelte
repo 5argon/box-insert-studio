@@ -2,6 +2,7 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
+  import { hasNotch, notchSharedWith, toggleNotch } from '../core/notches';
   import type { Compartment, Solved, SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
@@ -98,12 +99,6 @@
     if (insertRoot?.kind === 'split') setJoin(layer, insertRoot, m === 'multiple' ? 'trays' : 'divider', T);
   }
 
-  function toggleNotch(side: Side) {
-    const n = c.node.notches;
-    const i = n.indexOf(side);
-    if (i >= 0) n.splice(i, 1);
-    else n.push(side);
-  }
 
   const SIDE_ORDER: Side[] = ['back', 'front', 'left', 'right'];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
@@ -242,14 +237,21 @@
   <div class="notches">
     {#each SIDE_ORDER as side (side)}
       {@const p = pieceById.get(c.bounds[side])}
-      <button class="small" class:on={c.node.notches.includes(side)} onclick={() => toggleNotch(side)}>
+      <button class="small" class:on={hasNotch(solved, c, side)} onclick={() => toggleNotch(solved, c, side)}>
         {side[0].toUpperCase() + side.slice(1)}
         <span class="piece-ref">#{p ? cut.groupOf.get(p.id)?.number : '?'}</span>
       </button>
     {/each}
   </div>
+  {#each SIDE_ORDER as side (side)}
+    {@const shared = notchSharedWith(solved, c, side)}
+    {#if shared.length}
+      <p class="hint shared">The {side} notch is shared with {shared.join(', ')}: it is cut through the divider between you.</p>
+    {/if}
+  {/each}
   <p class="hint">
-    A {project.notch.width} × {project.notch.depth} mm U-notch is cut into the wall or divider on that side, centred on this compartment.
+    A {project.notch.width} × {project.notch.depth} mm U-notch is cut into the wall or divider on that side, centred on this compartment. It goes
+    through the board, so the compartment across a divider gets it too.
     {#if c.node.insert}Notches here help lift the box out.{/if}
   </p>
   {#each c.issues as issue, i (i)}
@@ -329,6 +331,9 @@
   .chip.on {
     border-color: var(--accent);
     background: var(--accent-soft);
+  }
+  .shared {
+    color: #a26400;
   }
   .notches {
     display: grid;

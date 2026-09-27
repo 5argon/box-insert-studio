@@ -500,3 +500,35 @@ describe('stacked boxes', () => {
     expect(steps[steps.length - 1].text).toMatch(/second, identical box.*stack both in compartment G/);
   });
 });
+
+describe('shared notches', () => {
+  it('shows a divider notch from both sides and removes it from either side', async () => {
+    const { hasNotch, notchSharedWith, toggleNotch } = await import('./notches');
+    const p = defaultProject();
+    const find = (s: ReturnType<typeof solveProject>, l: string) => s.compartments.find((c) => c.label === l)!;
+    let s = solveProject(p);
+    // D and E sit on top of each other in the bottom tray, sharing a horizontal divider.
+    toggleNotch(s, find(s, 'D'), 'front');
+    s = solveProject(p);
+    expect(hasNotch(s, find(s, 'E'), 'back')).toBe(true);
+    expect(notchSharedWith(s, find(s, 'E'), 'back')).toEqual(['D']);
+    toggleNotch(s, find(s, 'E'), 'back');
+    s = solveProject(p);
+    expect(hasNotch(s, find(s, 'D'), 'front')).toBe(false);
+    expect(find(s, 'D').node.notches).toEqual([]);
+  });
+
+  it('does not show a notch that is on another stretch of the same divider', async () => {
+    const { hasNotch, toggleNotch } = await import('./notches');
+    const p = defaultProject();
+    const find = (s: ReturnType<typeof solveProject>, l: string) => s.compartments.find((c) => c.label === l)!;
+    let s = solveProject(p);
+    // A's front notch is on the long horizontal divider, far from G's stretch of it.
+    expect(find(s, 'A').node.notches).toContain('front');
+    expect(hasNotch(s, find(s, 'G'), 'back')).toBe(false);
+    toggleNotch(s, find(s, 'G'), 'back');
+    s = solveProject(p);
+    expect(hasNotch(s, find(s, 'G'), 'back')).toBe(true);
+    expect(hasNotch(s, find(s, 'A'), 'front')).toBe(true);
+  });
+});
