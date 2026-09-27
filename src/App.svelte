@@ -9,6 +9,7 @@
   import Report from './lib/Report.svelte';
   import SectionInspector from './lib/SectionInspector.svelte';
   import SplitInspector from './lib/SplitInspector.svelte';
+  import { breakStep, recordProject, redo, undo, undoState } from './lib/history.svelte';
   import { download, persist, replaceProject, slug, studio, type Selection } from './lib/state.svelte';
 
   const solved = $derived(solveProject(studio.project));
@@ -20,6 +21,31 @@
     const id = setTimeout(() => persist(snapshot), 300);
     return () => clearTimeout(id);
   });
+
+  // Every change to the project goes into the undo history.
+  $effect(() => {
+    recordProject(JSON.stringify($state.snapshot(studio.project)));
+  });
+
+  const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+  const undoKeys = mac ? '⌘Z' : 'Ctrl+Z';
+  const redoKeys = mac ? '⇧⌘Z' : 'Ctrl+Y';
+
+  /** ⌘Z / Ctrl+Z undo, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y redo. Text fields keep their own undo. */
+  function keydown(e: KeyboardEvent) {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    const typing = target?.closest('textarea, select, [contenteditable="true"]') || (target instanceof HTMLInputElement && !['checkbox', 'radio', 'button'].includes(target.type));
+    if (typing) return;
+    const key = e.key.toLowerCase();
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      undo();
+    } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+      e.preventDefault();
+      redo();
+    }
+  }
 
   const layer = $derived(studio.project.layers.find((l) => l.id === studio.layerId) ?? studio.project.layers[studio.project.layers.length - 1]);
   const solvedLayer = $derived(solved.layers.find((l) => l.layer.id === layer.id)!);
@@ -67,6 +93,8 @@
   }
 </script>
 
+<svelte:window onkeydown={keydown} onpointerdowncapture={breakStep} />
+
 <div class="app">
   <header class="no-print">
     <div class="brand">Box Insert Studio</div>
@@ -76,6 +104,10 @@
         2 · Cut list &amp; assembly{errorCount ? ` (${errorCount} problem${errorCount === 1 ? '' : 's'})` : ''}
       </button>
     </nav>
+    <div class="history">
+      <button class="small" onclick={undo} disabled={!undoState.canUndo} title="Undo ({undoKeys})" aria-label="Undo">↶ Undo</button>
+      <button class="small" onclick={redo} disabled={!undoState.canRedo} title="Redo ({redoKeys})" aria-label="Redo">↷ Redo</button>
+    </div>
     <div class="file">
       <a class="credit" href="https://github.com/5argon/box-insert-studio" target="_blank" rel="noopener">Source · CC BY 4.0</a>
       <button class="small" onclick={newProject} title="Empty insert, keeping the box size and material settings">New</button>
@@ -163,6 +195,10 @@
     font-size: 15px;
   }
   nav {
+    display: flex;
+    gap: 6px;
+  }
+  .history {
     display: flex;
     gap: 6px;
   }
