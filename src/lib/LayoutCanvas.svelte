@@ -139,6 +139,11 @@
   });
   const labelSize = (w: number, h: number) => Math.max(5, Math.min(30, Math.min(w, h) * 0.34));
 
+  /** Largest font size (mm) up to `wanted` at which `text` fits `width` with a little margin. */
+  const fitText = (text: string, width: number, wanted: number) => Math.min(wanted, (width - 2) / (text.length * 0.6));
+  /** Text smaller than this many screen pixels is hidden rather than squeezed. */
+  const readable = (size: number) => size * pxPerMm >= 7;
+
   function pieceFill(p: PieceInst): string {
     const g = cut.groupOf.get(p.id)?.number;
     if (hoverGroup !== null && g === hoverGroup) return 'var(--accent)';
@@ -193,7 +198,11 @@
 
     {#each solved.compartments.filter((c) => c.depth === depth) as c (c.id)}
       {@const isSel = selected?.kind === 'section' && selected.id === c.id}
-      {@const size = labelSize(c.rect.w, c.rect.h)}
+      {@const size = fitText(c.label, c.rect.w, labelSize(c.rect.w, c.rect.h))}
+      {@const dimsText = `${mm(c.rect.w)} × ${mm(c.rect.h)}`}
+      {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3)))}
+      {@const stackText = '×2 stacked'}
+      {@const stack = fitText(stackText, c.rect.w, dims)}
       <g
         class="compartment"
         onpointerdown={(e) => {
@@ -212,11 +221,16 @@
           class:sel={isSel}
           class:well={!!c.node.insert && depth === 0}
         />
-        <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} fill={sectionInk(c.index)} class="letter">{c.label}</text>
-        {#if c.rect.h > 14}
-          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={Math.max(3, Math.min(5, size * 0.3))} fill={sectionInk(c.index)} class="dims">
-            {mm(c.rect.w)} × {mm(c.rect.h)}{c.stacked ? ' · ×2 stacked' : ''}
-          </text>
+        {#if size > 0}
+          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} fill={sectionInk(c.index)} class="letter">{c.label}</text>
+        {/if}
+        {#if c.rect.h > 14 && readable(dims)}
+          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} fill={sectionInk(c.index)} class="dims">{dimsText}</text>
+          {#if c.stacked && readable(stack) && c.rect.h > size + dims * 3}
+            <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5 + dims * 1.3} font-size={stack} fill={sectionInk(c.index)} class="dims"
+              >{stackText}</text
+            >
+          {/if}
         {/if}
       </g>
     {/each}
