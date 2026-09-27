@@ -120,9 +120,9 @@
 </script>
 
 <div class="panel-section head">
-  <span class="swatch" style:background={sectionColor(c.index)} style:border-color={sectionInk(c.index)}>{c.label}</span>
+  <span class="swatch" style:background={sectionColor(c.index)} style:border-color={sectionInk(c.index)}>{c.label}{c.stacked ? '²' : ''}</span>
   <div>
-    <div class="title">Compartment {c.label}</div>
+    <div class="title">Compartment {c.label}{c.stacked ? '² (in both stacked boxes)' : ''}</div>
     <div class="hint">
       {#if c.depth === 1}
         In the box inside {well?.label} · {mm(c.rect.w)} × {mm(c.rect.h)} × {mm(c.height)} mm inside
@@ -228,7 +228,7 @@
     </label>
     <div class="row">
       {#each solved.compartments.filter((x) => x.wellId === well.id) as x (x.id)}
-        <button class="chip" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })}>{x.label}</button>
+        <button class="chip" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })}>{x.label}{x.stacked ? '²' : ''}</button>
       {/each}
       {#if c.id === well.id}
         <button class="small" onclick={() => setInsert(layer, c.id, false)}>Remove box</button>

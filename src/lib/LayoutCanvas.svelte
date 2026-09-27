@@ -198,11 +198,10 @@
 
     {#each solved.compartments.filter((c) => c.depth === depth) as c (c.id)}
       {@const isSel = selected?.kind === 'section' && selected.id === c.id}
-      {@const size = fitText(c.label, c.rect.w, labelSize(c.rect.w, c.rect.h))}
+      {@const label = c.label + (c.stacked ? '²' : '')}
+      {@const size = fitText(label, c.rect.w, labelSize(c.rect.w, c.rect.h))}
       {@const dimsText = `${mm(c.rect.w)} × ${mm(c.rect.h)}`}
       {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3)))}
-      {@const stackText = '×2 stacked'}
-      {@const stack = fitText(stackText, c.rect.w, dims)}
       <g
         class="compartment"
         onpointerdown={(e) => {
@@ -222,15 +221,10 @@
           class:well={!!c.node.insert && depth === 0}
         />
         {#if size > 0}
-          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} fill={sectionInk(c.index)} class="letter">{c.label}</text>
+          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} fill={sectionInk(c.index)} class="letter">{label}</text>
         {/if}
         {#if c.rect.h > 14 && readable(dims)}
           <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} fill={sectionInk(c.index)} class="dims">{dimsText}</text>
-          {#if c.stacked && readable(stack) && c.rect.h > size + dims * 3}
-            <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5 + dims * 1.3} font-size={stack} fill={sectionInk(c.index)} class="dims"
-              >{stackText}</text
-            >
-          {/if}
         {/if}
       </g>
     {/each}
