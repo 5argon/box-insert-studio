@@ -1,5 +1,5 @@
 /**
- * Foam board solver: turns each layer's layout tree into trays, compartments and the physical
+ * Insert solver: turns each layer's layout tree into trays, compartments and the physical
  * pieces (base, walls, dividers) with their cut sizes. Board thickness is part of every size:
  * dividers take up space between compartments, short walls fit between the full-length walls,
  * and walls standing on the base are one thickness shorter than the tray.
@@ -178,7 +178,7 @@ interface TrayCtx {
 }
 
 function solveLayer(project: Project, layer: Layer): SolvedLayer {
-  const T = project.foam.thickness;
+  const T = project.material.thickness;
   const c = project.clearance;
   const wallHeight = project.base === 'under' ? layer.height - T : layer.height;
   const trays: Tray[] = [];
@@ -452,7 +452,7 @@ export function solveProject(project: Project): Solved {
     }
 
     const byId = new Map(sl.pieces.map((p) => [p.id, p]));
-    const T = project.foam.thickness;
+    const T = project.material.thickness;
     for (const c of sl.compartments) {
       const { w, h } = c.rect;
       if (w <= 0 || h <= 0) c.issues.push({ level: 'error', message: 'No space left for this compartment.' });

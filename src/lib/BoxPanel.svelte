@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SHEET_PRESETS, THICKNESS_PRESETS, newLayer } from '../core/defaults';
+  import { MATERIAL_NAMES, SHEET_PRESETS, THICKNESS_PRESETS, newLayer } from '../core/defaults';
   import type { Solved } from '../core/layout';
   import type { Project } from '../core/types';
   import NumberField from './NumberField.svelte';
@@ -10,7 +10,7 @@
 
   function chooseSheet(e: Event & { currentTarget: HTMLSelectElement }) {
     const p = SHEET_PRESETS.find((x) => x.preset === e.currentTarget.value);
-    project.foam.sheet = p ? { ...p } : { ...project.foam.sheet, preset: 'Custom' };
+    project.material.sheet = p ? { ...p } : { ...project.material.sheet, preset: 'Custom' };
   }
 
   function addLayer() {
@@ -70,31 +70,40 @@
 </div>
 
 <div class="panel-section">
-  <h2>Foam board</h2>
+  <h2>Material</h2>
+  <label class="field">
+    <span>Name</span>
+    <input list="material-names" bind:value={project.material.name} aria-label="Material name" />
+    <datalist id="material-names">
+      {#each MATERIAL_NAMES as n (n)}
+        <option value={n}></option>
+      {/each}
+    </datalist>
+  </label>
   <label class="field">
     <span>Thickness</span>
     <span class="row">
       {#each THICKNESS_PRESETS as t (t)}
-        <button class="small" class:on={project.foam.thickness === t} onclick={() => (project.foam.thickness = t)}>{t}</button>
+        <button class="small" class:on={project.material.thickness === t} onclick={() => (project.material.thickness = t)}>{t}</button>
       {/each}
-      <span class="thick"><NumberInput value={project.foam.thickness} min={1} max={20} label="Foam thickness" onchange={(v) => (project.foam.thickness = v)} /></span>
+      <span class="thick"><NumberInput value={project.material.thickness} min={1} max={20} label="Material thickness" onchange={(v) => (project.material.thickness = v)} /></span>
     </span>
   </label>
   <label class="field">
     <span>Sheet</span>
-    <select value={project.foam.sheet.preset} onchange={chooseSheet}>
+    <select value={project.material.sheet.preset} onchange={chooseSheet}>
       {#each SHEET_PRESETS as s (s.preset)}
         <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
       {/each}
       <option value="Custom">Custom</option>
     </select>
   </label>
-  {#if project.foam.sheet.preset === 'Custom'}
-    <NumberField label="Sheet width" value={project.foam.sheet.width} min={50} onchange={(v) => (project.foam.sheet.width = v)} />
-    <NumberField label="Sheet height" value={project.foam.sheet.height} min={50} onchange={(v) => (project.foam.sheet.height = v)} />
+  {#if project.material.sheet.preset === 'Custom'}
+    <NumberField label="Sheet width" value={project.material.sheet.width} min={50} onchange={(v) => (project.material.sheet.width = v)} />
+    <NumberField label="Sheet height" value={project.material.sheet.height} min={50} onchange={(v) => (project.material.sheet.height = v)} />
   {/if}
-  <NumberField label="Edge trim" value={project.foam.trim} min={0} hint="Damaged edge cut off each side of a sheet" onchange={(v) => (project.foam.trim = v)} />
-  <NumberField label="Kerf" value={project.foam.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (project.foam.kerf = v)} />
+  <NumberField label="Edge trim" value={project.material.trim} min={0} hint="Unusable edge cut off each side of a sheet" onchange={(v) => (project.material.trim = v)} />
+  <NumberField label="Kerf" value={project.material.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (project.material.kerf = v)} />
   <NumberField
     label="Round sizes to"
     value={project.precision}

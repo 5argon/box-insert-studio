@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { blankProject, defaultProject } from './core/defaults';
+  import { blankProject, defaultProject, migrateProject } from './core/defaults';
   import { solveProject } from './core/layout';
   import { buildCutList, planCuts } from './core/pieces';
   import type { Project } from './core/types';
@@ -84,8 +84,8 @@
     e.currentTarget.value = '';
     if (!file) return;
     try {
-      const p = JSON.parse(await file.text());
-      if (p?.version !== 2 || !Array.isArray(p.layers) || !p.box) throw new Error('not a foam board project from this app');
+      const p = migrateProject(JSON.parse(await file.text()));
+      if (!p) throw new Error('not a Box Insert Studio project');
       replaceProject(p);
     } catch (err) {
       alert(`Could not open ${file.name}: ${(err as Error).message}`);
@@ -127,7 +127,7 @@
           {#each [...studio.project.layers].reverse() as l (l.id)}
             <button class:on={l.id === layer.id} onclick={() => chooseLayer(l.id)}>{l.name} · {l.height} mm</button>
           {/each}
-          <span class="hint">Top layer first. Walls {solvedLayer.wallHeight} mm, dividers {layer.height - studio.project.foam.thickness} mm tall.</span>
+          <span class="hint">Top layer first. Walls {solvedLayer.wallHeight} mm, dividers {layer.height - studio.project.material.thickness} mm tall.</span>
         </div>
         <div class="canvas-wrap">
           <LayoutCanvas

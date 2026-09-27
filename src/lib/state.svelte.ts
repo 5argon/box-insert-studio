@@ -1,17 +1,17 @@
-import { defaultProject } from '../core/defaults';
+import { defaultProject, migrateProject } from '../core/defaults';
 import type { Project } from '../core/types';
 
-const KEY = 'box-insert-studio/foam-project';
+const KEY = 'box-insert-studio/project-v2';
+/** Where autosaves lived before the material setting; read once, then saved under KEY. */
+const OLD_KEY = 'box-insert-studio/foam-project';
 
 export type Selection = { kind: 'section' | 'split'; id: string } | null;
 
 function load(): Project {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const p = JSON.parse(raw);
-      if (p?.version === 2) return p as Project;
-    }
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
+    const p = raw ? migrateProject(JSON.parse(raw)) : undefined;
+    if (p) return p;
   } catch {
     // Storage unavailable or corrupt: start fresh.
   }

@@ -1,6 +1,6 @@
 /**
  * Cut list: groups identical pieces, suggests merging near-identical ones, and plans the cutting
- * the way foam board is cut in bulk: walls and dividers of one height come from strips of that
+ * the way sheet material is cut in bulk: walls and dividers of one height come from strips of that
  * width, bases are cut as rectangles, and everything is packed onto sheets.
  */
 import { roundTo } from './geom';
@@ -157,7 +157,7 @@ function buildStrips(cut: CutList, limit: Mm, kerf: Mm): Strip[] {
 }
 
 export function planCuts(project: Project, cut: CutList): CutPlan {
-  const { sheet, trim, kerf } = project.foam;
+  const { sheet, trim, kerf } = project.material;
   const usableW = sheet.width - 2 * trim;
   const usableH = sheet.height - 2 * trim;
   const maxLen = Math.max(usableW, usableH);
