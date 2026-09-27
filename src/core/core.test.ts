@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
 import { blankProject, defaultProject, labelFor, newLayer, newSection } from './defaults';
-import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, splitSection } from './edit';
+import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from './edit';
 import { allocate, solveProject } from './layout';
 import { pack } from './pack';
 import { buildCutList, planCuts } from './pieces';
@@ -437,5 +437,66 @@ describe('history', () => {
       h.record(String(i), i * 1000);
     }
     expect([h.undo(), h.undo(), h.undo(), h.undo()]).toEqual(['4', '3', '2', undefined]);
+  });
+});
+
+describe('stacked boxes', () => {
+  function stackedProject() {
+    const p = defaultProject();
+    const s0 = solveProject(p);
+    const g = s0.compartments.find((c) => c.label === 'G')!;
+    setStacked(g.node, true);
+    return { p, g };
+  }
+
+  it('makes two identical half-height boxes, each with its own floor', () => {
+    const { p, g } = stackedProject();
+    const s = solveProject(p);
+    const T = p.foam.thickness;
+    const H = p.layers[0].height;
+    const boxes = s.trays.filter((t) => t.wellId === g.id);
+    expect(boxes).toHaveLength(2);
+    expect(boxes.every((b) => b.height === (H - T) / 2)).toBe(true);
+    expect(boxes[1].copyOf).toBe(boxes[0].id);
+    expect(boxes[0].number).toBeLessThan(boxes[1].number);
+    // Two boxes plus the tray floor fill the layer exactly.
+    expect(2 * boxes[0].height + T).toBe(H);
+    expect(s.compartments.find((c) => c.label === 'G1')!.height).toBe((H - T) / 2 - T);
+    const pieces = (b: (typeof boxes)[number]) => s.pieces.filter((x) => x.trayId === b.id);
+    expect(pieces(boxes[1]).length).toBe(pieces(boxes[0]).length);
+    expect(pieces(boxes[1]).every((x) => x.copy)).toBe(true);
+    expect(pieces(boxes[0]).filter((x) => x.kind === 'wall').every((x) => x.height === (H - T) / 2 - T)).toBe(true);
+  });
+
+  it('counts both boxes in the cut list and copies notches to the upper box', () => {
+    const { p, g } = stackedProject();
+    const s1 = solveProject(p);
+    const g1 = s1.compartments.find((c) => c.label === 'G1')!;
+    g1.node.notches = ['back'];
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const bases = cut.groups.filter((x) => x.kind === 'base');
+    expect(bases.find((b) => b.length === 140)!.pieces).toHaveLength(2);
+    const notched = s.pieces.filter((x) => x.depth === 1 && x.notches.length);
+    expect(notched).toHaveLength(2);
+    expect(cut.groupOf.get(notched[0].id)).toBe(cut.groupOf.get(notched[1].id));
+  });
+
+  it('keeps the editor data single: one set of compartments and bars', () => {
+    const { p } = stackedProject();
+    const s = solveProject(p);
+    const keys = s.layers[0].bars.map((b) => `${b.splitId}:${b.index}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(s.compartments.filter((c) => c.label.startsWith('G')).map((c) => c.label)).toEqual(['G', 'G1', 'G2']);
+    expect(s.compartments.find((c) => c.label === 'G1')!.stacked).toBe(true);
+  });
+
+  it('tells the builder to make two and stack them', () => {
+    const { p, g } = stackedProject();
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const lower = s.trays.find((t) => t.wellId === g.id && !t.copyOf)!;
+    const steps = trayInstructions(p, s, cut, lower);
+    expect(steps[steps.length - 1].text).toMatch(/second, identical box.*stack both in compartment G/);
   });
 });

@@ -61,8 +61,13 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
     });
   }
   if (tray.depth === 1) {
-    const well = solved.compartments.find((c) => c.id === tray.wellId);
-    steps.push({ text: `Once dry, drop the box into compartment ${well?.label ?? '?'}; its top sits flush with the walls around it.`, groups: [] });
+    const well = solved.compartments.find((c) => c.id === tray.wellId)?.label ?? '?';
+    steps.push({
+      text: tray.stacked
+        ? `Make a second, identical box. Once dry, stack both in compartment ${well}; the top one sits flush with the walls around it.`
+        : `Once dry, drop the box into compartment ${well}; its top sits flush with the walls around it.`,
+      groups: [],
+    });
   }
   return steps;
 }
