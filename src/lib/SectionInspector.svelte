@@ -1,6 +1,6 @@
 <script lang="ts">
   import { sectionColor, sectionInk } from '../core/defaults';
-  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, splitSection } from '../core/edit';
+  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
   import type { Compartment, Solved, SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
@@ -31,7 +31,8 @@
   const tray = $derived(solved.trays.find((t) => t.id === c.trayId));
   /** The compartment a box stands in: this one if it holds a box, or the one around this box. */
   const well = $derived(c.wellId ? solved.compartments.find((x) => x.id === c.wellId) : c.node.insert ? c : undefined);
-  const boxes = $derived(well ? solved.trays.filter((t) => t.wellId === well.id) : []);
+  const boxes = $derived(well ? solved.trays.filter((t) => t.wellId === well.id && !t.copyOf) : []);
+  const stacked = $derived(!!well?.node.insert?.stacked);
   const insertRoot = $derived(well?.node.insert?.root);
   const mode = $derived(well ? insertMode(well.node) : 'single');
   const parent = $derived(findParent(layer.root, c.id));
@@ -106,7 +107,8 @@
 
   const SIDE_ORDER: Side[] = ['back', 'front', 'left', 'right'];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
-  const boxHeight = $derived(layer.height - T);
+  /** Height of one box: what is left above the tray floor, halved when two are stacked. */
+  const boxHeight = $derived((layer.height - T) / (stacked ? 2 : 1));
   /** Sides whose divider stands lower than the walls, with how much lower. */
   const lowSides = $derived(
     SIDE_ORDER.flatMap((side) => {
@@ -171,9 +173,11 @@
   {/each}
   <div class="height">
     <span>Height</span>
-    <b>{mm(c.height)} mm</b>
+    <b>{mm(c.height)} mm{c.stacked ? ' each' : ''}</b>
     <span class="hint">
-      {#if c.depth === 1}
+      {#if c.depth === 1 && c.stacked}
+        In each box: ({layer.name} {mm(layer.height)} − {mm(T)} tray floor) ÷ 2 = {mm(boxHeight)} per box, − {mm(T)} box floor
+      {:else if c.depth === 1}
         {layer.name} {mm(layer.height)} − {mm(T)} tray floor − {mm(T)} box floor
       {:else}
         {layer.name} {mm(layer.height)} − {mm(T)} floor
@@ -210,8 +214,18 @@
       {:else}
         Each part is its own box with four walls and {project.clearance} mm between them.
       {/if}
-      {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls, standing on the base so the top sits flush.
+      {#if stacked}
+        Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and
+        its own floor, {mm(boxHeight - T)} mm inside. Together they sit flush.
+      {:else}
+        {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls, {mm(boxHeight - T)} mm inside,
+        standing on the base so the top sits flush.
+      {/if}
     </p>
+    <label class="check">
+      <input type="checkbox" checked={stacked} onchange={(e) => setStacked(well.node, e.currentTarget.checked)} />
+      Stack two boxes (each half the height)
+    </label>
     <div class="row">
       {#each solved.compartments.filter((x) => x.wellId === well.id) as x (x.id)}
         <button class="chip" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })}>{x.label}</button>
@@ -305,6 +319,12 @@
     color: var(--accent);
     background: none;
     text-align: left;
+  }
+  .check {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin: 4px 0 8px;
   }
   .chip.on {
     border-color: var(--accent);

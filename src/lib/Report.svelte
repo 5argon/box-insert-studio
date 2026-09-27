@@ -20,7 +20,9 @@
   function where(g: PieceGroup): string {
     const byTray = new Map<number, Map<string, number>>();
     for (const p of g.pieces) {
-      const t = trayById.get(p.trayId)!.number;
+      // The upper box of a stack is built like the one below it; count it there.
+      const tray = trayById.get(p.trayId)!;
+      const t = tray.copyOf ? trayById.get(tray.copyOf)!.number : tray.number;
       const kind = p.kind === 'divider' ? 'divider' : p.kind === 'wall' ? 'wall' : 'base';
       const m = byTray.get(t) ?? new Map<string, number>();
       m.set(kind, (m.get(kind) ?? 0) + 1);
@@ -181,12 +183,14 @@
         Glue with thick PVA along the whole edge; hold pieces with pins pushed in at opposite angles while it dries. Check each corner is square before
         the glue sets.
       </p>
-      {#each solved.trays as t (t.id)}
+      {#each solved.trays.filter((t) => !t.copyOf) as t (t.id)}
         {@const pieces = solved.pieces.filter((p) => p.trayId === t.id)}
         {@const comps = solved.compartments.filter((c) => c.trayId === t.id)}
         <div class="tray">
           <h3>
-            Tray {t.number} · {layerName.get(t.layerId)}{t.depth === 1 ? ` · box standing in ${wellLabel(t.wellId)} of tray ${parentNumber(t.parentTrayId)}` : ''} ·
+            Tray {t.number}{t.stacked ? ' (make 2)' : ''} · {layerName.get(t.layerId)}{t.depth === 1
+              ? ` · ${t.stacked ? 'two boxes stacked' : 'box standing'} in ${wellLabel(t.wellId)} of tray ${parentNumber(t.parentTrayId)}`
+              : ''} ·
             {mm(t.outer.w)} × {mm(t.outer.h)} × {mm(t.height)} mm · compartments {t.compartments.join(', ')}
           </h3>
           <div class="tray-body">

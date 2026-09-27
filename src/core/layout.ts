@@ -25,6 +25,8 @@ export type PieceKind = 'base' | 'wall' | 'divider';
 export interface PieceInst {
   id: string;
   kind: PieceKind;
+  /** Belongs to the upper box of a stacked pair; same place and shape as its twin below. */
+  copy: boolean;
   /** 0 for trays in the layer, 1 for removable boxes inside a compartment. */
   depth: 0 | 1;
   layerId: string;
@@ -63,6 +65,10 @@ export interface Tray {
   /** For a box inside a compartment: that compartment's id and the tray it sits in. */
   wellId?: string;
   parentTrayId?: string;
+  /** Part of a stack of two identical boxes. */
+  stacked: boolean;
+  /** For the upper box of a stack: the tray id of the identical box below it. */
+  copyOf?: string;
 }
 
 export interface Compartment {
@@ -77,6 +83,8 @@ export interface Compartment {
   wellId?: string;
   /** Usable height from this compartment's floor to the top of the walls around it. */
   height: Mm;
+  /** Inside a stacked pair of boxes: the same compartment exists in both. */
+  stacked: boolean;
   rect: Rect;
   node: SectionNode;
   /** Piece id forming each side. */
@@ -150,6 +158,7 @@ interface RawCompartment {
   depth: 0 | 1;
   wellId?: string;
   height: Mm;
+  stacked: boolean;
 }
 
 /** Where a tray is being built: its total height, and whether it is a box inside a compartment. */
@@ -158,6 +167,12 @@ interface TrayCtx {
   depth: 0 | 1;
   wellId?: string;
   parentTrayId?: string;
+  stacked?: boolean;
+  /**
+   * Building the upper box of a stack: its pieces are made, but compartments, bars, splits and
+   * issues were already recorded by the identical box below.
+   */
+  copy?: boolean;
 }
 
 function solveLayer(project: Project, layer: Layer): SolvedLayer {
@@ -176,14 +191,16 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       const horizontal = node.dir === 'row';
       const n = node.children.length;
       const { sizes, issue } = allocate((horizontal ? cell.w : cell.h) - n * c, node.children.map((ch) => ch.size));
-      if (issue) issues.push({ level: 'error', message: issue });
-      splits.push({ id: node.id, node, rect: cell, childSizes: sizes });
+      if (!ctx.copy) {
+        if (issue) issues.push({ level: 'error', message: issue });
+        splits.push({ id: node.id, node, rect: cell, childSizes: sizes });
+      }
       let cursor = horizontal ? cell.x : cell.y;
       node.children.forEach((ch, i) => {
         const size = sizes[i] + c;
         const r: Rect = horizontal ? { x: cursor, y: cell.y, w: size, h: cell.h } : { x: cell.x, y: cursor, w: cell.w, h: size };
         cursor += size;
-        if (i < n - 1) {
+        if (i < n - 1 && !ctx.copy) {
           bars.push({
             splitId: node.id,
             index: i,
@@ -218,12 +235,13 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       wallHeight: trayWall,
       wellId: ctx.wellId,
       parentTrayId: ctx.parentTrayId,
+      stacked: !!ctx.stacked,
     };
     trays.push(tray);
-    if (inner.w <= 0 || inner.h <= 0) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
+    if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
     let order = 0;
-    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'depth'>): PieceInst => {
-      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, notches: [], depth: ctx.depth };
+    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'depth' | 'copy'>): PieceInst => {
+      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, notches: [], depth: ctx.depth, copy: !!ctx.copy };
       order += 1;
       pieces.push(piece);
       return piece;
@@ -262,36 +280,47 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     rect: Rect,
     bounds: Record<Side, string>,
     tray: Tray,
-    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'depth'>) => PieceInst,
+    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'depth' | 'copy'>) => PieceInst,
     ctx: TrayCtx,
   ) {
     if (node.kind === 'section') {
-      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - T });
+      if (ctx.copy) return;
+      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - T, stacked: !!ctx.stacked });
       if (!node.insert) return;
       if (ctx.depth === 1) {
         issues.push({ level: 'warn', message: 'A box inside a box is not supported; the inner one is ignored.' });
         return;
       }
       // The box stands on this tray's base, so it is one board thickness shorter and its top
-      // sits flush with the walls around it.
-      const height = ctx.height - T;
+      // sits flush with the walls around it. A stack of two splits that height exactly in half.
+      const stacked = !!node.insert.stacked;
+      const height = (ctx.height - T) / (stacked ? 2 : 1);
       if (height - T < 5) {
-        issues.push({ level: 'error', message: `${layer.name} is too shallow for a box inside a compartment.` });
+        issues.push({ level: 'error', message: `${layer.name} is too shallow for ${stacked ? 'two stacked boxes' : 'a box'} inside a compartment.` });
         return;
       }
-      cellLevel(node.insert.root, rect, { height, depth: 1, wellId: node.id, parentTrayId: tray.id });
+      const box = { height, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked };
+      const first = trays.length;
+      cellLevel(node.insert.root, rect, box);
+      if (stacked) {
+        const upper = trays.length;
+        cellLevel(node.insert.root, rect, { ...box, copy: true });
+        for (let i = upper; i < trays.length; i++) trays[i].copyOf = trays[first + i - upper].id;
+      }
       return;
     }
-    if (node.join === 'trays') {
+    if (node.join === 'trays' && !ctx.copy) {
       issues.push({ level: 'error', message: 'Separate trays can only divide trays, not the inside of a tray; treated as dividers.' });
     }
     const horizontal = node.dir === 'row';
     const n = node.children.length;
     const { sizes, issue } = allocate((horizontal ? rect.w : rect.h) - (n - 1) * T, node.children.map((ch) => ch.size));
-    if (issue) issues.push({ level: 'error', message: issue });
-    splits.push({ id: node.id, node, rect, childSizes: sizes });
+    if (!ctx.copy) {
+      if (issue) issues.push({ level: 'error', message: issue });
+      splits.push({ id: node.id, node, rect, childSizes: sizes });
+    }
     const dividerHeight = ctx.height - T - node.lower;
-    if (dividerHeight < 5) issues.push({ level: 'error', message: `Lowered dividers would be only ${dividerHeight.toFixed(1)} mm tall.` });
+    if (dividerHeight < 5 && !ctx.copy) issues.push({ level: 'error', message: `Lowered dividers would be only ${dividerHeight.toFixed(1)} mm tall.` });
     const childRects: Rect[] = [];
     const dividers: PieceInst[] = [];
     let cursor = horizontal ? rect.x : rect.y;
@@ -314,7 +343,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
             lower: node.lower,
           }),
         );
-        bars.push({
+        if (!ctx.copy) bars.push({
           splitId: node.id,
           index: i,
           dir: node.dir,
@@ -351,6 +380,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     depth: r.depth,
     wellId: r.wellId,
     height: r.height,
+    stacked: r.stacked,
     rect: r.rect,
     node: r.node,
     bounds: r.bounds,
@@ -403,11 +433,17 @@ export function solveProject(project: Project): Solved {
     }
     sl.compartments = ordered;
     const wellOrder = new Map(ordered.map((c, i) => [c.id, i]));
-    sl.trays.sort((a, b) => a.depth - b.depth || (wellOrder.get(a.wellId ?? '') ?? 0) - (wellOrder.get(b.wellId ?? '') ?? 0) || readingOrder(a.outer, b.outer));
+    sl.trays.sort(
+      (a, b) =>
+        a.depth - b.depth ||
+        (wellOrder.get(a.wellId ?? '') ?? 0) - (wellOrder.get(b.wellId ?? '') ?? 0) ||
+        Number(!!a.copyOf) - Number(!!b.copyOf) ||
+        readingOrder(a.outer, b.outer),
+    );
     for (const t of sl.trays) {
       trayNumber += 1;
       t.number = trayNumber;
-      t.compartments = sl.compartments.filter((c) => c.trayId === t.id).map((c) => c.label);
+      t.compartments = sl.compartments.filter((c) => c.trayId === (t.copyOf ?? t.id)).map((c) => c.label);
     }
     for (const p of sl.pieces) {
       if (p.length <= 0 || p.height <= 0) sl.issues.push({ level: 'error', message: 'Some pieces have no size; a section is too small.' });
@@ -440,6 +476,15 @@ export function solveProject(project: Project): Solved {
     }
     for (const p of sl.pieces) if (p.notches.length > 1) p.notches = mergeNotches(p.notches);
     for (const p of sl.pieces) p.sides?.forEach((s) => s.sort());
+
+    // The upper box of a stack is built in the same order as the one below: copy its notches.
+    const copyOf = new Map(sl.trays.filter((t) => t.copyOf).map((t) => [t.id, t.copyOf!]));
+    for (const p of sl.pieces) {
+      const twin = copyOf.has(p.trayId) ? byId.get(`${copyOf.get(p.trayId)}/${p.order}`) : undefined;
+      if (!twin) continue;
+      p.notches = twin.notches.map((n) => ({ ...n }));
+      p.sides = twin.sides?.map((x) => [...x]) as [string[], string[]] | undefined;
+    }
   }
 
   return {

@@ -147,8 +147,9 @@
     return '#3f3b35';
   }
 
-  const strips = $derived(solved.pieces.filter((p) => p.kind !== 'base'));
-  const bases = $derived(solved.pieces.filter((p) => p.kind === 'base'));
+  // The upper box of a stack sits exactly over the lower one; draw one of them.
+  const strips = $derived(solved.pieces.filter((p) => p.kind !== 'base' && !p.copy));
+  const bases = $derived(solved.pieces.filter((p) => p.kind === 'base' && !p.copy));
 </script>
 
 <svg
@@ -172,7 +173,7 @@
     {/each}
 
     {#if depth === 1}
-      {#each solved.trays.filter((t) => t.depth === 1) as t (t.id)}
+      {#each solved.trays.filter((t) => t.depth === 1 && !t.copyOf) as t (t.id)}
         <!-- Clicking a box's walls selects the compartment it stands in. -->
         <rect
           x={t.outer.x}
@@ -214,7 +215,7 @@
         <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} fill={sectionInk(c.index)} class="letter">{c.label}</text>
         {#if c.rect.h > 14}
           <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={Math.max(3, Math.min(5, size * 0.3))} fill={sectionInk(c.index)} class="dims">
-            {mm(c.rect.w)} × {mm(c.rect.h)}
+            {mm(c.rect.w)} × {mm(c.rect.h)}{c.stacked ? ' · ×2 stacked' : ''}
           </text>
         {/if}
       </g>

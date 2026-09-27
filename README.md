@@ -56,7 +56,8 @@ With board thickness T and tray height H (including the base):
 - Separate trays each get their own base and walls, with the clearance between them.
 - A removable box stands on its tray's base inside a compartment, with the clearance around it.
   It is H − T tall, so its top sits flush with the walls around it; its walls and dividers are
-  shortened to match. Boxes go one level deep.
+  shortened to match. Boxes go one level deep. Stacking splits that height exactly in half: two
+  identical boxes, each (H − T) / 2 tall with its own floor, so each holds (H − T) / 2 − T.
 
 ## Code layout
 

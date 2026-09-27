@@ -123,6 +123,13 @@ export function setInsert(layer: Layer, sectionId: string, on: boolean): boolean
   return true;
 }
 
+/** Stack two identical half-height boxes in the compartment, or go back to one full-height box. */
+export function setStacked(section: SectionNode, stacked: boolean) {
+  if (!section.insert) return;
+  if (stacked) section.insert.stacked = true;
+  else delete section.insert.stacked;
+}
+
 /** `multiple` when the insert's top split makes separate boxes, `single` for one box. */
 export function insertMode(section: SectionNode): 'single' | 'multiple' {
   const root = section.insert?.root;
