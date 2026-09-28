@@ -6,6 +6,7 @@
  * it), dividers stand on the base. A removable box stands on its tray's base; the upper box of a
  * stack stands on the lower one.
  */
+import { fitItems } from './items';
 import type { Notch, PieceKind, Solved, Tray } from './layout';
 import type { Mm, Project } from './types';
 
@@ -26,6 +27,28 @@ export interface Block {
   notches: Notch[];
 }
 
+/** An axis-aligned box: min corner and extent along x, y and z. */
+export interface Box3 {
+  x: Mm;
+  y: Mm;
+  z: Mm;
+  w: Mm;
+  d: Mm;
+  h: Mm;
+}
+
+/** Simulated items standing in a row in one compartment, from the arrow's tail toward its head. */
+export interface SceneItems {
+  compartmentId: string;
+  shape: 'box' | 'cylinder';
+  /** The direction the row runs; each item is `thickness` thick along it. */
+  axis: 'x' | 'y';
+  thickness: Mm;
+  /** False when the items are wider than the slot or stand above its walls. */
+  fits: boolean;
+  items: Box3[];
+}
+
 export interface SceneTray {
   /** Stable across edits: layer, source layout node and stack level. */
   key: string;
@@ -39,6 +62,7 @@ export interface SceneTray {
   level: 0 | 1;
   color: string;
   blocks: Block[];
+  items: SceneItems[];
 }
 
 export interface SceneLayer {
@@ -106,6 +130,31 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
     return i;
   };
 
+  /** Rows of simulated items in a tray's compartments; the upper box of a stack holds the same as the lower. */
+  function itemsIn(t: Tray, bottom: Mm): SceneItems[] {
+    const source = t.copyOf ?? t.id;
+    return solved.compartments.flatMap((c): SceneItems[] => {
+      const { arrow, items: spec, insert } = c.node;
+      if (c.trayId !== source || !arrow || !spec?.on || insert) return [];
+      const fit = fitItems(c, arrow, spec);
+      const axis = arrow === 'left' || arrow === 'right' ? 'x' : 'y';
+      const r = c.rect;
+      const z = bottom + T + c.padHeight;
+      // Stop at a few thousand: enough for any real slot, and the viewer stays quick.
+      const items = Array.from({ length: Math.min(fit.count, 5000) }, (_, i): Box3 => {
+        const t0 = spec.thickness;
+        if (axis === 'x') {
+          const x = arrow === 'right' ? r.x + i * t0 : r.x + r.w - (i + 1) * t0;
+          return { x, y: r.y + (r.h - fit.faceW) / 2, z, w: t0, d: fit.faceW, h: fit.faceH };
+        }
+        const y = arrow === 'front' ? r.y + i * t0 : r.y + r.h - (i + 1) * t0;
+        return { x: r.x + (r.w - fit.faceW) / 2, y, z, w: fit.faceW, d: t0, h: fit.faceH };
+      });
+      const fits = fit.faceW <= fit.across + 1e-9 && fit.faceH <= fit.up + 1e-9;
+      return [{ compartmentId: c.id, shape: spec.shape, axis, thickness: spec.thickness, fits, items }];
+    });
+  }
+
   const trays: SceneTray[] = solved.trays.map((t) => {
     const bottom = floorZ(t);
     const blocks: Block[] = solved.pieces
@@ -134,6 +183,7 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       level,
       color: trayColor(hueFor(key)),
       blocks,
+      items: itemsIn(t, bottom),
     };
   });
 

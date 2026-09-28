@@ -58,6 +58,8 @@ export const studio = $state({
     hiddenLayers: [] as string[],
     panel: true,
     ortho: false,
+    /** Draw the simulated items in compartments that have them. */
+    items: true,
   },
   /** Cut-list group number highlighted in the canvas. */
   hoverGroup: null as number | null,

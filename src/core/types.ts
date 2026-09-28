@@ -36,8 +36,10 @@ export interface SectionNode {
   notches: Side[];
   /** This compartment's notch size, instead of the project's. */
   notchSize?: { width: Mm; depth: Mm };
-  /** An arrow drawn beside the letter, e.g. which way cards face in a card slot. */
+  /** An arrow drawn beside the letter: which way the items in this slot face. */
   arrow?: Side;
+  /** Items to simulate standing in a row along the arrow, e.g. cards or tokens on edge. */
+  items?: ItemSpec;
   /**
    * Removable box(es) standing in this compartment. The layout inside works like a layer:
    * a top-level `trays` split gives separate boxes, `divider` splits give one box with dividers.
@@ -50,6 +52,21 @@ export interface SectionNode {
     /** Two identical boxes stacked, each half the height, each with its own floor. */
     stacked?: boolean;
   };
+}
+
+/**
+ * One kind of item standing in a row along the compartment's arrow. A box is width (across the
+ * arrow) × height (standing up) × thickness (along the arrow); a cylinder is a disc of diameter
+ * `width` standing on edge, `thickness` along the arrow.
+ */
+export interface ItemSpec {
+  on: boolean;
+  shape: 'box' | 'cylinder';
+  width: Mm;
+  height: Mm;
+  thickness: Mm;
+  /** Space to leave free at the arrow's head, e.g. finger room. */
+  spare: Mm;
 }
 
 export type LayoutNode = SplitNode | SectionNode;

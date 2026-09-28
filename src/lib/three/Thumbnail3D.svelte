@@ -5,7 +5,7 @@
   import { applyStyle, buildObjects, disposeObjects, type SceneObjects } from './meshes';
 
   /** A small, fixed three-quarter view of the whole insert: solid trays, game box outline on. */
-  let { model, dark, onopen }: { model: SceneModel; dark: boolean; onopen: () => void } = $props();
+  let { model, dark, items = true, onopen }: { model: SceneModel; dark: boolean; items?: boolean; onopen: () => void } = $props();
 
   const W = 176;
   const H = 132;
@@ -37,11 +37,11 @@
     };
   });
 
-  function draw(m: SceneModel, isDark: boolean) {
+  function draw(m: SceneModel, isDark: boolean, showItems: boolean) {
     if (!renderer) return;
     if (objects) disposeObjects(objects);
     objects = buildObjects(m, isDark);
-    for (const t of objects.trays) applyStyle(t, 'solid');
+    for (const t of objects.trays) applyStyle(t, 'solid', showItems);
     scene.add(objects.root);
     const target = new THREE.Vector3(0, m.box.h / 2, 0);
     const radius = 0.5 * Math.hypot(m.box.w, m.box.d, m.box.h);
@@ -55,7 +55,8 @@
   $effect(() => {
     const m = model;
     const isDark = dark;
-    const id = setTimeout(() => draw(m, isDark), objects ? 150 : 0);
+    const showItems = items;
+    const id = setTimeout(() => draw(m, isDark, showItems), objects ? 150 : 0);
     return () => clearTimeout(id);
   });
 </script>

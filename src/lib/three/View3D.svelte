@@ -47,6 +47,9 @@
     { value: 'side', name: 'Side' },
   ];
 
+  /** Compartments with simulated items (a stacked box's pair counts once). */
+  const simulated = $derived(new Set(model.trays.flatMap((t) => t.items.map((r) => r.compartmentId))).size);
+
   const layersTopFirst = $derived([...model.layers].reverse());
   const multiLayer = $derived(model.layers.length > 1);
   const layerIndex = (id: string) => model.layers.findIndex((l) => l.id === id);
@@ -61,7 +64,7 @@
 
 <div class="view3d" class:full={!v.panel}>
   <div class="stage">
-    <Viewer3D bind:this={viewer} {model} {styleOf} outer={v.outer} ortho={v.ortho} dark={isDark()} />
+    <Viewer3D bind:this={viewer} {model} {styleOf} outer={v.outer} ortho={v.ortho} dark={isDark()} items={v.items} />
     <div class="hint">Drag to rotate · scroll or pinch to zoom</div>
     {#if !v.panel}
       <button class="small show-tools" onclick={() => (v.panel = true)}>Show tools</button>
@@ -92,6 +95,11 @@
       <div class="panel-section">
         <h2>Style</h2>
         <label class="check"><input type="checkbox" bind:checked={v.outer} /> Game box outline</label>
+        <label class="check" data-tip={simulated ? '' : 'Turn on item simulation for a compartment in the layout inspector'}>
+          <input type="checkbox" bind:checked={v.items} disabled={!simulated} />
+          Simulated items
+          {#if simulated}<span class="muted">in {simulated} compartment{simulated === 1 ? '' : 's'}</span>{/if}
+        </label>
         <div class="row gap">
           {#each STYLES as s (s.value)}
             <button class="small" class:on={v.style === s.value} onclick={() => (v.style = s.value)}>{s.name}</button>

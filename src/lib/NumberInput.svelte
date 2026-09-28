@@ -12,6 +12,7 @@
     max = Infinity,
     disabled = false,
     label = '',
+    decimals = 2,
   }: {
     value: number;
     onchange: (v: number) => void;
@@ -20,10 +21,13 @@
     max?: number;
     disabled?: boolean;
     label?: string;
+    /** Values are kept to this many decimal places. */
+    decimals?: number;
   } = $props();
 
   let el: HTMLInputElement;
-  const format = (v: number) => String(Number(v.toFixed(2)));
+  const round = (v: number) => Number(v.toFixed(decimals));
+  const format = (v: number) => String(round(v));
 
   $effect(() => {
     const text = format(value);
@@ -31,13 +35,13 @@
   });
 
   function input() {
-    const v = el.valueAsNumber;
-    if (Number.isFinite(v) && v >= min && v <= max) onchange(v);
+    const v = round(el.valueAsNumber);
+    if (Number.isFinite(v) && v >= min && v <= max && v !== value) onchange(v);
   }
 
   function commit() {
     const v = el.valueAsNumber;
-    const next = Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : value;
+    const next = Number.isFinite(v) ? round(Math.min(max, Math.max(min, v))) : value;
     if (next !== value) onchange(next);
     el.value = format(next);
   }

@@ -11,6 +11,7 @@
     max = Infinity,
     disabled = false,
     hint = '',
+    decimals = 2,
   }: {
     label: string;
     value: number;
@@ -21,12 +22,13 @@
     max?: number;
     disabled?: boolean;
     hint?: string;
+    decimals?: number;
   } = $props();
 </script>
 
 <label class="field" data-tip={hint || undefined}>
   <span class="label">{label}</span>
-  <NumberInput {value} {onchange} {step} {min} {max} {disabled} />
+  <NumberInput {value} {onchange} {step} {min} {max} {disabled} {decimals} />
   <span class="unit">{unit}</span>
 </label>
 
