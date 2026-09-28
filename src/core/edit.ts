@@ -270,6 +270,19 @@ export function splitJoin(project: Project, layer: Layer, sectionId: string): Jo
   return findPath(layer.root, sectionId)?.every((p) => p.split.join === 'trays') ? 'trays' : 'divider';
 }
 
+/**
+ * Give each layer's base its own thickness, or `undefined` for the material's. Layer heights move
+ * by the difference so every compartment keeps its depth: a thinner base gives the space back as
+ * headroom.
+ */
+export function setBaseThickness(project: Project, next: Mm | undefined) {
+  const before = project.material.baseThickness ?? project.material.thickness;
+  if (next === undefined) delete project.material.baseThickness;
+  else project.material.baseThickness = next;
+  const delta = (next ?? project.material.thickness) - before;
+  if (delta) for (const layer of project.layers) layer.height = Math.max(5, Math.round((layer.height + delta) * 100) / 100);
+}
+
 export function distributeEqually(split: SplitNode) {
   for (const c of split.children) c.size = { mode: 'flex', weight: 1 };
 }

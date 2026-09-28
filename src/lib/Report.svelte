@@ -3,7 +3,7 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
-  import { panelUse, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
+  import { panelUse, sheetSummary, thicknesses, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import type { Project } from '../core/types';
   import Markdown from './Markdown.svelte';
   import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
@@ -93,6 +93,18 @@
   const boxesIn = (layerId: string) => solved.trays.filter((t) => t.layerId === layerId && t.depth === 1 && !t.copyOf);
   const scale = $derived(Math.max(project.box.width, project.box.depth) / 100);
 
+  /** Bases from their own sheet thickness: listed, planned and called out apart from the rest. */
+  const T = $derived(project.material.thickness);
+  const ownBase = $derived(cut.groups.some((g) => g.thickness !== T));
+  const blocks = $derived(thicknesses(project, cut).map((t) => ({ thickness: t, groups: cut.groups.filter((g) => g.thickness === t) })));
+  const materialName = (t: number) => (t === T ? `${mm(t)} mm sheet` : `${mm(t)} mm base sheet, for layer bases only`);
+  const baseRefs = $derived(
+    cut.groups
+      .filter((g) => g.thickness !== T)
+      .map((g) => `#${g.number}`)
+      .join(', '),
+  );
+
   function exportCsv() {
     const rows = [['#', 'Qty', 'Kind', 'Length mm', 'Height mm', 'Notches', 'Used in']];
     for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', String(g.length), String(g.height), notchText(g), where(g)]);
@@ -110,12 +122,13 @@
       <div>
         <h1>{project.name}</h1>
         <p class="facts">
-          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.material.thickness} mm material ·
+          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.material.thickness} mm material{project.material.baseThickness !== undefined
+            ? `, ${mm(project.material.baseThickness)} mm bases`
+            : ''} ·
           {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {mm(solved.headroom)} mm headroom
         </p>
         <p class="facts">
-          <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from <b>{plan.sheets.length}</b>
-          {project.material.sheet.preset} sheet{plan.sheets.length === 1 ? '' : 's'} ({project.material.sheet.width} × {project.material.sheet.height} mm)
+          <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from {sheetSummary(project, plan)} ({project.material.sheet.width} × {project.material.sheet.height} mm)
         </p>
       </div>
       <div class="actions no-print">
@@ -153,6 +166,9 @@
                 {#each boxesIn(layer.id) as b (b.id)}
                   <rect x={b.outer.x} y={b.outer.y} width={b.outer.w} height={b.outer.h} class="place-box" style:stroke-width={0.5 * scale} />
                 {/each}
+                {#each solved.compartments.filter((c) => c.layerId === layer.id) as c (c.id)}
+                  <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} class="place-comp" style:stroke-width={0.3 * scale} />
+                {/each}
                 {#each solved.compartments.filter((c) => c.layerId === layer.id && !c.node.insert) as c (c.id)}
                   {@const size = Math.max(3, Math.min(6 * scale, Math.min(c.rect.w, c.rect.h) * 0.4))}
                   <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{c.label}</text>
@@ -184,17 +200,22 @@
         <thead>
           <tr><th>#</th><th>Qty</th><th>Size (mm)</th><th>Notches</th><th>Used in</th></tr>
         </thead>
-        <tbody>
-          {#each cut.groups as g (g.key)}
-            <tr>
-              <td class="num">#{g.number}</td>
-              <td class="qty">{g.pieces.length}</td>
-              <td class="size">{mm(g.length)} × {mm(g.height)}{g.kind === 'base' ? ` ${panelUse(g)}` : ''}</td>
-              <td>{notchText(g)}</td>
-              <td class="muted">{where(g)}</td>
-            </tr>
-          {/each}
-        </tbody>
+        {#each blocks as block (block.thickness)}
+          <tbody class:own={block.thickness !== T}>
+            {#if ownBase}
+              <tr class="material"><th colspan="5">From the {materialName(block.thickness)}</th></tr>
+            {/if}
+            {#each block.groups as g (g.key)}
+              <tr>
+                <td class="num">#{g.number}</td>
+                <td class="qty">{g.pieces.length}</td>
+                <td class="size">{mm(g.length)} × {mm(g.height)}{g.kind === 'base' ? ` ${panelUse(g)}` : ''}</td>
+                <td>{notchText(g)}</td>
+                <td class="muted">{where(g)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        {/each}
       </table>
       <p class="muted small">
         Wall and divider sizes are length × height. Notch positions are centres measured from one end; flip the piece if the other end fits.
@@ -228,7 +249,7 @@
             {/each}
           </svg>
           <div class="sheet-text">
-            <h3>Sheet {sheet.index + 1} of {plan.sheets.length}</h3>
+            <h3>Sheet {sheet.index + 1} of {plan.sheets.length}{ownBase ? ` · ${materialName(sheet.thickness)}` : ''}</h3>
             <ol>
               {#each sheet.items as item, i (i)}
                 <li>
@@ -251,6 +272,12 @@
         Glue along the whole edge (thick PVA or wood glue) and hold pieces in place until it dries: pins pushed in at opposite angles for foam
         board, clamps or masking tape for wood. Check each corner is square before the glue sets.
       </p>
+      {#if ownBase}
+        <p class="material-note">
+          The layer bases ({baseRefs}) are {mm(project.material.baseThickness ?? T)} mm, cut from their own sheets. Everything else, including removable box floors and raised
+          floors, is {mm(T)} mm.
+        </p>
+      {/if}
       {#each solved.trays.filter((t) => !t.copyOf) as t (t.id)}
         {@const pieces = solved.pieces.filter((p) => p.trayId === t.id)}
         {@const comps = solved.compartments.filter((c) => c.trayId === t.id)}
@@ -513,6 +540,22 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
+  tr.material th {
+    text-align: left;
+    font-size: 11.5px;
+    padding-top: 10px;
+    border-bottom: 1.5px solid #3f3b35;
+  }
+  tbody.own tr.material th {
+    color: #2f6fdb;
+    border-bottom-color: #2f6fdb;
+  }
+  .material-note {
+    border-left: 3px solid #2f6fdb;
+    padding: 4px 10px;
+    font-size: 12px;
+    background: #e6eefc;
+  }
   .placement {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -534,6 +577,10 @@
   .place-tray {
     fill: #e2dccf;
     stroke: #3f3b35;
+  }
+  .place-comp {
+    fill: none;
+    stroke: #8a8378;
   }
   .place-box {
     fill: none;

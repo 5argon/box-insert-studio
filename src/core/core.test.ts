@@ -927,3 +927,87 @@ describe('separate construction', () => {
     }
   });
 });
+
+describe('base thickness', () => {
+  async function thinBase() {
+    const { setBaseThickness } = await import('./edit');
+    const p = defaultProject();
+    const before = solveProject(p);
+    const heights = p.layers.map((l) => l.height);
+    setBaseThickness(p, 3);
+    return { p, before, heights, s: solveProject(p), setBaseThickness };
+  }
+
+  it('cuts only the layer bases from the other thickness, and moves layer heights so compartments keep their depth', async () => {
+    const { p, before, heights, s, setBaseThickness } = await thinBase();
+    const T = p.material.thickness;
+    expect(p.layers.map((l) => l.height)).toEqual(heights.map((h) => h - 2));
+    expect(s.headroom).toBeCloseTo(before.headroom + 2 * p.layers.length, 6);
+    for (const c of s.compartments) expect(c.height).toBeCloseTo(before.compartments.find((x) => x.id === c.id)!.height, 6);
+    const bases = s.pieces.filter((x) => x.kind === 'base');
+    expect(bases.filter((x) => x.depth === 0).every((x) => x.thickness === 3)).toBe(true);
+    expect(bases.filter((x) => x.depth === 1).every((x) => x.thickness === T)).toBe(true);
+    expect(s.pieces.filter((x) => x.kind !== 'base').every((x) => x.thickness === T)).toBe(true);
+    // Walls on the base are one base shorter than the layer; the tray's dividers too.
+    for (const t of s.trays.filter((x) => x.depth === 0)) {
+      const layer = p.layers.find((l) => l.id === t.layerId)!;
+      expect(t.base).toBe(3);
+      expect(t.wallHeight).toBeCloseTo(layer.height - 3, 6);
+    }
+    setBaseThickness(p, undefined);
+    expect(p.material.baseThickness).toBeUndefined();
+    expect(p.layers.map((l) => l.height)).toEqual(heights);
+  });
+
+  it('lists and plans the bases on their own sheets, and says so in the assembly steps', async () => {
+    const { p, s } = await thinBase();
+    const { sheetSummary } = await import('./pieces');
+    const cut = buildCutList(s, p.precision);
+    const thin = cut.groups.filter((g) => g.thickness === 3);
+    expect(thin.length).toBeGreaterThan(0);
+    expect(thin.every((g) => g.kind === 'base' && g.pieces.every((x) => x.kind === 'base' && x.depth === 0))).toBe(true);
+    // Numbered first, so they read as one block.
+    expect(thin.map((g) => g.number)).toEqual(thin.map((_, i) => i + 1));
+    const plan = planCuts(p, cut);
+    expect(plan.counts.map((c) => c.thickness)).toEqual([3, 5]);
+    for (const sheet of plan.sheets) {
+      for (const item of sheet.items) {
+        const t = item.group?.thickness ?? cut.groups.find((g) => g.number === item.strip!.cuts[0].group)!.thickness;
+        expect(t).toBe(sheet.thickness);
+      }
+    }
+    expect(sheetSummary(p, plan)).toMatch(/^\d+ × 3 mm \+ \d+ × 5 mm A2 sheets$/);
+    const tray = s.trays.find((t) => t.depth === 0)!;
+    expect(trayInstructions(p, s, cut, tray)[0].text).toContain('cut from the 3 mm base sheet (not the 5 mm used for the walls)');
+    const box = s.trays.find((t) => t.depth === 1)!;
+    expect(trayInstructions(p, s, cut, box)[0].text).toBe(`Start with base #${cut.groupOf.get(s.pieces.find((x) => x.trayId === box.id && x.kind === 'base')!.id)!.number}.`);
+  });
+
+  it('stacks everything in 3D without overlaps, walls standing on the thinner base', async () => {
+    const { p } = await thinBase();
+    const { setPad, setConstruction } = await import('./edit');
+    const { buildScene, overlap } = await import('./scene');
+    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    setPad(g.node, 1);
+    setStacked(g.node, true);
+    for (const construction of ['glued', 'separate'] as const) {
+      for (const base of ['under', 'inside'] as const) {
+        setConstruction(p, construction);
+        p.base = base;
+        const s = solveProject(p);
+        const model = buildScene(p, s);
+        const blocks = model.trays.flatMap((t) => t.blocks);
+        for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBeLessThan(1e-6);
+        // Each tray's tallest piece reaches exactly the top of its layer.
+        let z = 0;
+        for (const layer of p.layers) {
+          const top = Math.max(...model.trays.filter((t) => t.layerId === layer.id && t.depth === 0).flatMap((t) => t.blocks.map((b) => b.z + b.h)));
+          expect(top).toBeCloseTo(z + layer.height, 6);
+          z += layer.height;
+        }
+        const baseBlocks = model.trays.filter((t) => t.depth === 0).flatMap((t) => t.blocks.filter((b) => b.kind === 'base'));
+        expect(baseBlocks.every((b) => b.h === 3)).toBe(true);
+      }
+    }
+  });
+});

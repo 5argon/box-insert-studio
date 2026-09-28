@@ -94,6 +94,11 @@ export interface Project {
   /** The sheet material everything is cut from: foam board, MDF, greyboard… */
   material: {
     thickness: Mm;
+    /**
+     * The base of each layer's trays from thinner (or thicker) sheet, e.g. 3 mm under 5 mm walls.
+     * Unset: the same as `thickness`. Floors of removable boxes and raised floors stay `thickness`.
+     */
+    baseThickness?: Mm;
     sheet: SheetSpec;
     /** Damaged edge trimmed off every side of a sheet before cutting. */
     trim: Mm;

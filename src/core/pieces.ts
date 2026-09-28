@@ -14,6 +14,8 @@ export interface PieceGroup {
   /** Base: width × depth (width ≥ depth). Strip piece: length × height. */
   length: Mm;
   height: Mm;
+  /** Sheet thickness: bases can come from a different sheet than everything else. */
+  thickness: Mm;
   /** Notches measured from the end that the assembly steps call the start. */
   notches: Notch[];
   pieces: PieceInst[];
@@ -67,18 +69,18 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     if (p.kind === 'base' || p.kind === 'pad') {
       length = Math.max(L, H);
       height = Math.min(L, H);
-      key = `base:${length}x${height}`;
+      key = `base:${p.thickness}:${length}x${height}`;
     } else {
       const forward = [...p.notches].sort((a, b) => a.center - b.center);
       const back = mirrored(p.notches, p.length);
       // Measure from whichever end puts the notches earliest, so mirror images share one key.
       flip = compareNotches(back, forward) < 0;
       notches = flip ? back : forward;
-      key = `strip:${L}x${H}|${notchKey(notches)}`;
+      key = `strip:${p.thickness}:${L}x${H}|${notchKey(notches)}`;
     }
     let g = map.get(key);
     if (!g) {
-      g = { number: 0, kind: p.kind === 'base' || p.kind === 'pad' ? 'base' : 'strip', length, height, notches, pieces: [], key };
+      g = { number: 0, kind: p.kind === 'base' || p.kind === 'pad' ? 'base' : 'strip', length, height, thickness: p.thickness, notches, pieces: [], key };
       map.set(key, g);
     }
     g.pieces.push(p);
@@ -88,7 +90,8 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
 
   const groups = [...map.values()].sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'base' ? -1 : 1;
-    if (a.kind === 'base') return b.length * b.height - a.length * a.height || (a.key < b.key ? -1 : 1);
+    // Panels from one sheet thickness stay together, so a separate base material reads as its own block.
+    if (a.kind === 'base') return a.thickness - b.thickness || b.length * b.height - a.length * a.height || (a.key < b.key ? -1 : 1);
     return b.height - a.height || b.length - a.length || a.notches.length - b.notches.length || (a.key < b.key ? -1 : 1);
   });
   groups.forEach((g, i) => (g.number = i + 1));
@@ -130,8 +133,18 @@ export interface SheetItem {
   h: Mm;
 }
 
+export interface PlanSheet {
+  index: number;
+  /** Thickness of this sheet; the base material can differ from the rest. */
+  thickness: Mm;
+  items: SheetItem[];
+}
+
 export interface CutPlan {
-  sheets: { index: number; items: SheetItem[] }[];
+  /** Grouped by thickness, in cut-list order. */
+  sheets: PlanSheet[];
+  /** How many sheets of each thickness. */
+  counts: { thickness: Mm; sheets: number }[];
   strips: Strip[];
   issues: Issue[];
   /** Share of the sheets' area that ends up in pieces. */
@@ -162,7 +175,41 @@ function buildStrips(cut: CutList, limit: Mm, kerf: Mm): Strip[] {
   return strips;
 }
 
+/** Sheet thicknesses in the cut list, in the order its numbers run. */
+export function thicknesses(project: Project, cut: CutList): Mm[] {
+  const all = [...new Set(cut.groups.map((g) => g.thickness))];
+  return all.length ? all : [project.material.thickness];
+}
+
+/** "2 A2 sheets", or per thickness when bases have their own: "1 × 3 mm + 2 × 5 mm A2 sheets". */
+export function sheetSummary(project: Project, plan: CutPlan): string {
+  const { preset } = project.material.sheet;
+  const total = plan.sheets.length;
+  if (plan.counts.length <= 1) return `${total} ${preset} sheet${total === 1 ? '' : 's'}`;
+  return `${plan.counts.map((c) => `${c.sheets} × ${c.thickness} mm`).join(' + ')} ${preset} sheets`;
+}
+
+/** Each thickness is packed onto its own sheets: a 3 mm base cannot share a 5 mm sheet. */
 export function planCuts(project: Project, cut: CutList): CutPlan {
+  const sheets: PlanSheet[] = [];
+  const strips: Strip[] = [];
+  const issues: Issue[] = [];
+  const counts: CutPlan['counts'] = [];
+  let usedArea = 0;
+  for (const thickness of thicknesses(project, cut)) {
+    const part = planSheets(project, { ...cut, groups: cut.groups.filter((g) => g.thickness === thickness) });
+    for (const s of part.sheets) sheets.push({ index: sheets.length, thickness, items: s.items });
+    strips.push(...part.strips);
+    issues.push(...part.issues);
+    usedArea += part.usedArea;
+    counts.push({ thickness, sheets: part.sheets.length });
+  }
+  const { width, height } = project.material.sheet;
+  const efficiency = sheets.length ? usedArea / (sheets.length * width * height) : 0;
+  return { sheets, counts, strips, issues, efficiency };
+}
+
+function planSheets(project: Project, cut: CutList) {
   const { sheet, trim, kerf } = project.material;
   const usableW = sheet.width - 2 * trim;
   const usableH = sheet.height - 2 * trim;
@@ -218,6 +265,5 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
     usedArea += it.w * it.h;
   }
   for (const id of result.unplaced) issues.push({ level: 'error', message: `Could not place ${id} on a sheet.` });
-  const efficiency = sheets.length ? usedArea / (sheets.length * sheet.width * sheet.height) : 0;
-  return { sheets, strips, issues, efficiency };
+  return { sheets, strips, issues, usedArea };
 }

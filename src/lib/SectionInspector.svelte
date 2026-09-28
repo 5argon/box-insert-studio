@@ -3,7 +3,7 @@
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasNotch, notchSharedWith, toggleNotch } from '../core/notches';
-  import { maxPad, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { baseThickness, maxPad, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
   import CompLabel from './CompLabel.svelte';
@@ -33,6 +33,8 @@
   } = $props();
 
   const T = $derived(project.material.thickness);
+  /** The layer's base, which can be thinner than everything else. */
+  const B = $derived(baseThickness(project));
   const tray = $derived(solved.trays.find((t) => t.id === c.trayId));
   /** The compartment a box stands in: this one if it holds a box, or the one around this box. */
   const well = $derived(c.wellId ? solved.compartments.find((x) => x.id === c.wellId) : c.node.insert ? c : undefined);
@@ -121,7 +123,7 @@
   ];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
   /** Height of one box: what is left above the tray floor and any raised floor, halved when two are stacked. */
-  const boxHeight = $derived((layer.height - T - (well?.padHeight ?? 0)) / (stacked ? 2 : 1));
+  const boxHeight = $derived((layer.height - B - (well?.padHeight ?? 0)) / (stacked ? 2 : 1));
   /** Boxes standing on this compartment's floor: 0, 1, or 2 when stacked. */
   const boxesHere = $derived(c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0);
   const padLimit = $derived(maxPad(c.fullHeight, T, boxesHere));
@@ -133,9 +135,9 @@
     const wellPad = well?.pad ? ` − ${mm(well.padHeight)} mm raised floor` : '';
     const pad = c.pad ? ` − ${c.pad} × ${mm(T)} mm raised floor` : '';
     if (c.depth === 1 && c.stacked)
-      return `In each box: (${total} − ${mm(T)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm per box, − ${mm(T)} mm box floor${pad}`;
-    if (c.depth === 1) return `${total} − ${mm(T)} mm tray floor${wellPad} − ${mm(T)} mm box floor${pad}`;
-    return `${total} − ${mm(T)} mm floor${pad}`;
+      return `In each box: (${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm per box, − ${mm(T)} mm box floor${pad}`;
+    if (c.depth === 1) return `${total} − ${mm(B)} mm tray floor${wellPad} − ${mm(T)} mm box floor${pad}`;
+    return `${total} − ${mm(B)} mm floor${pad}`;
   });
   /** Sides whose divider stands lower than the walls, with how much lower. */
   const lowSides = $derived(

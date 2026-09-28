@@ -32,7 +32,10 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
   const steps: Step[] = [];
 
   const base = pieces.find((p) => p.kind === 'base')!;
-  steps.push({ text: `Start with base #${num(base)}.`, groups: [num(base)] });
+  // A base from another sheet is called out, so it is not cut from (or confused with) the main material.
+  const T = project.material.thickness;
+  const other = base.thickness !== T ? `, cut from the ${mm(base.thickness)} mm base sheet (not the ${mm(T)} mm used for the walls)` : '';
+  steps.push({ text: `Start with base #${num(base)}${other}.`, groups: [num(base)] });
 
   const walls = pieces.filter((p) => p.kind === 'wall');
   const full = walls.slice(0, 2);

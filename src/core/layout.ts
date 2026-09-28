@@ -36,6 +36,8 @@ export interface PieceInst {
   /** Cut size. Base: width × depth. Walls and dividers: length × height. */
   length: Mm;
   height: Mm;
+  /** Sheet thickness it is cut from. */
+  thickness: Mm;
   /** Top-view footprint, for drawing. */
   footprint: Rect;
   /** Direction the length runs in the box. */
@@ -69,6 +71,8 @@ export interface Tray {
   /** Total height including the base. */
   height: Mm;
   wallHeight: Mm;
+  /** Thickness of its base. */
+  base: Mm;
   /** For a box inside a compartment: that compartment's id and the tray it sits in. */
   wellId?: string;
   parentTrayId?: string;
@@ -155,6 +159,11 @@ export const MIN_BOX_INSIDE = 5;
  * Most raised-floor layers a compartment can take: something must be left above them, and a
  * removable box standing on them (`boxes` high) must keep MIN_BOX_INSIDE inside each box.
  */
+/** Thickness of the base under each layer's trays. */
+export function baseThickness(project: Project): Mm {
+  return project.material.baseThickness ?? project.material.thickness;
+}
+
 export function maxPad(fullHeight: Mm, thickness: Mm, boxes = 0): number {
   if (thickness <= 0) return 0;
   if (boxes) return Math.max(0, Math.floor((fullHeight - boxes * (thickness + MIN_BOX_INSIDE)) / thickness + 1e-9));
@@ -191,6 +200,8 @@ interface RawCompartment {
 /** Where a tray is being built: its total height, and whether it is a box inside a compartment. */
 interface TrayCtx {
   height: Mm;
+  /** Thickness of the tray's base: the layer's base thickness, or the material for a box. */
+  base: Mm;
   depth: 0 | 1;
   wellId?: string;
   parentTrayId?: string;
@@ -205,7 +216,8 @@ interface TrayCtx {
 function solveLayer(project: Project, layer: Layer): SolvedLayer {
   const T = project.material.thickness;
   const c = project.clearance;
-  const wallHeight = project.base === 'under' ? layer.height - T : layer.height;
+  const B = baseThickness(project);
+  const wallHeight = project.base === 'under' ? layer.height - B : layer.height;
   const trays: Tray[] = [];
   const raw: RawCompartment[] = [];
   const pieces: PieceInst[] = [];
@@ -249,7 +261,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
   function makeTray(node: LayoutNode, cell: Rect, ctx: TrayCtx) {
     const outer = inset(cell, c / 2);
     const inner = inset(outer, T);
-    const trayWall = project.base === 'under' ? ctx.height - T : ctx.height;
+    const trayWall = project.base === 'under' ? ctx.height - ctx.base : ctx.height;
     const tray: Tray = {
       id: `${layer.id}/t${trays.length}`,
       number: 0,
@@ -260,6 +272,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       depth: ctx.depth,
       height: ctx.height,
       wallHeight: trayWall,
+      base: ctx.base,
       wellId: ctx.wellId,
       parentTrayId: ctx.parentTrayId,
       nodeId: node.id,
@@ -268,8 +281,9 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     trays.push(tray);
     if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
     let order = 0;
-    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'notchFrom' | 'depth' | 'copy'>): PieceInst => {
-      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, notches: [], notchFrom: [], depth: ctx.depth, copy: !!ctx.copy };
+    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'depth' | 'copy'>): PieceInst => {
+      const thickness = p.kind === 'base' ? ctx.base : T;
+      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, thickness, notches: [], notchFrom: [], depth: ctx.depth, copy: !!ctx.copy };
       order += 1;
       pieces.push(piece);
       return piece;
@@ -308,7 +322,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     rect: Rect,
     bounds: Record<Side, string>,
     tray: Tray,
-    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'notches' | 'notchFrom' | 'depth' | 'copy'>) => PieceInst,
+    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'depth' | 'copy'>) => PieceInst,
     ctx: TrayCtx,
   ) {
     if (node.kind === 'section') {
@@ -320,7 +334,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
         add({ kind: 'pad', role: 'pad', length: fp.w, height: fp.h, footprint: fp, axis: 'x', start: fp.x, padFor: node.id, padLevel: i });
       }
       if (ctx.copy) return;
-      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - T, stacked: !!ctx.stacked });
+      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - ctx.base, stacked: !!ctx.stacked });
       if (!node.insert) return;
       if (ctx.depth === 1) {
         issues.push({ level: 'warn', message: 'A box inside a box is not supported; the inner one is ignored.' });
@@ -329,10 +343,10 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       // The box stands on this tray's base and any raised floor, so it is that much shorter and its
       // top sits flush with the walls around it. A stack of two splits that height exactly in half.
       const stacked = !!node.insert.stacked;
-      const height = (ctx.height - T - pad * T) / (stacked ? 2 : 1);
+      const height = (ctx.height - ctx.base - pad * T) / (stacked ? 2 : 1);
       // Too shallow: the compartment reports it (see solveProject) and no box is built.
       if (height - T < MIN_BOX_INSIDE) return;
-      const box = { height, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked };
+      const box = { height, base: T, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked };
       const first = trays.length;
       cellLevel(node.insert.root, rect, box);
       if (stacked) {
@@ -352,7 +366,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       if (issue) issues.push({ level: 'error', message: issue });
       splits.push({ id: node.id, node, rect, childSizes: sizes });
     }
-    const dividerHeight = ctx.height - T - node.lower;
+    const dividerHeight = ctx.height - ctx.base - node.lower;
     if (dividerHeight < 5 && !ctx.copy) issues.push({ level: 'error', message: `Lowered dividers would be only ${dividerHeight.toFixed(1)} mm tall.` });
     const childRects: Rect[] = [];
     const dividers: PieceInst[] = [];
@@ -402,7 +416,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     });
   }
 
-  cellLevel(layer.root, { x: 0, y: 0, w: project.box.width, h: project.box.depth }, { height: layer.height, depth: 0 });
+  cellLevel(layer.root, { x: 0, y: 0, w: project.box.width, h: project.box.depth }, { height: layer.height, base: B, depth: 0 });
 
   const compartments: Compartment[] = raw.map((r) => ({
     id: r.node.id,
@@ -495,7 +509,7 @@ export function solveProject(project: Project): Solved {
       const boxes = c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0;
       if (boxes && !c.pad && maxPad(c.fullHeight, T, boxes) === 0 && (c.fullHeight / boxes - T) < MIN_BOX_INSIDE) {
         // A box needs its floor plus MIN_BOX_INSIDE; stacked boxes need that twice.
-        const need = boxes * (T + MIN_BOX_INSIDE) + T;
+        const need = boxes * (T + MIN_BOX_INSIDE) + baseThickness(project);
         c.issues.push({
           level: 'error',
           message: `Too shallow for ${boxes === 2 ? 'two stacked boxes' : 'a box'}: the layer needs to be at least ${need} mm tall${boxes === 2 ? ', or stack one box' : ''}.`,
