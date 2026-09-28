@@ -85,6 +85,9 @@ export interface SceneModel {
  */
 const TRAY_PALETTE = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1', '#edc948', '#76b7b2', '#ff9da7', '#9c755f'];
 
+/** Trays standing in a layer are a neutral grey, so the palette picks out the boxes inside them. */
+export const LAYER_TRAY_COLOR = '#8c877f';
+
 /** Colour for palette slot `index`; the same colour marks the tray in the viewer's tray list. */
 export function trayColor(index: number): string {
   return TRAY_PALETTE[index % TRAY_PALETTE.length];
@@ -118,7 +121,13 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
   }
 
   const keyOf = (t: Tray) => `${t.layerId}:${t.nodeId}:${t.copyOf ? 1 : 0}`;
-  const taken = new Set(solved.trays.map(keyOf).filter((k) => colors.has(k)).map((k) => colors.get(k)!));
+  const taken = new Set(
+    solved.trays
+      .filter((t) => t.depth === 1)
+      .map(keyOf)
+      .filter((k) => colors.has(k))
+      .map((k) => colors.get(k)!),
+  );
   const hueFor = (key: string) => {
     const known = colors.get(key);
     if (known !== undefined) return known;
@@ -182,7 +191,7 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       layerId: t.layerId,
       depth: t.depth,
       level,
-      color: trayColor(hueFor(key)),
+      color: t.depth === 0 ? LAYER_TRAY_COLOR : trayColor(hueFor(key)),
       blocks,
       items: itemsIn(t, bottom),
     };

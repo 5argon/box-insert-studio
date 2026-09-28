@@ -602,8 +602,8 @@ describe('3D scene', () => {
     expect(model.trays.filter((t) => t.depth === 0 && t.layerId === p.layers[1].id)).toHaveLength(2);
   });
 
-  it('keeps tray colours when another tray is added, and keeps them distinct', async () => {
-    const { buildScene } = await import('./scene');
+  it('draws layer trays grey, and keeps box colours distinct and stable when another box is added', async () => {
+    const { buildScene, LAYER_TRAY_COLOR } = await import('./scene');
     const p = defaultProject();
     const colors = new Map<string, number>();
     const before = new Map(buildScene(p, solveProject(p), colors).trays.map((t) => [t.key, t.color]));
@@ -611,7 +611,10 @@ describe('3D scene', () => {
     setStacked(g.node, true);
     const after = buildScene(p, solveProject(p), colors).trays;
     for (const t of after) if (before.has(t.key)) expect(t.color).toBe(before.get(t.key));
-    expect(new Set(after.map((t) => t.color)).size).toBe(after.length);
+    expect(after.filter((t) => t.depth === 0).every((t) => t.color === LAYER_TRAY_COLOR)).toBe(true);
+    const boxes = after.filter((t) => t.depth === 1);
+    expect(boxes.length).toBeGreaterThan(1);
+    expect(new Set([...boxes.map((t) => t.color), LAYER_TRAY_COLOR]).size).toBe(boxes.length + 1);
   });
 
   it('gives trays keys that survive unrelated edits', async () => {
