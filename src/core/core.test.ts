@@ -875,3 +875,55 @@ describe('item simulation in 3D', () => {
     expect(lower.r.items[0].x).toBeCloseTo(s.compartments.find((c) => c.id === g1.id)!.rect.x, 6);
   });
 });
+
+describe('separate construction', () => {
+  it('makes every top-level compartment its own tray and back, leaving removable boxes alone', async () => {
+    const { setConstruction, splitJoin } = await import('./edit');
+    const p = defaultProject();
+    const before = solveProject(p);
+    const boxDividers = (s: ReturnType<typeof solveProject>) => s.pieces.filter((x) => x.depth === 1 && x.kind === 'divider').length;
+    setConstruction(p, 'separate');
+    expect(p.construction).toBe('separate');
+    const s = solveProject(p);
+    expect(s.compartments.map((c) => c.label)).toEqual(before.compartments.map((c) => c.label));
+    expect(s.trays.filter((t) => t.depth === 0)).toHaveLength(s.compartments.filter((c) => c.depth === 0).length);
+    expect(s.pieces.filter((x) => x.depth === 0 && x.kind === 'divider')).toEqual([]);
+    expect(boxDividers(s)).toBe(boxDividers(before));
+    expect(boxDividers(s)).toBeGreaterThan(0);
+
+    // A compartment keeps its inside size where it was locked: the tray's outside grows by its walls.
+    const lockedBefore = before.compartments.find((c) => c.label === 'A')!;
+    expect(s.compartments.find((c) => c.label === 'A')!.rect.w).toBeCloseTo(lockedBefore.rect.w, 6);
+
+    // New splits at the top level make another tray; inside a removable box they stay dividers.
+    const a = s.compartments.find((c) => c.label === 'A')!;
+    const layer = p.layers.find((l) => l.id === a.layerId)!;
+    expect(splitJoin(p, layer, a.id)).toBe('trays');
+    splitSection(layer, a.id, 'column', p.clearance, 'trays');
+    expect(solveProject(p).trays.filter((t) => t.depth === 0)).toHaveLength(s.trays.filter((t) => t.depth === 0).length + 1);
+    const g1 = s.compartments.find((c) => c.label === 'G1')!;
+    expect(splitJoin(p, layer, g1.id)).toBe('divider');
+    expect(splitJoin({ ...p, construction: undefined }, layer, a.id)).toBe('divider');
+
+    setConstruction(p, 'glued');
+    expect(p.construction).toBeUndefined();
+    const back = solveProject(p);
+    expect(back.trays.filter((t) => t.depth === 0)).toHaveLength(p.layers.length);
+    expect(back.compartments.find((c) => c.label === 'B')!.rect.w).toBeCloseTo(before.compartments.find((c) => c.label === 'B')!.rect.w, 6);
+  });
+
+  it('places every separate tray and the boxes inside them without overlaps', async () => {
+    const { setConstruction } = await import('./edit');
+    const { buildScene, overlap } = await import('./scene');
+    const p = defaultProject();
+    setConstruction(p, 'separate');
+    const s = solveProject(p);
+    const blocks = buildScene(p, s).trays.flatMap((t) => t.blocks);
+    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBeLessThan(1e-6);
+    for (const b of blocks) {
+      expect(b.x).toBeGreaterThanOrEqual(-1e-6);
+      expect(b.x + b.w).toBeLessThanOrEqual(p.box.width + 1e-6);
+      expect(b.y + b.d).toBeLessThanOrEqual(p.box.depth + 1e-6);
+    }
+  });
+});
