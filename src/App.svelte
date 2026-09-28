@@ -16,7 +16,7 @@
   import SectionInspector from './lib/SectionInspector.svelte';
   import SplitInspector from './lib/SplitInspector.svelte';
   import { breakStep, recordProject, redo, undo, undoState } from './lib/history.svelte';
-  import { download, persist, replaceProject, slug, studio, type Selection } from './lib/state.svelte';
+  import { download, persist, replaceProject, setPreviewCollapsed, slug, studio, type Selection } from './lib/state.svelte';
   import { isDark, setTheme, theme, type ThemePref } from './lib/theme.svelte';
 
   const solved = $derived(solveProject(studio.project));
@@ -146,11 +146,20 @@
         </div>
         <div class="canvas-wrap">
           <!-- A fixed 3/4 preview of the whole insert; loads three.js after the editor is up. -->
-          {#await import('./lib/three/Thumbnail3D.svelte') then { default: Thumbnail3D }}
-            <div class="thumb-slot">
-              <Thumbnail3D model={thumbModel} dark={isDark()} onopen={() => (studio.view = '3d')} />
-            </div>
-          {/await}
+          <div class="thumb-slot">
+            {#if studio.previewCollapsed}
+              <button class="small thumb-pill" onclick={() => setPreviewCollapsed(false)} data-tip="Show the 3D preview" aria-label="Show the 3D preview">
+                3D <span aria-hidden="true">▾</span>
+              </button>
+            {:else}
+              {#await import('./lib/three/Thumbnail3D.svelte') then { default: Thumbnail3D }}
+                <Thumbnail3D model={thumbModel} dark={isDark()} onopen={() => (studio.view = '3d')} />
+                <button class="thumb-collapse" onclick={() => setPreviewCollapsed(true)} data-tip="Collapse the 3D preview" aria-label="Collapse the 3D preview"
+                  >–</button
+                >
+              {/await}
+            {/if}
+          </div>
           <LayoutCanvas
             project={studio.project}
             {layer}
@@ -329,6 +338,21 @@
     top: 8px;
     right: 12px;
     z-index: 2;
+  }
+  .thumb-collapse {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    line-height: 1;
+    font-size: 14px;
+    border-radius: 5px;
+    background: var(--panel);
+  }
+  .thumb-pill {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   }
   .loading {
     margin: 40px;
