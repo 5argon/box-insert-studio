@@ -1,5 +1,6 @@
 <script lang="ts">
   import { SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
+  import { setConstruction } from '../core/edit';
   import { mm } from '../core/geom';
   import type { Solved } from '../core/layout';
   import type { Project } from '../core/types';
@@ -12,6 +13,7 @@
   let { project, solved }: { project: Project; solved: Solved } = $props();
 
   const T = $derived(project.material.thickness);
+  const separate = $derived(project.construction === 'separate');
   let readme: ReadmeDialog | undefined = $state();
   /** First line of the readme, without Markdown marks, as a reminder of what it says. */
   const readmeTitle = $derived(
@@ -160,6 +162,25 @@
 
 <div class="panel-section">
   <h2>Construction</h2>
+  <div class="choice">
+    <span>Compartments</span>
+    <div class="row">
+      <button class="small" class:on={!separate} onclick={() => setConstruction(project, 'glued')} data-tip="Each layer is one tray; splitting a compartment adds a glued divider"
+        >Glued tray</button
+      >
+      <button class="small" class:on={separate} onclick={() => setConstruction(project, 'separate')} data-tip="Every compartment is its own tray that lifts out on its own"
+        >Separate trays</button
+      >
+    </div>
+    <p class="hint">
+      {#if separate}
+        Every compartment is its own tray, {mm(project.clearance)} mm apart, so each lifts out on its own. They only fit back one way: the printout's Placement page
+        shows it. A compartment can still hold a removable box.
+      {:else}
+        Each layer is one glued tray. You can still make any split separate trays.
+      {/if}
+    </p>
+  </div>
   <div class="choice">
     <span>Base</span>
     <div class="row">

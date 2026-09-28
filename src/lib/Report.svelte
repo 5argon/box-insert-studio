@@ -84,6 +84,15 @@
     return `${t.outer.x - pad} ${t.outer.y - pad} ${t.outer.w + 2 * pad} ${t.outer.h + 2 * pad + 6}`;
   }
 
+  /**
+   * Where each tray goes, per layer: needed whenever trays lift out separately, since they only
+   * fit back one way. Skipped for a single glued tray, where the assembly diagram says it all.
+   */
+  const placement = $derived(project.layers.length > 1 || solved.trays.filter((t) => t.depth === 0).length > project.layers.length);
+  const topTrays = (layerId: string) => solved.trays.filter((t) => t.layerId === layerId && t.depth === 0);
+  const boxesIn = (layerId: string) => solved.trays.filter((t) => t.layerId === layerId && t.depth === 1 && !t.copyOf);
+  const scale = $derived(Math.max(project.box.width, project.box.depth) / 100);
+
   function exportCsv() {
     const rows = [['#', 'Qty', 'Kind', 'Length mm', 'Height mm', 'Notches', 'Used in']];
     for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', String(g.length), String(g.height), notchText(g), where(g)]);
@@ -123,6 +132,49 @@
       <section class="notes">
         <h2>Notes</h2>
         <Markdown source={project.readme} />
+      </section>
+    {/if}
+
+    {#if placement}
+      <section>
+        <h2>Placement</h2>
+        <p class="muted small">
+          {project.construction === 'separate' ? 'Every compartment lifts out on its own, so the trays only fit back this way. ' : ''}Put the layers in bottom first;
+          each view looks down on the box with its front edge at the bottom.
+        </p>
+        <div class="placement">
+          {#each project.layers as layer, li (layer.id)}
+            <figure>
+              <svg viewBox="-4 -4 {project.box.width + 8} {project.box.depth + 8 + 9 * scale}" class="tray-svg" role="img" aria-label="{layer.name} placement">
+                <rect x={0} y={0} width={project.box.width} height={project.box.depth} class="box-edge" style:stroke-width={0.5 * scale} />
+                {#each topTrays(layer.id) as t (t.id)}
+                  <rect x={t.outer.x} y={t.outer.y} width={t.outer.w} height={t.outer.h} class="place-tray" style:stroke-width={0.6 * scale} />
+                {/each}
+                {#each boxesIn(layer.id) as b (b.id)}
+                  <rect x={b.outer.x} y={b.outer.y} width={b.outer.w} height={b.outer.h} class="place-box" style:stroke-width={0.5 * scale} />
+                {/each}
+                {#each solved.compartments.filter((c) => c.layerId === layer.id && !c.node.insert) as c (c.id)}
+                  {@const size = Math.max(3, Math.min(6 * scale, Math.min(c.rect.w, c.rect.h) * 0.4))}
+                  <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{c.label}</text>
+                {/each}
+                {#each topTrays(layer.id) as t (t.id)}
+                  {@const r = Math.max(2.5, Math.min(3.2 * scale, Math.min(t.outer.w, t.outer.h) * 0.16))}
+                  <g transform="translate({t.outer.x + r + 1.5 * scale} {t.outer.y + r + 1.5 * scale})">
+                    <circle r={r} class="place-num" />
+                    <text class="place-num-text" font-size={r * 1.15}>{t.number}</text>
+                  </g>
+                {/each}
+                <text x={project.box.width / 2} y={project.box.depth + 6 * scale} class="front" font-size={5 * scale}>FRONT</text>
+              </svg>
+              <figcaption>
+                <b>{li + 1}. {layer.name}</b>, {layer.height} mm: {topTrays(layer.id).length === 1 ? 'tray' : 'trays'}
+                {topTrays(layer.id)
+                  .map((t) => t.number)
+                  .join(', ')}{boxesIn(layer.id).length ? `, with ${boxesIn(layer.id).length === 1 ? 'box' : 'boxes'} ${boxesIn(layer.id).map((b) => b.number).join(', ')} inside` : ''}
+              </figcaption>
+            </figure>
+          {/each}
+        </div>
       </section>
     {/if}
 
@@ -460,6 +512,42 @@
     fill: none;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+  .placement {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px 18px;
+  }
+  .placement figure {
+    margin: 0;
+    break-inside: avoid;
+  }
+  .placement figcaption {
+    font-size: 11.5px;
+    margin-top: 2px;
+  }
+  .box-edge {
+    fill: #fbfaf7;
+    stroke: #8a8378;
+    stroke-dasharray: 3 2;
+  }
+  .place-tray {
+    fill: #e2dccf;
+    stroke: #3f3b35;
+  }
+  .place-box {
+    fill: none;
+    stroke: #3f3b35;
+    stroke-dasharray: 2 1.5;
+  }
+  .place-num {
+    fill: #3f3b35;
+  }
+  .place-num-text {
+    fill: #fff;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: central;
   }
   .comp {
     text-anchor: middle;

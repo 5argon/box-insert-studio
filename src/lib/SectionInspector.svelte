@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setPad, setStacked, splitSection } from '../core/edit';
+  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasNotch, notchSharedWith, toggleNotch } from '../core/notches';
@@ -89,8 +89,11 @@
       .map(([v, n]) => ({ v, uses: n }));
   }
 
+  /** Splitting makes separate trays at the top level of a separate construction, else glued dividers. */
+  const splitsTrays = $derived(splitJoin(project, layer, c.id) === 'trays');
+
   function split(dir: Dir) {
-    const id = splitSection(layer, c.id, dir, T);
+    const id = splitsTrays ? splitSection(layer, c.id, dir, project.clearance, 'trays') : splitSection(layer, c.id, dir, T);
     if (id) onselect({ kind: 'section', id });
   }
 
@@ -186,9 +189,14 @@
 
 <div class="panel-section">
   <div class="row">
-    <button class="small" onclick={() => split('row')} data-tip="Split this compartment with a divider running front to back">Add │ divider</button>
-    <button class="small" onclick={() => split('column')} data-tip="Split this compartment with a divider running left to right">Add ─ divider</button>
-    {#if beside}
+    {#if splitsTrays}
+      <button class="small" onclick={() => split('row')} data-tip="Split into two separate trays, side by side">Split │</button>
+      <button class="small" onclick={() => split('column')} data-tip="Split into two separate trays, one behind the other">Split ─</button>
+    {:else}
+      <button class="small" onclick={() => split('row')} data-tip="Split this compartment with a divider running front to back">Add │ divider</button>
+      <button class="small" onclick={() => split('column')} data-tip="Split this compartment with a divider running left to right">Add ─ divider</button>
+    {/if}
+    {#if beside && !splitsTrays}
       <button class="small" onclick={addBeside} data-tip="Add another separate {beside} next to this one">Add {beside}</button>
     {/if}
     <button class="small" onclick={remove} disabled={layer.root.kind === 'section'} data-tip="Remove this compartment; its neighbours take its space">Remove</button>

@@ -1,5 +1,5 @@
 import { newSection } from './defaults';
-import type { Dir, Join, Layer, LayoutNode, Mm, SectionNode, SplitNode } from './types';
+import type { Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, SplitNode } from './types';
 
 export const MIN_REGION = 5;
 
@@ -149,17 +149,19 @@ export function insertMode(section: SectionNode): 'single' | 'multiple' {
  * divider split of the same direction, the new compartment joins it instead of nesting.
  * `gap` is the space the new divider takes, so locked sizes keep their total.
  */
-export function splitSection(layer: Layer, sectionId: string, dir: Dir, gap: Mm): string | undefined {
+export function splitSection(layer: Layer, sectionId: string, dir: Dir, gap: Mm, join: Join = 'divider'): string | undefined {
   const section = findSection(layer.root, sectionId);
   if (!section) return undefined;
+  // Separate trays only where every split around the compartment is separate trays too.
+  if (join === 'trays' && !findPath(layer.root, sectionId)?.every((p) => p.split.join === 'trays')) join = 'divider';
   const parent = findParent(layer.root, sectionId);
-  if (parent && parent.split.dir === dir && parent.split.join === 'divider') return addSibling(layer, sectionId, gap);
+  if (parent && parent.split.dir === dir && parent.split.join === join) return addSibling(layer, sectionId, gap);
   const fresh = newSection();
   const split: SplitNode = {
     kind: 'split',
     id: `p-${fresh.id}`,
     dir,
-    join: 'divider',
+    join,
     lower: 0,
     children: [
       { size: { mode: 'flex', weight: 1 }, node: section },
@@ -243,6 +245,29 @@ export function setJoin(layer: Layer, split: SplitNode, join: Join, thickness: M
   convertLocked(split, join === 'trays' ? 2 * thickness : -2 * thickness);
   if (join === 'divider') split.children.forEach((c) => dividersBelow(c.node, thickness));
   return true;
+}
+
+/** Splits of a layout outside any removable box, each before the splits inside it. */
+function topSplits(node: LayoutNode): SplitNode[] {
+  if (node.kind !== 'split') return [];
+  return [node, ...node.children.flatMap((c) => topSplits(c.node))];
+}
+
+/**
+ * Switch the whole project between one glued tray per layer and every compartment its own tray.
+ * Splits inside removable boxes keep their own choice. Locked sizes convert as in `setJoin`.
+ */
+export function setConstruction(project: Project, mode: 'glued' | 'separate') {
+  if (mode === 'separate') project.construction = 'separate';
+  else delete project.construction;
+  const join: Join = mode === 'separate' ? 'trays' : 'divider';
+  for (const layer of project.layers) for (const split of topSplits(layer.root)) setJoin(layer, split, join, project.material.thickness);
+}
+
+/** What a new split of this compartment makes: separate trays at the top level of a separate construction. */
+export function splitJoin(project: Project, layer: Layer, sectionId: string): Join {
+  if (project.construction !== 'separate' || insertHost(layer.root, sectionId)) return 'divider';
+  return findPath(layer.root, sectionId)?.every((p) => p.split.join === 'trays') ? 'trays' : 'divider';
 }
 
 export function distributeEqually(split: SplitNode) {

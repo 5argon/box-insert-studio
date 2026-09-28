@@ -108,6 +108,11 @@ export interface Project {
   base: 'under' | 'inside';
   /** Which pair of outer walls runs the full length: `x` = back and front, `y` = left and right. */
   fullWalls: 'x' | 'y';
+  /**
+   * `glued` (the default): each layer is one tray and splits add glued dividers. `separate`: every
+   * compartment is its own lift-out tray, as with separate boxes inside a removable box.
+   */
+  construction?: 'glued' | 'separate';
   notch: { width: Mm; depth: Mm };
   /** Bottom layer first. */
   layers: Layer[];
