@@ -34,6 +34,8 @@ export interface SectionNode {
   id: string;
   /** Sides that get a finger notch cut into the wall or divider there. */
   notches: Side[];
+  /** This compartment's notch size, instead of the project's. */
+  notchSize?: { width: Mm; depth: Mm };
   /**
    * Removable box(es) standing in this compartment. The layout inside works like a layer:
    * a top-level `trays` split gives separate boxes, `divider` splits give one box with dividers.

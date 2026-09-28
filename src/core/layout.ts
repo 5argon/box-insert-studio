@@ -18,6 +18,8 @@ export interface Notch {
   center: Mm;
   width: Mm;
   depth: Mm;
+  /** Sized by a compartment's own notch setting rather than the project's. */
+  custom?: boolean;
 }
 
 export type PieceKind = 'base' | 'wall' | 'divider' | 'pad';
@@ -427,7 +429,7 @@ const readingOrder = (a: Rect, b: Rect) => Math.round(a.y * 2) - Math.round(b.y 
 
 function mergeNotches(notches: Notch[]): Notch[] {
   const sorted = [...notches].sort((a, b) => a.center - b.center);
-  const out: { a: Mm; b: Mm; depth: Mm }[] = [];
+  const out: { a: Mm; b: Mm; depth: Mm; custom: boolean }[] = [];
   for (const n of sorted) {
     const a = n.center - n.width / 2;
     const b = n.center + n.width / 2;
@@ -435,9 +437,10 @@ function mergeNotches(notches: Notch[]): Notch[] {
     if (last && a <= last.b + 0.01) {
       last.b = Math.max(last.b, b);
       last.depth = Math.max(last.depth, n.depth);
-    } else out.push({ a, b, depth: n.depth });
+      last.custom ||= !!n.custom;
+    } else out.push({ a, b, depth: n.depth, custom: !!n.custom });
   }
-  return out.map((o) => ({ center: (o.a + o.b) / 2, width: o.b - o.a, depth: o.depth }));
+  return out.map((o) => ({ center: (o.a + o.b) / 2, width: o.b - o.a, depth: o.depth, ...(o.custom ? { custom: true } : {}) }));
 }
 
 export function solveProject(project: Project): Solved {
@@ -522,14 +525,15 @@ export function solveProject(project: Project): Solved {
         }
         if (!c.node.notches.includes(side)) continue;
         const span = p.axis === 'x' ? w : h;
-        const width = Math.min(project.notch.width, span - 4);
-        const depth = Math.min(project.notch.depth, p.height - T);
+        const size = c.node.notchSize ?? project.notch;
+        const width = Math.min(size.width, span - 4);
+        const depth = Math.min(size.depth, p.height - T);
         if (width < 5 || depth < 2) {
           c.issues.push({ level: 'warn', message: `No room for a finger notch on the ${side}.` });
           continue;
         }
         const center = (p.axis === 'x' ? c.rect.x + w / 2 : c.rect.y + h / 2) - p.start;
-        p.notches.push({ center, width, depth });
+        p.notches.push(c.node.notchSize ? { center, width, depth, custom: true } : { center, width, depth });
         p.notchFrom.push({ compartmentId: c.id, side, from: center - width / 2, to: center + width / 2 });
       }
     }

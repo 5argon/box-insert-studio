@@ -36,7 +36,20 @@
 
   function notchText(g: PieceGroup): string {
     if (!g.notches.length) return '';
-    return `${g.notches.length} × ${mm(g.notches[0].width)}×${mm(g.notches[0].depth)} at ${g.notches.map((n) => mm(n.center)).join(', ')} mm`;
+    return g.notches.map((n) => `${mm(n.width)}×${mm(n.depth)} at ${mm(n.center)}`).join(', ') + ' mm';
+  }
+
+  /** Every notch size in the design, for a true-size template each. */
+  const notchSizes = $derived.by(() => {
+    const seen = new Map<string, { width: number; depth: number }>();
+    for (const g of cut.groups) for (const n of g.notches) seen.set(`${mm(n.width)}x${mm(n.depth)}`, { width: n.width, depth: n.depth });
+    if (!seen.size) seen.set('default', { ...project.notch });
+    return [...seen.values()].sort((a, b) => b.width - a.width || b.depth - a.depth);
+  });
+
+  function notchPathFor(w: number, d: number): string {
+    const r = Math.min(w / 2, d);
+    return `M1 1 L${1 + w / 2 - r} 1 L${1 + w / 2 - r} ${1 + d - r} A${r} ${r} 0 0 0 ${1 + w / 2 + r} ${1 + d - r} L${1 + w / 2 + r} 1 L${1 + w} 1`;
   }
 
   function stripText(item: SheetItem): string {
@@ -76,12 +89,6 @@
     download(`${slug(project.name)}-cut-list.csv`, csv, 'text/csv');
   }
 
-  const notchPath = $derived.by(() => {
-    const w = project.notch.width;
-    const d = project.notch.depth;
-    const r = Math.min(w / 2, d);
-    return `M1 1 L${1 + w / 2 - r} 1 L${1 + w / 2 - r} ${1 + d - r} A${r} ${r} 0 0 0 ${1 + w / 2 + r} ${1 + d - r} L${1 + w / 2 + r} 1 L${1 + w} 1`;
-  });
 </script>
 
 <svelte:head>{@html `<style>@page { size: A4 portrait; margin: 12mm; }</style>`}</svelte:head>
@@ -208,9 +215,9 @@
                 <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="tray-piece" />
                 {#each p.notches as n, i (i)}
                   {#if p.axis === 'x'}
-                    <rect x={p.start + n.center - n.width / 2} y={p.footprint.y} width={n.width} height={p.footprint.h} class="tray-notch" />
+                    <rect x={p.start + n.center - n.width / 2} y={p.footprint.y} width={n.width} height={p.footprint.h} class="tray-notch" class:custom={n.custom} />
                   {:else}
-                    <rect x={p.footprint.x} y={p.start + n.center - n.width / 2} width={p.footprint.w} height={n.width} class="tray-notch" />
+                    <rect x={p.footprint.x} y={p.start + n.center - n.width / 2} width={p.footprint.w} height={n.width} class="tray-notch" class:custom={n.custom} />
                   {/if}
                 {/each}
               {/each}
@@ -233,17 +240,18 @@
     </section>
 
     <section class="template">
-      <h2>Finger notch template</h2>
-      <p class="muted small">Printed at 100% this is the real {project.notch.width} × {project.notch.depth} mm notch. Trace it at each notch mark, open side on the top edge.</p>
-      <svg
-        width="{project.notch.width + 2}mm"
-        height="{project.notch.depth + 2}mm"
-        viewBox="0 0 {project.notch.width + 2} {project.notch.depth + 2}"
-        role="img"
-        aria-label="Notch template"
-      >
-        <path d={notchPath} fill="none" stroke="#22201c" stroke-width="0.3" />
-      </svg>
+      <h2>Finger notch template{notchSizes.length > 1 ? 's' : ''}</h2>
+      <p class="muted small">Printed at 100% these are real size. Trace one at each notch mark, open side on the top edge.</p>
+      <div class="templates">
+        {#each notchSizes as n (`${n.width}x${n.depth}`)}
+          <figure>
+            <svg width="{n.width + 2}mm" height="{n.depth + 2}mm" viewBox="0 0 {n.width + 2} {n.depth + 2}" role="img" aria-label="Notch template {mm(n.width)} by {mm(n.depth)} mm">
+              <path d={notchPathFor(n.width, n.depth)} fill="none" stroke="#22201c" stroke-width="0.3" />
+            </svg>
+            <figcaption class="muted small">{mm(n.width)} × {mm(n.depth)} mm</figcaption>
+          </figure>
+        {/each}
+      </div>
     </section>
   </article>
 </div>
@@ -416,6 +424,18 @@
   }
   .tray-notch {
     fill: #f2b233;
+  }
+  .tray-notch.custom {
+    fill: #1aa6b7;
+  }
+  .templates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+  }
+  .templates figure {
+    margin: 0;
   }
   .comp {
     text-anchor: middle;

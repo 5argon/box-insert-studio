@@ -746,3 +746,21 @@ describe('box too shallow', () => {
     expect(s.compartments.find((c) => c.label === 'G')!.issues.filter((i) => i.level === 'error')).toEqual([]);
   });
 });
+
+describe('notch size override', () => {
+  it('cuts a compartment\'s notches at its own size and keeps them a separate cut', () => {
+    const p = defaultProject();
+    const a = solveProject(p).compartments.find((c) => c.label === 'A')!;
+    a.node.notchSize = { width: 20, depth: 10 };
+    const s = solveProject(p);
+    const A = s.compartments.find((c) => c.label === 'A')!;
+    const back = s.pieces.find((x) => x.id === A.bounds.back)!;
+    const mine = back.notches.find((n) => Math.abs(n.center - (A.rect.x + A.rect.w / 2 - back.start)) < 1e-6)!;
+    expect(mine).toMatchObject({ width: 20, depth: 10, custom: true });
+    // B's notch on the same wall keeps the project size.
+    const others = back.notches.filter((n) => n !== mine);
+    expect(others.every((n) => n.width === p.notch.width && !n.custom)).toBe(true);
+    const before = buildCutList(solveProject(defaultProject()), p.precision).groups.length;
+    expect(buildCutList(s, p.precision).groups.length).toBeGreaterThanOrEqual(before);
+  });
+});
