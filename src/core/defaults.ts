@@ -1,18 +1,24 @@
 import type { Layer, LayoutNode, Project, SectionNode, Side, SheetSpec, SplitChild, SplitNode, Dir } from './types';
 
 export const SHEET_PRESETS: SheetSpec[] = [
-  { preset: 'A2', width: 420, height: 594 },
+  { preset: 'A4', width: 210, height: 297 },
   { preset: 'A3', width: 297, height: 420 },
+  { preset: 'A2', width: 420, height: 594 },
   { preset: 'A1', width: 594, height: 841 },
+  { preset: 'Letter', width: 215.9, height: 279.4 },
   { preset: '50 × 70 cm', width: 500, height: 700 },
   { preset: '60 × 90 cm', width: 600, height: 900 },
   { preset: '20 × 30 in', width: 508, height: 762 },
 ];
 
-export const THICKNESS_PRESETS = [3, 5, 6, 10];
+export const THICKNESS_PRESETS = [3, 5, 10];
 
-/** Suggestions for the material name; any text is allowed. */
-export const MATERIAL_NAMES = ['Foam board', 'MDF', 'Greyboard', 'Plywood', 'Corrugated card', 'Acrylic'];
+/** Layer colours, by position from the bottom; used with the layer icon when there are 2+ layers. */
+const LAYER_COLORS = ['#7b6fd6', '#d9822b', '#2a9d8f', '#c44569', '#5a8f29', '#3d7cc9'];
+
+export function layerColor(index: number): string {
+  return LAYER_COLORS[index % LAYER_COLORS.length];
+}
 
 /** Compartment colours, indexed by label order. Hues spaced so neighbours differ. */
 export const SECTION_HUES = [205, 28, 140, 330, 262, 55, 180, 0, 95, 300, 230, 15];
@@ -102,7 +108,7 @@ export function defaultProject(): Project {
     version: 2,
     name: 'DOOM-style insert',
     box: { width: 286, depth: 286, height: 96 },
-    material: { name: 'Foam board', thickness: 5, sheet: { ...SHEET_PRESETS[0] }, trim: 5, kerf: 0.5 },
+    material: { thickness: 5, sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! }, trim: 5, kerf: 0.5 },
     precision: 0.5,
     clearance: 1,
     base: 'under',
@@ -120,22 +126,22 @@ export function defaultProject(): Project {
 export function blankProject(from?: Project): Project {
   const base = from ? structuredClone(from) : defaultProject();
   const height = Math.max(10, base.box.height - 10);
-  return { ...base, name: 'Untitled insert', layers: [newLayer('Tray', height)] };
+  return { ...base, name: 'Untitled insert', layers: [newLayer('Layer 1', height)] };
 }
 
 /**
  * Bring a saved project up to date. Projects from before the material setting kept it under
- * `foam`; those become `material` named "Foam board". Returns undefined for anything that is not
- * a project from this app.
+ * `foam`; some briefly had a material name, which is no longer used. Returns undefined for
+ * anything that is not a project from this app.
  */
 export function migrateProject(raw: unknown): Project | undefined {
-  const p = raw as (Project & { foam?: Omit<Project['material'], 'name'> }) | null;
+  const p = raw as (Project & { foam?: Project['material'] }) | null;
   if (!p || p.version !== 2 || !Array.isArray(p.layers) || !p.box) return undefined;
   if (!p.material && p.foam) {
-    p.material = { name: 'Foam board', ...p.foam };
+    p.material = { ...p.foam };
     delete p.foam;
   }
   if (!p.material) return undefined;
-  p.material.name ??= 'Foam board';
+  delete (p.material as Project['material'] & { name?: string }).name;
   return p;
 }

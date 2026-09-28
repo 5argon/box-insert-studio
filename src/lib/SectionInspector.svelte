@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { sectionColor, sectionInk } from '../core/defaults';
   import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setPad, setStacked, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
   import { hasNotch, notchSharedWith, toggleNotch } from '../core/notches';
@@ -7,6 +6,9 @@
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
   import CompLabel from './CompLabel.svelte';
+  import CompSquare from './CompSquare.svelte';
+  import LayerIcon from './LayerIcon.svelte';
+  import { layerInfo } from './layers';
   import LockButton from './LockButton.svelte';
   import NumberField from './NumberField.svelte';
   import type { Selection } from './state.svelte';
@@ -69,16 +71,21 @@
     if (o) lockChild(o.split, o.index, value + o.extra, sizesOf(o.split.id));
   }
 
-  /** Sizes other compartments already use, rounded; picking one keeps cut sizes shared. */
-  function sizesInUse(key: 'w' | 'h'): number[] {
+  /** Sizes other compartments already use (with how many use them); picking one keeps cut sizes shared. */
+  function sizesInUse(key: 'w' | 'h'): { v: number; uses: number }[] {
     const own = Math.round(c.rect[key] * 2) / 2;
-    const set = new Set<number>();
+    const uses = new Map<number, number>();
     for (const o of solved.compartments) {
       if (o.id === c.id || o.node.insert) continue;
-      for (const v of [o.rect.w, o.rect.h]) set.add(Math.round(v * 2) / 2);
+      for (const v of new Set([o.rect.w, o.rect.h].map((x) => Math.round(x * 2) / 2))) uses.set(v, (uses.get(v) ?? 0) + 1);
     }
-    set.delete(own);
-    return [...set].filter((v) => v > 0 && Math.abs(v - own) <= Math.max(25, own * 0.4)).sort((a, b) => Math.abs(a - own) - Math.abs(b - own)).slice(0, 6).sort((a, b) => a - b);
+    uses.delete(own);
+    return [...uses.entries()]
+      .filter(([v]) => v > 0 && Math.abs(v - own) <= Math.max(25, own * 0.4))
+      .sort((a, b) => Math.abs(a[0] - own) - Math.abs(b[0] - own))
+      .slice(0, 6)
+      .sort((a, b) => a[0] - b[0])
+      .map(([v, n]) => ({ v, uses: n }));
   }
 
   function split(dir: Dir) {
@@ -108,6 +115,18 @@
   /** Boxes standing on this compartment's floor: 0, 1, or 2 when stacked. */
   const boxesHere = $derived(c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0);
   const padLimit = $derived(maxPad(c.fullHeight, T, boxesHere));
+  const li = $derived(layerInfo(project, layer.id));
+
+  /** How the height adds up, every number with its unit. The layer is named only when there are several. */
+  const breakdown = $derived.by(() => {
+    const total = `${mm(layer.height)} mm${li.multi ? '' : ' tray'}`;
+    const wellPad = well?.pad ? ` − ${mm(well.padHeight)} mm raised floor` : '';
+    const pad = c.pad ? ` − ${c.pad} × ${mm(T)} mm raised floor` : '';
+    if (c.depth === 1 && c.stacked)
+      return `In each box: (${total} − ${mm(T)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm per box, − ${mm(T)} mm box floor${pad}`;
+    if (c.depth === 1) return `${total} − ${mm(T)} mm tray floor${wellPad} − ${mm(T)} mm box floor${pad}`;
+    return `${total} − ${mm(T)} mm floor${pad}`;
+  });
   /** Sides whose divider stands lower than the walls, with how much lower. */
   const lowSides = $derived(
     SIDE_ORDER.flatMap((side) => {
@@ -119,31 +138,36 @@
 </script>
 
 <div class="panel-section head">
-  <span class="swatch" style:background={sectionColor(c.index)} style:border-color={sectionInk(c.index)}><CompLabel {c} /></span>
+  <div class="squares">
+    {#if c.depth === 1 && well}
+      <button class="square-link" onclick={() => onselect({ kind: 'section', id: well.id })} data-tip="Select {well.label}, the compartment this box stands in">
+        <CompSquare c={well} size="lg" />
+      </button>
+      <span class="chev" aria-hidden="true">›</span>
+    {/if}
+    <CompSquare {c} size="lg" />
+  </div>
   <div>
     <div class="title">Compartment <CompLabel {c} />{c.stacked ? ' (in both stacked boxes)' : ''}</div>
-    <div class="hint">
-      {#if c.depth === 1}
-        In the box inside {well?.label} · {mm(c.rect.w)} × {mm(c.rect.h)} × {mm(c.height)} mm inside
-      {:else}
-        Tray {tray?.number} · {layer.name} · {mm(c.rect.w)} × {mm(c.rect.h)} × {mm(c.height)} mm inside
+    <div class="hint sub">
+      {#if c.depth === 1}In the box inside {well?.label}{:else}Tray {tray?.number}{/if}
+      {#if li.multi}
+        · <LayerIcon color={li.color} /> {li.name}
       {/if}
+      · {mm(c.rect.w)} × {mm(c.rect.h)} × {mm(c.height)} mm inside
     </div>
   </div>
 </div>
 
 <div class="panel-section">
   <div class="row">
-    <button class="small" onclick={() => split('row')} title="Add a vertical divider through this compartment">Add │ divider</button>
-    <button class="small" onclick={() => split('column')} title="Add a horizontal divider through this compartment">Add ─ divider</button>
+    <button class="small" onclick={() => split('row')} data-tip="Split this compartment with a divider running front to back">Add │ divider</button>
+    <button class="small" onclick={() => split('column')} data-tip="Split this compartment with a divider running left to right">Add ─ divider</button>
     {#if beside}
-      <button class="small" onclick={addBeside} title="Add another separate {beside} next to this one">Add {beside}</button>
+      <button class="small" onclick={addBeside} data-tip="Add another separate {beside} next to this one">Add {beside}</button>
     {/if}
-    <button class="small" onclick={remove} disabled={layer.root.kind === 'section'}>Remove</button>
+    <button class="small" onclick={remove} disabled={layer.root.kind === 'section'} data-tip="Remove this compartment; its neighbours take its space">Remove</button>
   </div>
-  {#if c.depth === 1 && well}
-    <button class="small link" onclick={() => onselect({ kind: 'section', id: well.id })}>Select {well.label}, the compartment this box stands in</button>
-  {/if}
 </div>
 
 <div class="panel-section">
@@ -151,7 +175,14 @@
   {#each axes as a (a.dir)}
     {@const o = owners[a.dir]}
     <div class="sized">
-      <NumberField label={a.label} value={c.rect[a.key]} min={5} disabled={!o} onchange={(v) => setSize(a.dir, v)} />
+      <NumberField
+        label={a.label}
+        value={c.rect[a.key]}
+        min={5}
+        disabled={!o}
+        hint={c.depth === 1 && o && !axisOwner(layer.root, c.id, a.dir) ? `Nothing inside the box divides this way, so this resizes ${well?.label} to fit` : ''}
+        onchange={(v) => setSize(a.dir, v)}
+      />
       {#if o}
         <LockButton split={o.split} index={o.index} sizes={sizesOf(o.split.id)} />
       {:else}
@@ -163,8 +194,10 @@
       {#if used.length}
         <div class="reuse">
           <span class="hint">Reuse</span>
-          {#each used as v (v)}
-            <button class="chip" onclick={() => setSize(a.dir, v)} title="Other compartments use {v} mm; matching makes shared cut sizes">{v}</button>
+          {#each used as u (u.v)}
+            <button class="chip" onclick={() => setSize(a.dir, u.v)} data-tip="{u.uses} other compartment{u.uses === 1 ? '' : 's'} use {u.v} mm; matching it shares cut sizes"
+              >{u.v}&thinsp;<small>mm</small> <small class="uses">({u.uses})</small></button
+            >
           {/each}
         </div>
       {/if}
@@ -174,50 +207,39 @@
     <span>Height</span>
     <b>{mm(c.height)} mm{c.stacked ? ' each' : ''}</b>
     <span class="hint">
-      {#if c.depth === 1 && c.stacked}
-        In each box: ({layer.name} {mm(layer.height)} − {mm(T)} tray floor{well?.pad ? ` − ${mm(well.padHeight)} raised floor` : ''}) ÷ 2 = {mm(boxHeight)}
-        per box, − {mm(T)} box floor
-      {:else if c.depth === 1}
-        {layer.name} {mm(layer.height)} − {mm(T)} tray floor{well?.pad ? ` − ${mm(well.padHeight)} raised floor` : ''} − {mm(T)} box floor
-      {:else}
-        {layer.name} {mm(layer.height)} − {mm(T)} floor
-      {/if}
-      {#if c.pad}− {c.pad} × {mm(T)} raised floor{/if}
+      {#if li.multi}<LayerIcon color={li.color} /> {li.name}:{/if}
+      {breakdown}
     </span>
   </div>
   {#if lowSides.length}
     <p class="hint">Lowered dividers on the {lowSides.join(', ')}.</p>
   {/if}
-  <p class="hint">
-    Locked sizes stay put; flex ones share what is left, and one part in each row stays flex. Typing a size locks it.
-    {#if c.depth === 1}Where nothing inside the box divides this direction, the size resizes {well?.label} to fit the box.{/if}
-  </p>
 </div>
 
 <div class="panel-section">
   <h2>Raised floor</h2>
   <div class="stepper">
-    <button class="small" onclick={() => setPad(c.node, c.pad - 1)} disabled={c.pad <= 0} aria-label="Remove a layer">−</button>
+    <button class="small" onclick={() => setPad(c.node, c.pad - 1)} disabled={c.pad <= 0} aria-label="Remove a layer" data-tip="Remove a layer">−</button>
     <span><b>{c.pad}</b> layer{c.pad === 1 ? '' : 's'} of {mm(T)} mm</span>
-    <button class="small" onclick={() => setPad(c.node, c.pad + 1)} disabled={c.pad + 1 > padLimit} aria-label="Add a layer">+</button>
+    <button
+      class="small"
+      onclick={() => setPad(c.node, c.pad + 1)}
+      disabled={c.pad + 1 > padLimit}
+      aria-label="Add a layer"
+      data-tip={c.pad + 1 > padLimit ? 'No room for another layer' : 'Add a layer'}>+</button
+    >
   </div>
   <p class="hint">
     {#if c.pad && boxesHere}
-      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked boxes stand' : 'box stands'} on it, {mm(boxHeight)} mm tall{boxesHere === 2
-        ? ' each'
-        : ''}, so the top stays flush. Marked <CompLabel {c} /> in the layout.
+      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked boxes stand' : 'box stands'} on it, {mm(boxHeight)} mm tall{boxesHere === 2 ? ' each' : ''}, so the
+      top stays flush. Marked <CompLabel {c} /> in the layout.
     {:else if c.pad}
-      Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked
-      <CompLabel {c} /> in the layout.
+      Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked <CompLabel {c} /> in the layout.
     {:else if boxesHere}
-      Raise the floor under the {boxesHere === 2 ? 'stacked boxes' : 'box'} to make {boxesHere === 2 ? 'them' : 'it'} shallower; {boxesHere === 2
-        ? 'they get'
-        : 'it gets'} shorter so the top stays flush. Up to {padLimit} layer{padLimit === 1 ? '' : 's'} fit here.
+      Raise the floor under the {boxesHere === 2 ? 'stacked boxes' : 'box'} to make {boxesHere === 2 ? 'them' : 'it'} shallower; {boxesHere === 2 ? 'they get' : 'it gets'} shorter
+      so the top stays flush. Up to {padLimit} layer{padLimit === 1 ? '' : 's'} fit here.
     {:else}
-      Stack layers of {project.material.name.toLowerCase()} on the floor to bring a few flat tokens up within reach. Up to {padLimit} layer{padLimit ===
-      1
-        ? ''
-        : 's'} fit here.
+      Stack layers of material on the floor to bring a few flat tokens up within reach. Up to {padLimit} layer{padLimit === 1 ? '' : 's'} fit here.
     {/if}
   </p>
 </div>
@@ -226,41 +248,51 @@
   <h2>Removable box</h2>
   {#if !well}
     <p class="hint">
-      Put a lift-out box in this compartment. It stands on the base, so it is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and its top sits flush.
-      You can then divide the inside.
+      Put a lift-out box in this compartment. It stands on the {c.pad ? 'raised floor' : 'base'}, so it is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and its top sits
+      flush. You can then divide the inside.
     </p>
-    <button class="small" onclick={() => setInsert(layer, c.id, true)} disabled={c.depth === 1}>Add a box inside</button>
+    <button class="small add-box" onclick={() => setInsert(layer, c.id, true)} disabled={c.depth === 1} data-tip={c.depth === 1 ? 'A box cannot hold another box' : ''}
+      >Add a box inside</button
+    >
   {:else}
     <div class="row">
       <button class="small" class:on={mode === 'single'} onclick={() => setMode('single')}>One box with dividers</button>
-      <button class="small" class:on={mode === 'multiple'} onclick={() => setMode('multiple')} disabled={insertRoot?.kind !== 'split'}>Separate boxes</button>
+      <button
+        class="small"
+        class:on={mode === 'multiple'}
+        onclick={() => setMode('multiple')}
+        disabled={insertRoot?.kind !== 'split'}
+        data-tip={insertRoot?.kind !== 'split' ? 'Add a divider inside the box first' : 'Each part becomes its own box'}>Separate boxes</button
+      >
     </div>
-    <p class="hint">
-      {#if insertRoot?.kind !== 'split'}
-        Add a divider inside the box to choose between one box with a divider and separate boxes.
-      {:else if mode === 'single'}
-        Lifts out as one box; its inside is divided by glued dividers.
-      {:else}
-        Each part is its own box with four walls and {project.clearance} mm between them.
-      {/if}
-      {#if stacked}
-        Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and
-        its own floor, {mm(boxHeight - T)} mm inside. Together they sit flush.
-      {:else}
-        {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls, {mm(boxHeight - T)} mm inside,
-        standing on the {well.pad ? 'raised floor' : 'base'} so the top sits flush.
-      {/if}
-    </p>
+    {#if boxes.length === 0}
+      {#each well.issues.filter((i) => i.level === 'error') as issue, i (i)}
+        <div class="issue error">{issue.message}</div>
+      {/each}
+    {:else}
+      <p class="hint">
+        {#if mode === 'multiple'}Each part is its own box with four walls and {project.clearance} mm between them.{/if}
+        {#if stacked}
+          Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and its own floor,
+          {mm(boxHeight - T)} mm inside. Together they sit flush.
+        {:else}
+          {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls, {mm(boxHeight - T)} mm inside, standing on
+          the {well.pad ? 'raised floor' : 'base'} so the top sits flush.
+        {/if}
+      </p>
+    {/if}
     <label class="check">
       <input type="checkbox" checked={stacked} onchange={(e) => setStacked(well.node, e.currentTarget.checked)} />
       Stack two boxes (each half the height)
     </label>
     <div class="row">
       {#each solved.compartments.filter((x) => x.wellId === well.id) as x (x.id)}
-        <button class="chip" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })}><CompLabel c={x} /></button>
+        <button class="square-link" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })} data-tip="Select {x.label}">
+          <CompSquare c={x} />
+        </button>
       {/each}
       {#if c.id === well.id}
-        <button class="small" onclick={() => setInsert(layer, c.id, false)}>Remove box</button>
+        <button class="small" onclick={() => setInsert(layer, c.id, false)} data-tip="Take the box out; the compartment stays">Remove box</button>
       {/if}
     </div>
   {/if}
@@ -271,7 +303,12 @@
   <div class="notches">
     {#each SIDE_ORDER as side (side)}
       {@const p = pieceById.get(c.bounds[side])}
-      <button class="small" class:on={hasNotch(solved, c, side)} onclick={() => toggleNotch(solved, c, side)}>
+      <button
+        class="small"
+        class:on={hasNotch(solved, c, side)}
+        onclick={() => toggleNotch(solved, c, side)}
+        data-tip="Cut a finger notch into the {p?.kind === 'divider' ? 'divider' : 'wall'} on the {side} (piece #{p ? cut.groupOf.get(p.id)?.number : '?'})"
+      >
         {side[0].toUpperCase() + side.slice(1)}
         <span class="piece-ref">#{p ? cut.groupOf.get(p.id)?.number : '?'}</span>
       </button>
@@ -284,8 +321,8 @@
     {/if}
   {/each}
   <p class="hint">
-    A {project.notch.width} × {project.notch.depth} mm U-notch is cut into the wall or divider on that side, centred on this compartment. It goes
-    through the board, so the compartment across a divider gets it too.
+    A {project.notch.width} × {project.notch.depth} mm U-notch is cut into the wall or divider on that side, centred on this compartment. It goes through the board, so the
+    compartment across a divider gets it too.
     {#if c.node.insert}Notches here help lift the box out.{/if}
   </p>
   {#each c.issues as issue, i (i)}
@@ -299,16 +336,37 @@
     gap: 10px;
     align-items: center;
   }
-  .swatch {
-    width: 34px;
-    height: 34px;
-    border-radius: 6px;
-    border: 1.5px solid;
-    display: grid;
-    place-items: center;
-    font-weight: 700;
-    font-size: 16px;
+  .squares {
+    display: flex;
+    align-items: center;
+    gap: 2px;
     flex: none;
+  }
+  .chev {
+    color: var(--muted);
+    font-size: 16px;
+  }
+  .square-link {
+    padding: 2px;
+    border: 1.5px solid transparent;
+    background: none;
+    border-radius: 7px;
+    line-height: 0;
+  }
+  .square-link:hover {
+    border-color: var(--line-strong);
+  }
+  .square-link.on {
+    border-color: var(--accent);
+  }
+  .sub {
+    margin-top: 2px;
+  }
+  .uses {
+    color: var(--muted);
+  }
+  .add-box {
+    margin-top: 8px;
   }
   .title {
     font-weight: 600;

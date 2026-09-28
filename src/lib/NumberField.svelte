@@ -24,7 +24,7 @@
   } = $props();
 </script>
 
-<label class="field" title={hint}>
+<label class="field" data-tip={hint || undefined}>
   <span class="label">{label}</span>
   <NumberInput {value} {onchange} {step} {min} {max} {disabled} />
   <span class="unit">{unit}</span>

@@ -540,7 +540,7 @@ describe('material', () => {
     old.foam = { thickness: 3, sheet, trim: 5, kerf: 0.5 };
     delete old.material;
     const p = migrateProject(old)!;
-    expect(p.material).toEqual({ name: 'Foam board', thickness: 3, sheet, trim: 5, kerf: 0.5 });
+    expect(p.material).toEqual({ thickness: 3, sheet, trim: 5, kerf: 0.5 });
     expect('foam' in p).toBe(false);
     expect(solveProject(p).issues).toEqual([]);
   });
@@ -728,5 +728,21 @@ describe('raised floors', () => {
     s = solveProject(p);
     const err = s.compartments.find((c) => c.label === 'G')!.issues.find((i) => i.level === 'error');
     expect(err?.message).toMatch(/too little height for the stacked boxes.*Remove 1 layer/);
+  });
+});
+
+describe('box too shallow', () => {
+  it('reports on the compartment instead of building a box, with the layer height needed', () => {
+    const p = defaultProject();
+    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    p.layers[0].height = 12;
+    let s = solveProject(p);
+    expect(s.trays.some((t) => t.wellId === g.id)).toBe(false);
+    const err = s.compartments.find((c) => c.label === 'G')!.issues.find((i) => i.level === 'error');
+    expect(err?.message).toMatch(/Too shallow for a box: the layer needs to be at least 15 mm tall/);
+    p.layers[0].height = 15;
+    s = solveProject(p);
+    expect(s.trays.some((t) => t.wellId === g.id)).toBe(true);
+    expect(s.compartments.find((c) => c.label === 'G')!.issues.filter((i) => i.level === 'error')).toEqual([]);
   });
 });

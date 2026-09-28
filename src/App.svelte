@@ -4,7 +4,10 @@
   import { buildCutList, planCuts } from './core/pieces';
   import type { Project } from './core/types';
   import BoxPanel from './lib/BoxPanel.svelte';
-  import CompLabel from './lib/CompLabel.svelte';
+  import CompSquare from './lib/CompSquare.svelte';
+  import LayerIcon from './lib/LayerIcon.svelte';
+  import Tooltip from './lib/Tooltip.svelte';
+  import { layerInfo } from './lib/layers';
   import LayoutCanvas from './lib/LayoutCanvas.svelte';
   import PiecesBar from './lib/PiecesBar.svelte';
   import Report from './lib/Report.svelte';
@@ -64,11 +67,6 @@
     studio.selected = sel;
   }
 
-  function chooseLayer(id: string) {
-    studio.layerId = id;
-    studio.selected = null;
-  }
-
   function newProject() {
     if (confirm('Start a new, empty insert for this box size? Unsaved changes will be lost.')) replaceProject(blankProject($state.snapshot(studio.project) as Project));
   }
@@ -96,6 +94,7 @@
 </script>
 
 <svelte:window onkeydown={keydown} onpointerdowncapture={breakStep} />
+<Tooltip />
 
 <div class="app">
   <header class="no-print">
@@ -108,12 +107,12 @@
       </button>
     </nav>
     <div class="history">
-      <button class="small" onclick={undo} disabled={!undoState.canUndo} title="Undo ({undoKeys})" aria-label="Undo">↶ Undo</button>
-      <button class="small" onclick={redo} disabled={!undoState.canRedo} title="Redo ({redoKeys})" aria-label="Redo">↷ Redo</button>
+      <button class="small" onclick={undo} disabled={!undoState.canUndo} data-tip="Undo ({undoKeys})" aria-label="Undo">↶ Undo</button>
+      <button class="small" onclick={redo} disabled={!undoState.canRedo} data-tip="Redo ({redoKeys})" aria-label="Redo">↷ Redo</button>
     </div>
     <label class="theme">
       <span class="sr-only">Theme</span>
-      <select value={theme.pref} onchange={(e) => setTheme(e.currentTarget.value as ThemePref)} aria-label="Theme" title="Light or dark appearance">
+      <select value={theme.pref} onchange={(e) => setTheme(e.currentTarget.value as ThemePref)} aria-label="Theme" data-tip="Light or dark appearance; System follows your computer">
         <option value="system">System theme</option>
         <option value="light">Light</option>
         <option value="dark">Dark</option>
@@ -121,8 +120,8 @@
     </label>
     <div class="file">
       <a class="credit" href="https://github.com/5argon/box-insert-studio" target="_blank" rel="noopener">Source · CC BY 4.0</a>
-      <button class="small" onclick={newProject} title="Empty insert, keeping the box size and material settings">New</button>
-      <button class="small" onclick={loadExample} title="The DOOM example insert">Example</button>
+      <button class="small" onclick={newProject} data-tip="Empty insert, keeping the box size and material settings">New</button>
+      <button class="small" onclick={loadExample} data-tip="Load the example: a two-layer insert modelled on DOOM (2016)">Example</button>
       <label class="small open">Open<input type="file" accept=".json,application/json" onchange={open} /></label>
       <button class="small" onclick={save}>Save</button>
     </div>
@@ -134,11 +133,13 @@
         <BoxPanel project={studio.project} {solved} />
       </aside>
       <main class="stage">
-        <div class="tabs">
-          {#each [...studio.project.layers].reverse() as l (l.id)}
-            <button class:on={l.id === layer.id} onclick={() => chooseLayer(l.id)}>{l.name} · {l.height} mm</button>
-          {/each}
-          <span class="hint">Top layer first. Walls {solvedLayer.wallHeight} mm, dividers {layer.height - studio.project.material.thickness} mm tall.</span>
+        <div class="caption">
+          {#if studio.project.layers.length > 1}
+            <LayerIcon color={layerInfo(studio.project, layer.id).color} size={14} />
+            <b>{layer.name}</b>
+            <span class="hint">·</span>
+          {/if}
+          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - studio.project.material.thickness} mm tall</span>
         </div>
         <div class="canvas-wrap">
           <LayoutCanvas
@@ -152,7 +153,7 @@
             onselect={select}
           />
         </div>
-        <PiecesBar project={studio.project} {cut} {plan} layerId={layer.id} />
+        <PiecesBar project={studio.project} {solved} {cut} {plan} layerId={layer.id} />
       </main>
       <aside class="right">
         {#if selectedCompartment}
@@ -163,7 +164,13 @@
           <SplitInspector project={studio.project} {layer} {solvedLayer} split={selectedSplit} />
         {:else}
           <div class="panel-section">
-            <h2>{layer.name}</h2>
+            <h2 class="list-title">
+              {#if studio.project.layers.length > 1}
+                <LayerIcon color={layerInfo(studio.project, layer.id).color} size={13} /> Layer – {layer.name}
+              {:else}
+                Compartments
+              {/if}
+            </h2>
             <p class="hint">Click a compartment to size it, add dividers or finger notches. Click or drag a divider to resize; it snaps to sizes already in use.</p>
             {#each solvedLayer.issues as issue, i (i)}
               <div class="issue {issue.level}">{issue.message}</div>
@@ -171,7 +178,7 @@
             {#each solvedLayer.compartments as c (c.id)}
               {@const errs = c.issues.filter((i) => i.level === 'error').length}
               <button class="list-item" class:nested={c.depth === 1} onclick={() => select({ kind: 'section', id: c.id })}>
-                <b><CompLabel {c} /></b>
+                <CompSquare {c} />
                 <span>{Math.round(c.rect.w * 10) / 10} × {Math.round(c.rect.h * 10) / 10} × {Math.round(c.height * 10) / 10} mm</span>
                 {#if c.node.insert && c.depth === 0}<span class="hint">box inside</span>{/if}
                 {#if c.node.notches.length}<span class="hint">notch</span>{/if}
@@ -290,15 +297,18 @@
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) 190px;
   }
-  .tabs {
+  .caption {
     display: flex;
     gap: 6px;
     align-items: center;
-    padding: 10px 14px 0;
+    padding: 10px 16px 0;
     flex-wrap: wrap;
+    min-height: 28px;
   }
-  .tabs .hint {
-    margin-left: 6px;
+  .list-title {
+    display: flex;
+    gap: 6px;
+    align-items: center;
   }
   .canvas-wrap {
     min-height: 0;
@@ -311,6 +321,7 @@
   .list-item {
     display: flex;
     gap: 10px;
+    align-items: center;
     width: 100%;
     text-align: left;
     margin-top: 6px;
