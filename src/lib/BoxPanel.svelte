@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
-  import { setConstruction } from '../core/edit';
+  import { setBaseThickness, setConstruction } from '../core/edit';
   import { mm } from '../core/geom';
   import type { Solved } from '../core/layout';
   import type { Project } from '../core/types';
@@ -14,6 +14,13 @@
 
   const T = $derived(project.material.thickness);
   const separate = $derived(project.construction === 'separate');
+  /** Thickness of each layer's base: its own when set, else the material's. */
+  const B = $derived(project.material.baseThickness ?? T);
+  const ownBase = $derived(project.material.baseThickness !== undefined);
+  const BASE_PRESETS = [2, 3, 5];
+  /** Starting value: the thickest preset thinner than the walls. */
+  const thinner = $derived(BASE_PRESETS.filter((t) => t < T).pop() ?? T);
+  const baseTo = (next: number | undefined) => setBaseThickness(project, next);
   let readme: ReadmeDialog | undefined = $state();
   /** First line of the readme, without Markdown marks, as a reminder of what it says. */
   const readmeTitle = $derived(
@@ -77,53 +84,6 @@
 </div>
 
 <div class="panel-section">
-  <h2>Layers</h2>
-  {#if project.layers.length === 1}
-    {@const only = project.layers[0]}
-    <NumberField
-      label="Height"
-      value={only.height}
-      min={5}
-      hint="Height of the tray from the bottom of its base to the top of its walls"
-      onchange={(v) => (only.height = v)}
-    />
-    <p class="hint">Includes the {mm(T)} mm base.</p>
-  {:else}
-    {#each project.layers as layer, i (layer.id)}
-      {@const current = layer.id === studio.layerId}
-      <div
-        class="layer"
-        class:current
-        role="button"
-        tabindex="0"
-        aria-pressed={current}
-        data-tip={current ? 'The layer being edited' : 'Click to edit this layer'}
-        onclick={() => chooseLayer(layer.id)}
-        onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && chooseLayer(layer.id)}
-      >
-        <LayerIcon color={layerColor(i)} size={14} />
-        <div class="name-wrap">
-          <input bind:value={layer.name} aria-label="Layer name" onfocus={() => chooseLayer(layer.id)} />
-          {#if i === 0}<span class="pos">Bottom</span>{:else if i === project.layers.length - 1}<span class="pos">Top</span>{/if}
-        </div>
-        <NumberInput value={layer.height} min={5} label="{layer.name} height" onchange={(v) => (layer.height = v)} />
-        <span class="unit">mm</span>
-        <button class="small" onclick={(e) => (e.stopPropagation(), removeLayer(layer.id))} aria-label="Remove {layer.name}" data-tip="Remove this layer">✕</button>
-      </div>
-    {/each}
-    <p class="hint">Heights include each layer's {mm(T)} mm base.</p>
-  {/if}
-  <button class="small add" onclick={addLayer}>Add layer on top</button>
-  <p class="headroom" class:bad={solved.headroom < 0} data-tip="Space left above the trays, for the board and rulebook">
-    {#if solved.headroom >= 0}
-      Headroom: <b>{mm(solved.headroom)} mm</b>
-    {:else}
-      Headroom: <b>{mm(solved.headroom)} mm</b>, the trays are taller than the box
-    {/if}
-  </p>
-</div>
-
-<div class="panel-section">
   <h2>Material</h2>
   <div class="field">
     <span>Thickness</span>
@@ -158,6 +118,72 @@
     hint="Pieces within this step become one cut size"
     onchange={(v) => (project.precision = v)}
   />
+</div>
+
+<div class="panel-section">
+  <h2>Layers</h2>
+  {#if project.layers.length === 1}
+    {@const only = project.layers[0]}
+    <NumberField
+      label="Height"
+      value={only.height}
+      min={5}
+      hint="Height of the tray from the bottom of its base to the top of its walls"
+      onchange={(v) => (only.height = v)}
+    />
+    <p class="hint">Includes the {mm(B)} mm base.</p>
+  {:else}
+    {#each project.layers as layer, i (layer.id)}
+      {@const current = layer.id === studio.layerId}
+      <div
+        class="layer"
+        class:current
+        role="button"
+        tabindex="0"
+        aria-pressed={current}
+        data-tip={current ? 'The layer being edited' : 'Click to edit this layer'}
+        onclick={() => chooseLayer(layer.id)}
+        onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && chooseLayer(layer.id)}
+      >
+        <LayerIcon color={layerColor(i)} size={14} />
+        <div class="name-wrap">
+          <input bind:value={layer.name} aria-label="Layer name" onfocus={() => chooseLayer(layer.id)} />
+          {#if i === 0}<span class="pos">Bottom</span>{:else if i === project.layers.length - 1}<span class="pos">Top</span>{/if}
+        </div>
+        <NumberInput value={layer.height} min={5} label="{layer.name} height" onchange={(v) => (layer.height = v)} />
+        <span class="unit">mm</span>
+        <button class="small" onclick={(e) => (e.stopPropagation(), removeLayer(layer.id))} aria-label="Remove {layer.name}" data-tip="Remove this layer">✕</button>
+      </div>
+    {/each}
+    <p class="hint">Heights include each layer's {mm(B)} mm base.</p>
+  {/if}
+  <label class="check own-base" data-tip="Cut each layer's base from a different sheet than the walls, e.g. 3 mm under 5 mm walls">
+    <input type="checkbox" checked={ownBase} onchange={(e) => baseTo(e.currentTarget.checked ? thinner : undefined)} />
+    Own base thickness
+  </label>
+  {#if ownBase}
+    <div class="field">
+      <span>Base</span>
+      <span class="row">
+        {#each BASE_PRESETS as t (t)}
+          <button class="small" class:on={B === t} onclick={() => baseTo(t)}>{t}</button>
+        {/each}
+        <span class="thick"><NumberInput value={B} min={0.5} max={20} label="Base thickness" onchange={(v) => baseTo(v)} /></span>
+      </span>
+    </div>
+    <p class="hint">
+      Only each layer's base is {mm(B)} mm, cut from its own sheets; walls, dividers, raised floors and removable boxes stay {mm(T)} mm. Changing it moves
+      every layer's height by the difference, so compartments keep their depth and the headroom changes instead.
+    </p>
+  {/if}
+  <button class="small add" onclick={addLayer}>Add layer on top</button>
+  <p class="headroom" class:bad={solved.headroom < 0} data-tip="Space left above the trays, for the board and rulebook">
+    {#if solved.headroom >= 0}
+      Headroom: <b>{mm(solved.headroom)} mm</b>
+    {:else}
+      Headroom: <b>{mm(solved.headroom)} mm</b>, the trays are taller than the box
+    {/if}
+  </p>
 </div>
 
 <div class="panel-section">
@@ -241,6 +267,13 @@
   .thick {
     width: 56px;
   }
+  .own-base {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin: 10px 0 2px;
+  }
+
   .layer {
     display: grid;
     grid-template-columns: 14px 1fr 58px 22px 26px;

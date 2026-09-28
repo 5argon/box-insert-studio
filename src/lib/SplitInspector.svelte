@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canUseTrays, distributeEqually, insertHost, lockChild, sectionIds, setJoin } from '../core/edit';
-  import type { SolvedLayer, SolvedSplit } from '../core/layout';
+  import { baseThickness, type SolvedLayer, type SolvedSplit } from '../core/layout';
   import type { Layer, Project } from '../core/types';
   import LockButton from './LockButton.svelte';
   import NumberField from './NumberField.svelte';
@@ -16,7 +16,7 @@
   const hostLabel = $derived(host ? solvedLayer.compartments.find((c) => c.id === host.id)?.label : undefined);
   const unit = $derived(host ? 'box' : 'tray');
   const units = $derived(host ? 'boxes' : 'trays');
-  const maxLower = $derived(layer.height - project.material.thickness * (host ? 2 : 1) - 5);
+  const maxLower = $derived(layer.height - baseThickness(project) - (host ? project.material.thickness : 0) - 5);
 </script>
 
 <div class="panel-section">

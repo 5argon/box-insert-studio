@@ -113,7 +113,8 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
   function floorZ(t: Tray): Mm {
     const base = layerZ.get(t.layerId) ?? 0;
     if (t.depth === 0) return base;
-    return base + T + (padUnder.get(t.wellId ?? '') ?? 0) + (t.copyOf ? t.height : 0);
+    const parent = trayById.get(t.parentTrayId ?? '');
+    return base + (parent?.base ?? T) + (padUnder.get(t.wellId ?? '') ?? 0) + (t.copyOf ? t.height : 0);
   }
 
   const keyOf = (t: Tray) => `${t.layerId}:${t.nodeId}:${t.copyOf ? 1 : 0}`;
@@ -139,7 +140,7 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       const fit = fitItems(c, arrow, spec);
       const axis = arrow === 'left' || arrow === 'right' ? 'x' : 'y';
       const r = c.rect;
-      const z = bottom + T + c.padHeight;
+      const z = bottom + t.base + c.padHeight;
       // Stop at a few thousand: enough for any real slot, and the viewer stays quick.
       const items = Array.from({ length: Math.min(fit.count, 5000) }, (_, i): Box3 => {
         const t0 = spec.thickness;
@@ -162,8 +163,8 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       .map((p) => {
         const onBase = p.kind === 'divider' || (p.kind === 'wall' && project.base === 'under');
         // Raised-floor layers stack on the base, one thickness each.
-        const pz = p.kind === 'base' ? bottom : p.kind === 'pad' ? bottom + T + (p.padLevel ?? 0) * T : bottom + (onBase ? T : 0);
-        const h = p.kind === 'base' || p.kind === 'pad' ? T : p.height;
+        const pz = p.kind === 'base' ? bottom : p.kind === 'pad' ? bottom + t.base + (p.padLevel ?? 0) * T : bottom + (onBase ? t.base : 0);
+        const h = p.kind === 'base' || p.kind === 'pad' ? p.thickness : p.height;
         return { id: p.id, kind: p.kind, x: p.footprint.x, y: p.footprint.y, z: pz, w: p.footprint.w, d: p.footprint.h, h, axis: p.axis, notches: p.notches };
       });
     const lower = t.copyOf ? trayById.get(t.copyOf) : undefined;

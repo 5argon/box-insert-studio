@@ -1,7 +1,7 @@
 <script lang="ts">
   import { layerColor } from '../core/defaults';
   import type { Compartment, Solved } from '../core/layout';
-  import { panelUse, type CutList, type CutPlan, type PieceGroup } from '../core/pieces';
+  import { panelUse, sheetSummary, type CutList, type CutPlan, type PieceGroup } from '../core/pieces';
   import type { Project } from '../core/types';
   import CompSquare from './CompSquare.svelte';
   import LayerIcon from './LayerIcon.svelte';
@@ -38,7 +38,7 @@
 
   const tip = (g: PieceGroup) =>
     g.kind === 'base'
-      ? `${g.pieces.length} × ${g.length} × ${g.height} mm ${panelUse(g)}`
+      ? `${g.pieces.length} × ${g.length} × ${g.height} mm ${panelUse(g)}${g.thickness !== project.material.thickness ? `, from ${g.thickness} mm sheet` : ''}`
       : `${g.pieces.length} piece${g.pieces.length === 1 ? '' : 's'}, ${g.length} mm long and ${g.height} mm tall${g.notches.length ? ', notched' : ''}. Hover to find them in the layout.`;
 </script>
 
@@ -63,7 +63,9 @@
     <span class="num">#{g.number}</span>
     <span class="qty">×{g.pieces.length}</span>
     <span class="size">{g.length}×{g.height}</span>
-    {#if g.kind === 'base'}<span class="tag">{panelUse(g)}</span>{/if}
+    {#if g.kind === 'base'}<span class="tag" class:own={g.thickness !== project.material.thickness}
+        >{panelUse(g)}{g.thickness !== project.material.thickness ? ` ${g.thickness} mm` : ''}</span
+      >{/if}
     {#if g.notches.length}<span class="tag notch">notch</span>{/if}
   </button>
 {/snippet}
@@ -71,8 +73,7 @@
 <div class="bar">
   <div class="summary">
     <h2>Cut list</h2>
-    <span><b>{total}</b> pieces in <b>{cut.groups.length}</b> cut sizes · {stripWidths} strip width{stripWidths === 1 ? '' : 's'} · <b>{plan.sheets.length}</b>
-      {project.material.sheet.preset} sheet{plan.sheets.length === 1 ? '' : 's'} ({Math.round(plan.efficiency * 100)}% used)</span
+    <span><b>{total}</b> pieces in <b>{cut.groups.length}</b> cut sizes · {stripWidths} strip width{stripWidths === 1 ? '' : 's'} · {sheetSummary(project, plan)} ({Math.round(plan.efficiency * 100)}% used)</span
     >
     <label class="toggle"><input type="checkbox" bind:checked={studio.showNumbers} /> Show piece numbers</label>
   </div>
@@ -191,6 +192,10 @@
   }
   .tag.notch {
     color: var(--warn);
+  }
+  .tag.own {
+    color: var(--accent);
+    font-weight: 600;
   }
   .hints {
     margin-top: 4px;
