@@ -25,7 +25,13 @@ reproduces that insert's cut list.
    standing inside it (one box with dividers, or separate boxes; compartments inside are labelled
    G1, G2, …). Per divider split: glued dividers or separate lift-out trays, and how much lower
    the dividers stand.
-2. **Cut list & assembly**: grouped cut list, a cutting plan per sheet (bases, then strips of
+2. **3D view**: the whole insert in 3D, view only. Drag to orbit around the box's centre (from
+   straight down to level with the box, never underneath), scroll or pinch to zoom, or pick a
+   preset (3/4, top, front, side), in perspective or orthographic. Show or hide the game box
+   outline; draw trays as wireframe, see-through or solid; highlight trays to draw them solid
+   while the rest stay wireframe in their colours; hide trays or whole layers. **Hide tools**
+   shows the model on its own.
+3. **Cut list & assembly**: grouped cut list, a cutting plan per sheet (bases, then strips of
    one height chopped into lengths), per-tray assembly steps with a numbered diagram, and a
    true-size notch template. Print or save as PDF; export the cut list as CSV.
 
@@ -69,7 +75,10 @@ With board thickness T and tray height H (including the base):
   - `assembly.ts`: glue order and divider positions per tray.
   - `edit.ts`: layout tree edits (split, remove, drag with snapping, lock, trays vs dividers).
   - `history.ts`: undo/redo over project snapshots, merging drags and typing into single steps.
+  - `scene.ts`: 3D placement of every piece, renderer-independent; tests use it to check that no
+    two pieces overlap.
 - `src/lib/`: Svelte 5 UI.
+  - `three/`: the 3D view (three.js), loaded only when the 3D tab opens.
 
 ## Deploying
 
@@ -87,4 +96,5 @@ you may use, adapt and share it, including commercially, as long as you give cre
 
 - Per-compartment notch sizes; slide-in or angled card dividers, curved token scoops, lids.
 - Mixed tray heights within one layer.
+- 3D view extras: exploding layers apart, names on hover, coloured compartment floors, PNG export.
 - Cutting plan packs strips greedily; it does not yet try mixing strip heights to save a sheet.

@@ -550,3 +550,75 @@ describe('material', () => {
     expect(migrateProject(null)).toBeUndefined();
   });
 });
+
+describe('3D scene', () => {
+  async function scene(edit?: (p: Project, s: ReturnType<typeof solveProject>) => void) {
+    const { buildScene, overlap } = await import('./scene');
+    const p = defaultProject();
+    if (edit) edit(p, solveProject(p));
+    const s = solveProject(p);
+    return { p, s, model: buildScene(p, s), overlap };
+  }
+
+  function expectNoOverlaps(model: Awaited<ReturnType<typeof scene>>['model'], overlap: (a: never, b: never) => number) {
+    const blocks = model.trays.flatMap((t) => t.blocks);
+    for (let i = 0; i < blocks.length; i++) {
+      for (let j = i + 1; j < blocks.length; j++) {
+        const v = overlap(blocks[i] as never, blocks[j] as never);
+        if (v > 1e-6) throw new Error(`${blocks[i].id} overlaps ${blocks[j].id} by ${v} mm³`);
+      }
+    }
+    for (const b of blocks) {
+      expect(b.x).toBeGreaterThanOrEqual(-1e-6);
+      expect(b.y).toBeGreaterThanOrEqual(-1e-6);
+      expect(b.x + b.w).toBeLessThanOrEqual(model.box.w + 1e-6);
+      expect(b.y + b.d).toBeLessThanOrEqual(model.box.d + 1e-6);
+      expect(b.z + b.h).toBeLessThanOrEqual(model.layers.reduce((a, l) => a + l.height, 0) + 1e-6);
+    }
+  }
+
+  it('places every piece without overlaps, walls on the base', async () => {
+    const { model, overlap } = await scene();
+    expectNoOverlaps(model, overlap);
+  });
+
+  it('places every piece without overlaps with the base inside the walls', async () => {
+    const { model, overlap } = await scene((p) => (p.base = 'inside'));
+    expectNoOverlaps(model, overlap);
+  });
+
+  it('places stacked boxes and separate trays without overlaps', async () => {
+    const { model, overlap, p } = await scene((p, s) => {
+      const g = s.compartments.find((c) => c.label === 'G')!;
+      setStacked(g.node, true);
+      const top = p.layers[1];
+      if (top.root.kind === 'split') setJoin(top, top.root, 'trays', p.material.thickness);
+    });
+    expectNoOverlaps(model, overlap);
+    // The upper box of the stack ends exactly at the layer's top.
+    const upper = model.trays.find((t) => t.level === 1)!;
+    const top = Math.max(...upper.blocks.map((b) => b.z + b.h));
+    expect(top).toBeCloseTo(p.layers[0].height, 6);
+    expect(model.trays.filter((t) => t.depth === 0 && t.layerId === p.layers[1].id)).toHaveLength(2);
+  });
+
+  it('keeps tray colours when another tray is added, and keeps them distinct', async () => {
+    const { buildScene } = await import('./scene');
+    const p = defaultProject();
+    const before = new Map(buildScene(p, solveProject(p)).trays.map((t) => [t.key, t.color]));
+    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    setStacked(g.node, true);
+    const after = buildScene(p, solveProject(p)).trays;
+    for (const t of after) if (before.has(t.key)) expect(t.color).toBe(before.get(t.key));
+    expect(new Set(after.map((t) => t.color)).size).toBe(after.length);
+  });
+
+  it('gives trays keys that survive unrelated edits', async () => {
+    const { buildScene } = await import('./scene');
+    const p = defaultProject();
+    const before = buildScene(p, solveProject(p)).trays.map((t) => t.key);
+    p.box.width = 300;
+    p.layers[0].height = 50;
+    expect(buildScene(p, solveProject(p)).trays.map((t) => t.key)).toEqual(before);
+  });
+});
