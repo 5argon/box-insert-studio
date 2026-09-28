@@ -199,8 +199,8 @@
                 <rect x={b.footprint.x} y={b.footprint.y} width={b.footprint.w} height={b.footprint.h} class="tray-base" />
               {/each}
               {#each comps as c (c.id)}
-                <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} fill={sectionColor(c.index, 90)} />
-                <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" fill={sectionInk(c.index)} font-size={Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3))}
+                <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.index, 90)} />
+                <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3))}
                   >{c.label}{c.stacked ? '²' : ''}{c.pad ? '*' : ''}</text
                 >
               {/each}
@@ -254,7 +254,27 @@
     height: 100%;
     padding: 24px 16px;
   }
+  /* A printable page: always the light palette, whatever the app theme. */
   .report {
+    color-scheme: light;
+    --bg: #f4f2ee;
+    --panel: #ffffff;
+    --input: #ffffff;
+    --line: #e2ded6;
+    --line-strong: #c9c3b8;
+    --text: #22201c;
+    --muted: #6f6a61;
+    --accent: #2f6fdb;
+    --accent-soft: #e6eefc;
+    --error: #c0392b;
+    --error-soft: #fdecea;
+    --warn: #a26400;
+    --warn-soft: #fff4e0;
+    --sec-sat: 70%;
+    --sec-a: 0%;
+    --sec-b: 1;
+    --sec-ink: 30%;
+    color: var(--text);
     background: #fff;
     max-width: 820px;
     margin: 0 auto;

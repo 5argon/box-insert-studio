@@ -10,12 +10,15 @@
     styleOf,
     outer,
     ortho,
+    dark,
   }: {
     model: SceneModel;
     /** Style for each tray key. */
     styleOf: (key: string, layerId: string) => TrayStyle;
     outer: boolean;
     ortho: boolean;
+    /** Dark theme: lighter lines. */
+    dark: boolean;
   } = $props();
 
   let host: HTMLDivElement;
@@ -136,9 +139,10 @@
   // Rebuild the geometry whenever the design changes.
   $effect(() => {
     const m = model;
+    const isDark = dark;
     if (!renderer) return;
     if (objects) disposeObjects(objects);
-    objects = buildObjects(m);
+    objects = buildObjects(m, isDark);
     scene.add(objects.root);
     target.set(0, m.box.h / 2, 0);
     if (controls) {

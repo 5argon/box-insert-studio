@@ -55,23 +55,15 @@ export interface SceneModel {
   trays: SceneTray[];
 }
 
-const TRAY_HUES = [212, 18, 146, 280, 42, 330, 188, 96, 250, 0, 168, 60];
+/**
+ * Tray line colours: a categorical palette (Tableau 10 without its grey) chosen so that any two
+ * trays are easy to tell apart, readable on both the light and the dark background.
+ */
+const TRAY_PALETTE = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1', '#edc948', '#76b7b2', '#ff9da7', '#9c755f'];
 
-function hslToHex(h: number, s: number, l: number): string {
-  const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const c = l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-    return Math.round(c * 255)
-      .toString(16)
-      .padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
-
-/** Line colour for tray `index`; the same colour marks it in the viewer's tray list. */
-export function trayColor(index: number, lightness = 45): string {
-  return hslToHex(TRAY_HUES[index % TRAY_HUES.length], 68, lightness);
+/** Colour for palette slot `index`; the same colour marks the tray in the viewer's tray list. */
+export function trayColor(index: number): string {
+  return TRAY_PALETTE[index % TRAY_PALETTE.length];
 }
 
 /**
@@ -107,8 +99,8 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
     if (known !== undefined) return known;
     let hash = 0;
     for (const ch of key) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-    let i = hash % TRAY_HUES.length;
-    for (let n = 0; n < TRAY_HUES.length && taken.has(i); n++) i = (i + 1) % TRAY_HUES.length;
+    let i = hash % TRAY_PALETTE.length;
+    for (let n = 0; n < TRAY_PALETTE.length && taken.has(i); n++) i = (i + 1) % TRAY_PALETTE.length;
     taken.add(i);
     colors.set(key, i);
     return i;

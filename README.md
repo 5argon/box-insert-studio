@@ -39,7 +39,8 @@ reproduces that insert's cut list.
 Projects autosave in the browser; **Save** / **Open** use `.insert.json` files. **New** starts an
 empty box with the same size and board settings; **Example** loads the DOOM insert.
 **Undo** / **Redo** (⌘Z / ⇧⌘Z, or Ctrl+Z / Ctrl+Y) cover every change: each click is a step, and a
-drag or a burst of typing counts as one.
+drag or a burst of typing counts as one. The theme follows the system's light or dark setting, or
+pick one in the header; the printable report is always a white page.
 
 ## Encouraging shared cut sizes
 

@@ -115,7 +115,7 @@
     text-transform: uppercase;
   }
   .tag.notch {
-    color: #a26400;
+    color: var(--warn);
   }
   .hints {
     margin-top: 4px;
