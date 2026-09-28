@@ -15,6 +15,13 @@
   );
 </script>
 
-<button class="small" class:on={locked} disabled={lastFlex} onclick={() => toggleLock(split, index, sizes)} {title} aria-pressed={locked}>
+<button
+  class="small"
+  class:on={locked}
+  aria-disabled={lastFlex}
+  onclick={() => !lastFlex && toggleLock(split, index, sizes)}
+  data-tip={title}
+  aria-pressed={locked}
+>
   {locked ? 'Locked' : 'Flex'}
 </button>

@@ -70,7 +70,6 @@ export interface Project {
   box: { width: Mm; depth: Mm; height: Mm };
   /** The sheet material everything is cut from: foam board, MDF, greyboard… */
   material: {
-    name: string;
     thickness: Mm;
     sheet: SheetSpec;
     /** Damaged edge trimmed off every side of a sheet before cutting. */

@@ -11,6 +11,9 @@
   import { isDark } from '../theme.svelte';
   import type { Preset, TrayStyle } from './meshes';
   import Viewer3D from './Viewer3D.svelte';
+  import CompSquare from '../CompSquare.svelte';
+  import LayerIcon from '../LayerIcon.svelte';
+  import { layerColor } from '../../core/defaults';
 
   let { project, solved }: { project: Project; solved: Solved } = $props();
 
@@ -49,6 +52,15 @@
   ];
 
   const layersTopFirst = $derived([...model.layers].reverse());
+  const multiLayer = $derived(model.layers.length > 1);
+  const layerIndex = (id: string) => model.layers.findIndex((l) => l.id === id);
+
+  /** Compartments in a tray; the upper box of a stack shows the ones of the box below it. */
+  function compartmentsOf(trayId: string) {
+    const tray = solved.trays.find((t) => t.id === trayId);
+    const source = tray?.copyOf ?? trayId;
+    return solved.compartments.filter((c) => c.trayId === source);
+  }
 </script>
 
 <div class="view3d" class:full={!v.panel}>
@@ -64,7 +76,7 @@
     <aside class="panel">
       <div class="panel-section head">
         <h2>3D view</h2>
-        <button class="small" onclick={() => (v.panel = false)} title="Hide this panel and show the model in full">Hide tools</button>
+        <button class="small" onclick={() => (v.panel = false)} data-tip="Hide this panel and show the model in full">Hide tools</button>
       </div>
 
       <div class="panel-section">
@@ -103,10 +115,11 @@
         {#each layersTopFirst as layer (layer.id)}
           {@const layerHidden = v.hiddenLayers.includes(layer.id)}
           <div class="layer" class:off={layerHidden}>
-            <button class="eye" onclick={() => toggle(v.hiddenLayers, layer.id)} aria-label="{layerHidden ? 'Show' : 'Hide'} {layer.name}" title={layerHidden ? 'Show layer' : 'Hide layer'}>
+            <button class="eye" onclick={() => toggle(v.hiddenLayers, layer.id)} aria-label="{layerHidden ? 'Show' : 'Hide'} {layer.name}" data-tip={layerHidden ? 'Show layer' : 'Hide layer'}>
               {layerHidden ? '◌' : '●'}
             </button>
-            <b>{layer.name}</b>
+            {#if multiLayer}<LayerIcon color={layerColor(layerIndex(layer.id))} size={13} />{/if}
+            <b>{multiLayer ? layer.name : 'Layer'}</b>
             <span class="muted">{layer.height} mm</span>
           </div>
           {#each model.trays.filter((t) => t.layerId === layer.id) as t (t.key)}
@@ -119,13 +132,17 @@
               onmouseleave={() => (hoverKey = null)}
               role="listitem"
             >
-              <label class="pick" title="Highlight: draw this tray solid">
+              <label class="pick" data-tip="Highlight: draw this tray solid">
                 <input type="checkbox" checked={v.highlighted.includes(t.key)} onchange={() => toggle(v.highlighted, t.key)} />
                 <span class="swatch" style:background={t.color}></span>
                 <span class="name">{t.label}</span>
-                <span class="muted detail">{t.detail}</span>
+                <span class="comps">
+                  {#each compartmentsOf(t.id) as c (c.id)}
+                    <CompSquare {c} size="sm" />
+                  {/each}
+                </span>
               </label>
-              <button class="eye" onclick={() => toggle(v.hiddenTrays, t.key)} aria-label="{hidden ? 'Show' : 'Hide'} {t.label}" title={hidden ? 'Show' : 'Hide'}>
+              <button class="eye" onclick={() => toggle(v.hiddenTrays, t.key)} aria-label="{hidden ? 'Show' : 'Hide'} {t.label}" data-tip={hidden ? 'Show' : 'Hide'}>
                 {hidden ? '◌' : '●'}
               </button>
             </div>
@@ -231,6 +248,7 @@
   }
   .pick {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     flex: 1;
@@ -246,11 +264,11 @@
   .name {
     white-space: nowrap;
   }
-  .detail {
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .comps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    min-width: 0;
   }
   .muted {
     color: var(--muted);

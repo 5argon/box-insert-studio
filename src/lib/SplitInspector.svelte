@@ -70,7 +70,6 @@
       <LockButton split={node} index={i} sizes={split.childSizes} />
     </div>
   {/each}
-  <p class="hint">Locked parts keep their size; flex parts share what is left. Click to switch. One part always stays flex to fill the space.</p>
 </div>
 
 <style>

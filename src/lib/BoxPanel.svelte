@@ -1,24 +1,33 @@
 <script lang="ts">
-  import { MATERIAL_NAMES, SHEET_PRESETS, THICKNESS_PRESETS, newLayer } from '../core/defaults';
+  import { SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
+  import { mm } from '../core/geom';
   import type { Solved } from '../core/layout';
   import type { Project } from '../core/types';
+  import LayerIcon from './LayerIcon.svelte';
   import NumberField from './NumberField.svelte';
   import NumberInput from './NumberInput.svelte';
   import { studio } from './state.svelte';
 
   let { project, solved }: { project: Project; solved: Solved } = $props();
 
+  const T = $derived(project.material.thickness);
+
   function chooseSheet(e: Event & { currentTarget: HTMLSelectElement }) {
     const p = SHEET_PRESETS.find((x) => x.preset === e.currentTarget.value);
     project.material.sheet = p ? { ...p } : { ...project.material.sheet, preset: 'Custom' };
+  }
+
+  function chooseLayer(id: string) {
+    if (studio.layerId === id) return;
+    studio.layerId = id;
+    studio.selected = null;
   }
 
   function addLayer() {
     const room = Math.max(10, Math.floor(solved.headroom));
     const layer = newLayer(`Layer ${project.layers.length + 1}`, Math.min(30, room));
     project.layers.push(layer);
-    studio.layerId = layer.id;
-    studio.selected = null;
+    chooseLayer(layer.id);
   }
 
   function removeLayer(id: string) {
@@ -44,43 +53,61 @@
     value={project.clearance}
     min={0}
     step={0.5}
-    hint="Total gap between a tray and the box or its neighbours"
+    hint="Total gap between a tray and the box or its neighbours, so it drops in without jamming"
     onchange={(v) => (project.clearance = v)}
   />
 </div>
 
 <div class="panel-section">
-  <h2>Layers (bottom first)</h2>
-  {#each project.layers as layer (layer.id)}
-    <div class="layer" class:current={layer.id === studio.layerId}>
-      <input bind:value={layer.name} aria-label="Layer name" onfocus={() => (studio.layerId = layer.id)} />
-      <NumberInput value={layer.height} min={5} label="{layer.name} height" onchange={(v) => (layer.height = v)} />
-      <span class="unit">mm</span>
-      <button class="small" onclick={() => removeLayer(layer.id)} disabled={project.layers.length <= 1} aria-label="Remove {layer.name}">✕</button>
-    </div>
-  {/each}
-  <button class="small" onclick={addLayer}>Add layer on top</button>
-  <p class="hint" class:bad={solved.headroom < 0}>
+  <h2>Layers</h2>
+  {#if project.layers.length === 1}
+    {@const only = project.layers[0]}
+    <NumberField
+      label="Height"
+      value={only.height}
+      min={5}
+      hint="Height of the tray from the bottom of its base to the top of its walls"
+      onchange={(v) => (only.height = v)}
+    />
+    <p class="hint">Includes the {mm(T)} mm base.</p>
+  {:else}
+    {#each project.layers as layer, i (layer.id)}
+      {@const current = layer.id === studio.layerId}
+      <div
+        class="layer"
+        class:current
+        role="button"
+        tabindex="0"
+        aria-pressed={current}
+        data-tip={current ? 'The layer being edited' : 'Click to edit this layer'}
+        onclick={() => chooseLayer(layer.id)}
+        onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && chooseLayer(layer.id)}
+      >
+        <LayerIcon color={layerColor(i)} size={14} />
+        <div class="name-wrap">
+          <input bind:value={layer.name} aria-label="Layer name" onfocus={() => chooseLayer(layer.id)} />
+          {#if i === 0}<span class="pos">Bottom</span>{:else if i === project.layers.length - 1}<span class="pos">Top</span>{/if}
+        </div>
+        <NumberInput value={layer.height} min={5} label="{layer.name} height" onchange={(v) => (layer.height = v)} />
+        <span class="unit">mm</span>
+        <button class="small" onclick={(e) => (e.stopPropagation(), removeLayer(layer.id))} aria-label="Remove {layer.name}" data-tip="Remove this layer">✕</button>
+      </div>
+    {/each}
+    <p class="hint">Heights include each layer's {mm(T)} mm base.</p>
+  {/if}
+  <button class="small add" onclick={addLayer}>Add layer on top</button>
+  <p class="headroom" class:bad={solved.headroom < 0} data-tip="Space left above the trays, for the board and rulebook">
     {#if solved.headroom >= 0}
-      {solved.headroom.toFixed(1)} mm left above for the board and rulebook.
+      Headroom: <b>{mm(solved.headroom)} mm</b>
     {:else}
-      Layers are {(-solved.headroom).toFixed(1)} mm taller than the box.
+      Headroom: <b>{mm(solved.headroom)} mm</b>, the trays are taller than the box
     {/if}
   </p>
 </div>
 
 <div class="panel-section">
   <h2>Material</h2>
-  <label class="field">
-    <span>Name</span>
-    <input list="material-names" bind:value={project.material.name} aria-label="Material name" />
-    <datalist id="material-names">
-      {#each MATERIAL_NAMES as n (n)}
-        <option value={n}></option>
-      {/each}
-    </datalist>
-  </label>
-  <label class="field">
+  <div class="field">
     <span>Thickness</span>
     <span class="row">
       {#each THICKNESS_PRESETS as t (t)}
@@ -88,7 +115,7 @@
       {/each}
       <span class="thick"><NumberInput value={project.material.thickness} min={1} max={20} label="Material thickness" onchange={(v) => (project.material.thickness = v)} /></span>
     </span>
-  </label>
+  </div>
   <label class="field">
     <span>Sheet</span>
     <select value={project.material.sheet.preset} onchange={chooseSheet}>
@@ -162,15 +189,38 @@
   }
   .layer {
     display: grid;
-    grid-template-columns: 1fr 64px 24px 28px;
+    grid-template-columns: 14px 1fr 58px 22px 26px;
     gap: 6px;
     align-items: center;
-    margin-bottom: 6px;
-    padding: 3px;
+    margin-bottom: 4px;
+    padding: 4px 5px;
     border-radius: var(--radius);
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .layer:hover {
+    border-color: var(--line-strong);
   }
   .layer.current {
     background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .name-wrap {
+    display: grid;
+    min-width: 0;
+  }
+  .pos {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 1px;
+  }
+  .add {
+    margin-top: 4px;
+  }
+  .headroom {
+    margin: 10px 0 0;
   }
   .unit {
     color: var(--muted);

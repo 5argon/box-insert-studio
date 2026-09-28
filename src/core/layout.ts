@@ -328,11 +328,8 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       // top sits flush with the walls around it. A stack of two splits that height exactly in half.
       const stacked = !!node.insert.stacked;
       const height = (ctx.height - T - pad * T) / (stacked ? 2 : 1);
-      if (height - T < MIN_BOX_INSIDE) {
-        // With a raised floor the compartment reports it, with how many layers to remove.
-        if (!pad) issues.push({ level: 'error', message: `${layer.name} is too shallow for ${stacked ? 'two stacked boxes' : 'a box'} inside a compartment.` });
-        return;
-      }
+      // Too shallow: the compartment reports it (see solveProject) and no box is built.
+      if (height - T < MIN_BOX_INSIDE) return;
       const box = { height, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked };
       const first = trays.length;
       cellLevel(node.insert.root, rect, box);
@@ -493,7 +490,14 @@ export function solveProject(project: Project): Solved {
       c.padHeight = c.pad * T;
       c.height = c.fullHeight - c.padHeight;
       const boxes = c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0;
-      if (c.pad && boxes && c.pad > maxPad(c.fullHeight, T, boxes)) {
+      if (boxes && !c.pad && maxPad(c.fullHeight, T, boxes) === 0 && (c.fullHeight / boxes - T) < MIN_BOX_INSIDE) {
+        // A box needs its floor plus MIN_BOX_INSIDE; stacked boxes need that twice.
+        const need = boxes * (T + MIN_BOX_INSIDE) + T;
+        c.issues.push({
+          level: 'error',
+          message: `Too shallow for ${boxes === 2 ? 'two stacked boxes' : 'a box'}: the layer needs to be at least ${need} mm tall${boxes === 2 ? ', or stack one box' : ''}.`,
+        });
+      } else if (c.pad && boxes && c.pad > maxPad(c.fullHeight, T, boxes)) {
         const remove = c.pad - maxPad(c.fullHeight, T, boxes);
         c.issues.push({
           level: 'error',

@@ -5,7 +5,7 @@
   let { c }: { c: Pick<Compartment, 'label' | 'stacked' | 'pad'> } = $props();
 </script>
 
-{c.label}{c.stacked ? '²' : ''}{#if c.pad > 0}<sup title="Raised floor">*</sup>{/if}
+{c.label}{c.stacked ? '²' : ''}{#if c.pad > 0}<sup data-tip="Raised floor">*</sup>{/if}
 
 <style>
   sup {

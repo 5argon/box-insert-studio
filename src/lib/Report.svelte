@@ -92,7 +92,7 @@
       <div>
         <h1>{project.name}</h1>
         <p class="facts">
-          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.material.thickness} mm {project.material.name} ·
+          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.material.thickness} mm material ·
           {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {solved.headroom.toFixed(1)} mm left above
         </p>
         <p class="facts">
