@@ -23,6 +23,26 @@ function load(): Project {
 
 const initial = load();
 
+const PREVIEW_KEY = 'box-insert-studio/preview-collapsed';
+function previewCollapsed(): boolean {
+  try {
+    return localStorage.getItem(PREVIEW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Collapse or expand the layout's corner 3D preview; remembered per browser. */
+export function setPreviewCollapsed(collapsed: boolean) {
+  studio.previewCollapsed = collapsed;
+  try {
+    if (collapsed) localStorage.setItem(PREVIEW_KEY, '1');
+    else localStorage.removeItem(PREVIEW_KEY);
+  } catch {
+    // Storage blocked: the choice lasts for this page only.
+  }
+}
+
 export const studio = $state({
   project: initial,
   layerId: initial.layers[initial.layers.length - 1]?.id ?? '',
@@ -42,6 +62,7 @@ export const studio = $state({
   /** Cut-list group number highlighted in the canvas. */
   hoverGroup: null as number | null,
   showNumbers: false,
+  previewCollapsed: previewCollapsed(),
 });
 
 export function persist(project: Project) {
