@@ -1,6 +1,7 @@
 <script lang="ts">
   import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setPad, setStacked, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
+  import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasNotch, notchSharedWith, toggleNotch } from '../core/notches';
   import { maxPad, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
@@ -141,6 +142,24 @@
     }),
   );
   const boxWall = $derived(project.base === 'under' ? boxHeight - T : boxHeight);
+
+  /** Items standing in a row along the arrow; a compartment holding a box has no room for them. */
+  const spec = $derived(c.node.arrow && !c.node.insert ? c.node.items : undefined);
+  const fit = $derived(spec?.on && c.node.arrow ? fitItems(c, c.node.arrow, spec) : undefined);
+  const noun = $derived(spec?.shape === 'cylinder' ? 'cylinders' : 'items');
+
+  function simulate(on: boolean) {
+    if (c.node.items) c.node.items.on = on;
+    else if (on) c.node.items = { ...DEFAULT_ITEMS };
+  }
+
+  /** Thickness from a measured stack: many items are easier to measure than one. */
+  let measuring = $state(false);
+  let stack = $state({ length: 0, count: 10 });
+  function fromStack(length: number, count: number) {
+    stack = { length, count };
+    if (spec && length > 0 && count >= 1) spec.thickness = Number((length / count).toFixed(4));
+  }
 </script>
 
 <div class="panel-section head">
@@ -223,8 +242,8 @@
 </div>
 
 <div class="panel-section">
-  <h2>Card direction</h2>
-  <div class="arrows" role="group" aria-label="Card direction arrow">
+  <h2>Item direction</h2>
+  <div class="arrows" role="group" aria-label="Item direction arrow">
     {#each ARROWS as a (a.side)}
       <button
         class="small"
@@ -235,8 +254,68 @@
         data-tip={c.node.arrow === a.side ? 'Remove the arrow' : `Arrow toward the ${a.side}`}>{a.glyph}</button
       >
     {/each}
-    <span class="hint">{c.node.arrow ? `Toward the ${c.node.arrow}, drawn beside the letter` : 'Mark which way cards face, beside the letter'}</span>
+    <span class="hint">{c.node.arrow ? `Toward the ${c.node.arrow}, drawn beside the letter` : 'Mark which way the items face, beside the letter'}</span>
   </div>
+  {#if c.node.arrow && c.node.insert}
+    <p class="hint">This compartment holds a box; simulate items in the box's compartments instead.</p>
+  {:else if c.node.arrow}
+    <label class="check sim">
+      <input type="checkbox" checked={!!spec?.on} onchange={(e) => simulate(e.currentTarget.checked)} />
+      Simulate items
+    </label>
+    {#if spec?.on && fit}
+      <div class="row shape" role="group" aria-label="Item shape">
+        <button class="small" class:on={spec.shape === 'box'} onclick={() => (spec.shape = 'box')} data-tip="Cards, tiles, boards: flat boxes standing on edge">Box</button>
+        <button class="small" class:on={spec.shape === 'cylinder'} onclick={() => (spec.shape = 'cylinder')} data-tip="Coin capsules, discs: round items standing on edge"
+          >Cylinder</button
+        >
+      </div>
+      <NumberField
+        label={spec.shape === 'cylinder' ? 'Diameter' : 'Width'}
+        value={spec.width}
+        min={0.5}
+        onchange={(v) => (spec.width = v)}
+        hint="Across the arrow"
+      />
+      {#if spec.shape === 'box'}
+        <NumberField label="Height" value={spec.height} min={0.5} onchange={(v) => (spec.height = v)} hint="Standing up from the floor" />
+      {/if}
+      <NumberField
+        label="Thickness"
+        value={spec.thickness}
+        min={0.0001}
+        step={0.01}
+        decimals={4}
+        onchange={(v) => (spec.thickness = v)}
+        hint="Along the arrow: one {spec.shape === 'cylinder' ? 'capsule' : 'card'}'s thickness, up to 4 decimal places"
+      />
+      <button class="link" onclick={() => (measuring = !measuring)} aria-expanded={measuring}>{measuring ? 'Hide' : 'Measure a stack…'}</button>
+      {#if measuring}
+        <div class="measure">
+          <NumberField label="Stack length" value={stack.length} min={0} step={0.1} onchange={(v) => fromStack(v, stack.count)} hint="Measure many items pressed together" />
+          <NumberField label="Items in it" value={stack.count} min={1} step={1} decimals={0} unit="" onchange={(v) => fromStack(stack.length, v)} />
+          <p class="hint">
+            {#if stack.length > 0}{mm(stack.length)} mm ÷ {stack.count} = {Number((stack.length / stack.count).toFixed(4))} mm each, set as the thickness.
+            {:else}Measure a stack of items and count them; the thickness is the length divided by the count.{/if}
+          </p>
+        </div>
+      {/if}
+      <NumberField label="Free space" value={spec.spare} min={0} onchange={(v) => (spec.spare = v)} hint="Left empty at the arrow's head, e.g. finger room" />
+      <div class="fit" class:bad={fit.warnings.length}>
+        <div class="count">
+          <b>{fit.count}</b>
+          {noun} fit{c.stacked ? ` in each box, ${fit.count * 2} in both` : ''}
+        </div>
+        <div class="hint">
+          {Number(fit.used.toFixed(2))} mm of the {mm(fit.along)} mm slot, {Number(fit.left.toFixed(2))} mm left at the head · {mm(fit.faceW)} × {mm(fit.faceH)} mm face
+          in a {mm(fit.across)} × {mm(fit.up)} mm opening
+        </div>
+      </div>
+      {#each fit.warnings as w (w)}
+        <div class="issue warn">{w}</div>
+      {/each}
+    {/if}
+  {/if}
 </div>
 
 <div class="panel-section">
@@ -467,6 +546,39 @@
   }
   .arrows .hint {
     margin-left: 4px;
+  }
+  .sim {
+    margin: 10px 0 4px;
+  }
+  .shape {
+    margin: 4px 0 2px;
+  }
+  .measure {
+    margin: 2px 0 6px;
+    padding: 4px 8px 6px;
+    border-left: 2px solid var(--line-strong);
+  }
+  .measure .hint {
+    margin: 2px 0 0;
+  }
+  .fit {
+    margin-top: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    background: var(--accent-soft);
+  }
+  .fit.bad {
+    background: var(--warn-soft);
+  }
+  .fit .count {
+    font-size: 13px;
+  }
+  .fit .count b {
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  .fit .hint {
+    margin: 2px 0 0;
   }
   .stepper {
     display: flex;

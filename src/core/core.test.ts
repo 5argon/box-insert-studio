@@ -780,7 +780,7 @@ describe('readme markdown', () => {
 
 describe('card direction arrow placement', () => {
   it('sits beside the letter when there is room, above it in narrow tall slots', async () => {
-    const { labelLayout } = await import('../lib/cardArrow');
+    const { labelLayout } = await import('../lib/itemArrow');
     const wide = labelLayout({ x: 0, y: 0, w: 100, h: 60 }, 20, 1, true);
     expect(wide.size).toBe(20);
     expect(wide.arrow!.x).toBeGreaterThan(wide.letterX);
@@ -791,5 +791,87 @@ describe('card direction arrow placement', () => {
     const none = labelLayout({ x: 0, y: 0, w: 100, h: 60 }, 20, 1, false);
     expect(none.arrow).toBeUndefined();
     expect(none.letterX).toBe(50);
+  });
+});
+
+describe('item simulation', () => {
+  it('counts items standing in a row along the arrow, leaving the free space', async () => {
+    const { fitItems } = await import('./items');
+    const c = { rect: { x: 0, y: 0, w: 70, h: 100 }, height: 90 };
+    const cards = fitItems(c, 'front', { on: true, shape: 'box', width: 66, height: 91, thickness: 0.6, spare: 10 });
+    expect(cards.along).toBe(100);
+    expect(cards.count).toBe(150);
+    expect(cards.used).toBeCloseTo(90, 6);
+    expect(cards.left).toBeCloseTo(10, 6);
+    expect(cards.warnings).toEqual(['The items stand 1 mm above the walls (the slot is 90 mm deep).']);
+    const discs = fitItems(c, 'right', { on: true, shape: 'cylinder', width: 25, height: 999, thickness: 3, spare: 0 });
+    expect(discs.along).toBe(70);
+    expect(discs.count).toBe(23);
+    expect(discs.faceH).toBe(25);
+    expect(discs.warnings).toEqual([]);
+    expect(fitItems(c, 'back', { on: true, shape: 'box', width: 80, height: 10, thickness: 5, spare: 120 }).warnings).toEqual([
+      'The items are 10 mm wider than the slot (70 mm).',
+      'The free space is longer than the slot.',
+    ]);
+  });
+});
+
+describe('item simulation in 3D', () => {
+  it('stands items from the arrow tail toward its head, centred across, on the raised floor, clear of every piece', async () => {
+    const { buildScene, overlap } = await import('./scene');
+    const { setPad } = await import('./edit');
+    const p = defaultProject();
+    const T = p.material.thickness;
+    const a0 = solveProject(p).compartments.find((c) => c.label === 'A')!;
+    setPad(a0.node, 2);
+    const a1 = solveProject(p).compartments.find((c) => c.label === 'A')!;
+    a0.node.arrow = 'front';
+    a0.node.items = { on: true, shape: 'box', width: a1.rect.w - 4, height: a1.height - 5, thickness: 0.6125, spare: 10 };
+    let s = solveProject(p);
+    const a = s.compartments.find((c) => c.label === 'A')!;
+    let model = buildScene(p, s);
+    const tray = model.trays.find((t) => t.id === a.trayId)!;
+    const row = tray.items.find((r) => r.compartmentId === a.id)!;
+    expect(row.fits).toBe(true);
+    expect(row.axis).toBe('y');
+    expect(row.items).toHaveLength(Math.floor((a.rect.h - 10) / 0.6125));
+    expect(row.items[0].y).toBeCloseTo(a.rect.y, 6);
+    const last = row.items[row.items.length - 1];
+    expect(last.y + last.d).toBeLessThanOrEqual(a.rect.y + a.rect.h - 10 + 1e-6);
+    expect(row.items[0].x + row.items[0].w / 2).toBeCloseTo(a.rect.x + a.rect.w / 2, 6);
+    expect(row.items[0].z).toBeCloseTo(T + 2 * T, 6);
+    const blocks = model.trays.flatMap((t) => t.blocks);
+    for (const it of row.items) for (const b of blocks) expect(overlap(it as never, b)).toBeLessThan(1e-6);
+
+    // Pointing back: the row starts at the front.
+    a.node.arrow = 'back';
+    model = buildScene(p, solveProject(p));
+    const back = model.trays.flatMap((t) => t.items).find((r) => r.compartmentId === a.id)!;
+    expect(back.items[0].y + back.items[0].d).toBeCloseTo(a.rect.y + a.rect.h, 6);
+
+    // Switched off, or with no arrow: nothing to draw.
+    a.node.items!.on = false;
+    s = solveProject(p);
+    expect(buildScene(p, s).trays.flatMap((t) => t.items)).toEqual([]);
+  });
+
+  it('fills both boxes of a stack and skips a compartment that holds a box', async () => {
+    const { buildScene } = await import('./scene');
+    const p = defaultProject();
+    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    setStacked(g.node, true);
+    const g1 = solveProject(p).compartments.find((c) => c.label === 'G1')!;
+    g1.node.arrow = 'right';
+    g1.node.items = { on: true, shape: 'cylinder', width: 10, height: 0, thickness: 3, spare: 0 };
+    g.node.arrow = 'left';
+    g.node.items = { on: true, shape: 'box', width: 10, height: 10, thickness: 1, spare: 0 };
+    const s = solveProject(p);
+    const rows = buildScene(p, s).trays.flatMap((t) => t.items.map((r) => ({ tray: t, r })));
+    expect(rows.map((x) => x.r.compartmentId)).toEqual([g1.id, g1.id]);
+    const [lower, upper] = rows.sort((x, y) => x.tray.level - y.tray.level);
+    const box = s.trays.find((t) => t.wellId === g.id && !t.copyOf)!;
+    expect(upper.r.items[0].z - lower.r.items[0].z).toBeCloseTo(box.height, 6);
+    expect(lower.r.items[0].h).toBe(10);
+    expect(lower.r.items[0].x).toBeCloseTo(s.compartments.find((c) => c.id === g1.id)!.rect.x, 6);
   });
 });

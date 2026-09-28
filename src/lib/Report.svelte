@@ -6,7 +6,7 @@
   import { panelUse, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import type { Project } from '../core/types';
   import Markdown from './Markdown.svelte';
-  import { ARROW_ANGLE, arrowPath, labelLayout } from './cardArrow';
+  import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
   import { download, slug } from './state.svelte';
 
   let { project, solved, cut, plan }: { project: Project; solved: Solved; cut: CutList; plan: CutPlan } = $props();
@@ -224,7 +224,7 @@
                   <path
                     d={arrowPath(place.arrow.len)}
                     transform="translate({place.arrow.x} {place.arrow.y}) rotate({ARROW_ANGLE[c.node.arrow]})"
-                    class="card-arrow"
+                    class="item-arrow"
                     style:stroke={sectionInk(c.index)}
                     style:stroke-width={Math.max(0.6, size * 0.09)}
                   />
@@ -456,7 +456,7 @@
   .templates figure {
     margin: 0;
   }
-  .card-arrow {
+  .item-arrow {
     fill: none;
     stroke-linecap: round;
     stroke-linejoin: round;

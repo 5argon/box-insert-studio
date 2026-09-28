@@ -153,7 +153,7 @@
               </button>
             {:else}
               {#await import('./lib/three/Thumbnail3D.svelte') then { default: Thumbnail3D }}
-                <Thumbnail3D model={thumbModel} dark={isDark()} onopen={() => (studio.view = '3d')} />
+                <Thumbnail3D model={thumbModel} dark={isDark()} items={studio.view3d.items} onopen={() => (studio.view = '3d')} />
                 <button class="thumb-collapse" onclick={() => setPreviewCollapsed(true)} data-tip="Collapse the 3D preview" aria-label="Collapse the 3D preview"
                   >–</button
                 >

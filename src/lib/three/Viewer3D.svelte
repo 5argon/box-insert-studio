@@ -11,6 +11,7 @@
     outer,
     ortho,
     dark,
+    items = true,
   }: {
     model: SceneModel;
     /** Style for each tray key. */
@@ -19,6 +20,8 @@
     ortho: boolean;
     /** Dark theme: lighter lines. */
     dark: boolean;
+    /** Show simulated items. */
+    items?: boolean;
   } = $props();
 
   let host: HTMLDivElement;
@@ -165,12 +168,12 @@
   function applyAll() {
     if (!objects) return;
     objects.outer.visible = outer;
-    for (const t of objects.trays) applyStyle(t, styleOf(t.key, t.layerId));
+    for (const t of objects.trays) applyStyle(t, styleOf(t.key, t.layerId), items);
   }
 
   // Restyle without rebuilding when view settings change.
   $effect(() => {
-    void [outer, styleOf];
+    void [outer, styleOf, items];
     applyAll();
     kick();
   });
