@@ -605,10 +605,11 @@ describe('3D scene', () => {
   it('keeps tray colours when another tray is added, and keeps them distinct', async () => {
     const { buildScene } = await import('./scene');
     const p = defaultProject();
-    const before = new Map(buildScene(p, solveProject(p)).trays.map((t) => [t.key, t.color]));
+    const colors = new Map<string, number>();
+    const before = new Map(buildScene(p, solveProject(p), colors).trays.map((t) => [t.key, t.color]));
     const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
     setStacked(g.node, true);
-    const after = buildScene(p, solveProject(p)).trays;
+    const after = buildScene(p, solveProject(p), colors).trays;
     for (const t of after) if (before.has(t.key)) expect(t.color).toBe(before.get(t.key));
     expect(new Set(after.map((t) => t.color)).size).toBe(after.length);
   });

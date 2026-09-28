@@ -74,7 +74,12 @@ export function trayColor(index: number, lightness = 45): string {
   return hslToHex(TRAY_HUES[index % TRAY_HUES.length], 68, lightness);
 }
 
-export function buildScene(project: Project, solved: Solved): SceneModel {
+/**
+ * `colors` remembers which hue each tray key got. Pass the same map on every build (the viewer
+ * keeps one for the session) and a tray keeps its colour for as long as it exists; new trays
+ * take a hue no current tray uses.
+ */
+export function buildScene(project: Project, solved: Solved, colors: Map<string, number> = new Map()): SceneModel {
   const T = project.material.thickness;
   const layers: SceneLayer[] = [];
   let z = 0;
@@ -93,16 +98,17 @@ export function buildScene(project: Project, solved: Solved): SceneModel {
     return base + T + (t.copyOf ? t.height : 0);
   }
 
-  // Colours follow each tray's stable key, so they do not shift when other trays come and go.
-  // A tray takes its preferred hue unless an earlier tray has it, then the next free one.
-  const used = new Set<number>();
+  const keyOf = (t: Tray) => `${t.layerId}:${t.nodeId}:${t.copyOf ? 1 : 0}`;
+  const taken = new Set(solved.trays.map(keyOf).filter((k) => colors.has(k)).map((k) => colors.get(k)!));
   const hueFor = (key: string) => {
+    const known = colors.get(key);
+    if (known !== undefined) return known;
     let hash = 0;
     for (const ch of key) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
     let i = hash % TRAY_HUES.length;
-    for (let n = 0; n < TRAY_HUES.length && used.has(i); n++) i = (i + 1) % TRAY_HUES.length;
-    used.add(i);
-    if (used.size >= TRAY_HUES.length) used.clear();
+    for (let n = 0; n < TRAY_HUES.length && taken.has(i); n++) i = (i + 1) % TRAY_HUES.length;
+    taken.add(i);
+    colors.set(key, i);
     return i;
   };
 
@@ -121,7 +127,7 @@ export function buildScene(project: Project, solved: Solved): SceneModel {
     const well = t.wellId ? labelOf.get(t.wellId) : undefined;
     const label =
       t.depth === 0 ? `Tray ${t.number}` : t.stacked ? `Box in ${well}, ${level ? 'upper' : 'lower'}` : `Box in ${well}`;
-    const key = `${t.layerId}:${t.nodeId}:${level}`;
+    const key = keyOf(t);
     return {
       key,
       id: t.id,
