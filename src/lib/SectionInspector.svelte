@@ -109,6 +109,12 @@
 
 
   const SIDE_ORDER: Side[] = ['back', 'front', 'left', 'right'];
+  const ARROWS: { side: Side; glyph: string }[] = [
+    { side: 'back', glyph: '↑' },
+    { side: 'front', glyph: '↓' },
+    { side: 'left', glyph: '←' },
+    { side: 'right', glyph: '→' },
+  ];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
   /** Height of one box: what is left above the tray floor and any raised floor, halved when two are stacked. */
   const boxHeight = $derived((layer.height - T - (well?.padHeight ?? 0)) / (stacked ? 2 : 1));
@@ -214,6 +220,23 @@
   {#if lowSides.length}
     <p class="hint">Lowered dividers on the {lowSides.join(', ')}.</p>
   {/if}
+</div>
+
+<div class="panel-section">
+  <h2>Card direction</h2>
+  <div class="arrows" role="group" aria-label="Card direction arrow">
+    {#each ARROWS as a (a.side)}
+      <button
+        class="small"
+        class:on={c.node.arrow === a.side}
+        onclick={() => (c.node.arrow === a.side ? delete c.node.arrow : (c.node.arrow = a.side))}
+        aria-label="Arrow toward the {a.side}"
+        aria-pressed={c.node.arrow === a.side}
+        data-tip={c.node.arrow === a.side ? 'Remove the arrow' : `Arrow toward the ${a.side}`}>{a.glyph}</button
+      >
+    {/each}
+    <span class="hint">{c.node.arrow ? `Toward the ${c.node.arrow}, drawn beside the letter` : 'Mark which way cards face, beside the letter'}</span>
+  </div>
 </div>
 
 <div class="panel-section">
@@ -431,6 +454,19 @@
     color: var(--accent);
     background: none;
     text-align: left;
+  }
+  .arrows {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .arrows button {
+    width: 30px;
+    font-size: 14px;
+    padding: 1px 0;
+  }
+  .arrows .hint {
+    margin-left: 4px;
   }
   .stepper {
     display: flex;

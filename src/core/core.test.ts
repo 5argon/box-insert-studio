@@ -777,3 +777,19 @@ describe('readme markdown', () => {
     expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener noreferrer">ok</a>');
   });
 });
+
+describe('card direction arrow placement', () => {
+  it('sits beside the letter when there is room, above it in narrow tall slots', async () => {
+    const { labelLayout } = await import('../lib/cardArrow');
+    const wide = labelLayout({ x: 0, y: 0, w: 100, h: 60 }, 20, 1, true);
+    expect(wide.size).toBe(20);
+    expect(wide.arrow!.x).toBeGreaterThan(wide.letterX);
+    expect(wide.arrow!.y).toBeCloseTo(30 - 20 * 0.12, 6);
+    const narrow = labelLayout({ x: 0, y: 0, w: 24, h: 120 }, 20, 2, true);
+    expect(narrow.arrow!.x).toBeCloseTo(narrow.letterX, 6);
+    expect(narrow.arrow!.y).toBeLessThan(60 - narrow.size * 0.12);
+    const none = labelLayout({ x: 0, y: 0, w: 100, h: 60 }, 20, 1, false);
+    expect(none.arrow).toBeUndefined();
+    expect(none.letterX).toBe(50);
+  });
+});

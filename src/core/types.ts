@@ -36,6 +36,8 @@ export interface SectionNode {
   notches: Side[];
   /** This compartment's notch size, instead of the project's. */
   notchSize?: { width: Mm; depth: Mm };
+  /** An arrow drawn beside the letter, e.g. which way cards face in a card slot. */
+  arrow?: Side;
   /**
    * Removable box(es) standing in this compartment. The layout inside works like a layer:
    * a top-level `trays` split gives separate boxes, `divider` splits give one box with dividers.

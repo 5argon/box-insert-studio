@@ -2,6 +2,7 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { dragBar, findSplit, sectionIds } from '../core/edit';
   import { mm } from '../core/geom';
+  import { ARROW_ANGLE, arrowPath, labelLayout } from './cardArrow';
   import type { Bar, PieceInst, SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
   import type { Layer, Project } from '../core/types';
@@ -200,7 +201,8 @@
     {#each solved.compartments.filter((c) => c.depth === depth) as c (c.id)}
       {@const isSel = selected?.kind === 'section' && selected.id === c.id}
       {@const label = c.label + (c.stacked ? '²' : '') + (c.pad ? '*' : '')}
-      {@const size = fitText(label, c.rect.w, labelSize(c.rect.w, c.rect.h))}
+      {@const place = labelLayout(c.rect, labelSize(c.rect.w, c.rect.h), label.length, !!c.node.arrow)}
+      {@const size = place.size}
       {@const dimsText = `${mm(c.rect.w)} × ${mm(c.rect.h)}`}
       {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3)))}
       <g
@@ -222,9 +224,18 @@
           class:well={!!c.node.insert && depth === 0}
         />
         {#if size > 0}
-          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.index)} class="letter"
+          <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.index)} class="letter"
             >{c.label}{c.stacked ? '²' : ''}{#if c.pad}<tspan dy="-0.35em" font-size="0.65em">*</tspan>{/if}</text
           >
+          {#if place.arrow && c.node.arrow}
+            <path
+              d={arrowPath(place.arrow.len)}
+              transform="translate({place.arrow.x} {place.arrow.y}) rotate({ARROW_ANGLE[c.node.arrow]})"
+              class="card-arrow"
+              style:stroke={sectionInk(c.index)}
+              style:stroke-width={Math.max(0.6, size * 0.09)}
+            />
+          {/if}
         {/if}
         {#if c.rect.h > 14 && readable(dims)}
           <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} style:fill={sectionInk(c.index)} class="dims">{dimsText}</text>
@@ -371,6 +382,12 @@
     font-weight: 700;
     text-anchor: middle;
     dominant-baseline: central;
+    pointer-events: none;
+  }
+  .card-arrow {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
     pointer-events: none;
   }
   .dims {

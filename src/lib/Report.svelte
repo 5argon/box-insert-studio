@@ -6,6 +6,7 @@
   import { panelUse, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import type { Project } from '../core/types';
   import Markdown from './Markdown.svelte';
+  import { ARROW_ANGLE, arrowPath, labelLayout } from './cardArrow';
   import { download, slug } from './state.svelte';
 
   let { project, solved, cut, plan }: { project: Project; solved: Solved; cut: CutList; plan: CutPlan } = $props();
@@ -215,9 +216,19 @@
               {/each}
               {#each comps as c (c.id)}
                 <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.index, 90)} />
-                <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3))}
-                  >{c.label}{c.stacked ? '²' : ''}{c.pad ? '*' : ''}</text
-                >
+                {@const label = `${c.label}${c.stacked ? '²' : ''}${c.pad ? '*' : ''}`}
+                {@const place = labelLayout(c.rect, Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3)), label.length, !!c.node.arrow)}
+                {@const size = place.size}
+                <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{label}</text>
+                {#if place.arrow && c.node.arrow}
+                  <path
+                    d={arrowPath(place.arrow.len)}
+                    transform="translate({place.arrow.x} {place.arrow.y}) rotate({ARROW_ANGLE[c.node.arrow]})"
+                    class="card-arrow"
+                    style:stroke={sectionInk(c.index)}
+                    style:stroke-width={Math.max(0.6, size * 0.09)}
+                  />
+                {/if}
               {/each}
               {#each pieces.filter((p) => p.kind === 'wall' || p.kind === 'divider') as p (p.id)}
                 <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="tray-piece" />
@@ -444,6 +455,11 @@
   }
   .templates figure {
     margin: 0;
+  }
+  .card-arrow {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .comp {
     text-anchor: middle;
