@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** Tray colours for the session: a tray keeps its colour while other trays come and go. */
+  const trayColors = new Map<string, number>();
+</script>
+
 <script lang="ts">
   import type { Solved } from '../../core/layout';
   import { buildScene } from '../../core/scene';
@@ -9,7 +14,7 @@
   let { project, solved }: { project: Project; solved: Solved } = $props();
 
   const v = studio.view3d;
-  const model = $derived(buildScene(project, solved));
+  const model = $derived(buildScene(project, solved, trayColors));
   let hoverKey = $state<string | null>(null);
   let viewer: Viewer3D | undefined = $state();
 
