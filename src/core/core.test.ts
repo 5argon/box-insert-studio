@@ -764,3 +764,16 @@ describe('notch size override', () => {
     expect(buildCutList(s, p.precision).groups.length).toBeGreaterThanOrEqual(before);
   });
 });
+
+describe('readme markdown', () => {
+  it('renders Markdown, including tables, and escapes raw HTML and unsafe links', async () => {
+    const { renderMarkdown } = await import('./markdown');
+    const html = renderMarkdown('# Title\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n<script>alert(1)</script>\n\n[x](javascript:alert(1)) [ok](https://example.com)');
+    expect(html).toContain('<h1>Title</h1>');
+    expect(html).toContain('<table>');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toMatch(/href="javascript:/);
+    expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener noreferrer">ok</a>');
+  });
+});

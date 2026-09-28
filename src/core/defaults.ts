@@ -107,6 +107,20 @@ export function defaultProject(): Project {
   return {
     version: 2,
     name: 'DOOM-style insert',
+    readme: `Insert for **DOOM: The Board Game** (2016), after a published 5 mm foam board design.
+
+## Where things go
+
+| Tray | Holds |
+| --- | --- |
+| Bottom | Cards in **A** and **B** (finger notches front and back), tokens in the rest, dice in the lift-out box in **G** |
+| Top | Map tiles in **J**, small tokens in the left column |
+
+## Building tips
+
+- The top tray sits on the bottom tray's walls; the board and rulebook go on top.
+- Glue with thick PVA and pin the walls while it dries.
+`,
     box: { width: 286, depth: 286, height: 96 },
     material: { thickness: 5, sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! }, trim: 5, kerf: 0.5 },
     precision: 0.5,
@@ -126,7 +140,7 @@ export function defaultProject(): Project {
 export function blankProject(from?: Project): Project {
   const base = from ? structuredClone(from) : defaultProject();
   const height = Math.max(10, base.box.height - 10);
-  return { ...base, name: 'Untitled insert', layers: [newLayer('Layer 1', height)] };
+  return { ...base, name: 'Untitled insert', readme: '', layers: [newLayer('Layer 1', height)] };
 }
 
 /**

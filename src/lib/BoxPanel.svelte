@@ -6,11 +6,20 @@
   import LayerIcon from './LayerIcon.svelte';
   import NumberField from './NumberField.svelte';
   import NumberInput from './NumberInput.svelte';
+  import ReadmeDialog from './ReadmeDialog.svelte';
   import { studio } from './state.svelte';
 
   let { project, solved }: { project: Project; solved: Solved } = $props();
 
   const T = $derived(project.material.thickness);
+  let readme: ReadmeDialog | undefined = $state();
+  /** First line of the readme, without Markdown marks, as a reminder of what it says. */
+  const readmeTitle = $derived(
+    (project.readme ?? '')
+      .split('\n')
+      .map((l) => l.replace(/^[#>\-*\s]+/, '').replace(/[*_`]/g, '').trim())
+      .find((l) => l.length > 0) ?? '',
+  );
 
   function chooseSheet(e: Event & { currentTarget: HTMLSelectElement }) {
     const p = SHEET_PRESETS.find((x) => x.preset === e.currentTarget.value);
@@ -41,7 +50,14 @@
 <div class="panel-section">
   <h2>Project</h2>
   <input class="name" bind:value={project.name} aria-label="Project name" />
+  <div class="readme-row">
+    <button class="small" onclick={() => readme?.open()} data-tip="Notes for this project in Markdown, printed at the top of the export">
+      {readmeTitle ? 'Edit readme' : 'Add readme'}
+    </button>
+    {#if readmeTitle}<span class="hint readme-peek">{readmeTitle}</span>{/if}
+  </div>
 </div>
+<ReadmeDialog bind:this={readme} {project} />
 
 <div class="panel-section">
   <h2>Box inside</h2>
@@ -176,6 +192,23 @@
   .name {
     width: 100%;
     font-weight: 600;
+  }
+  .readme-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+    min-width: 0;
+  }
+  .readme-row button {
+    white-space: nowrap;
+    flex: none;
+  }
+  .readme-peek {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
   .field {
     display: grid;

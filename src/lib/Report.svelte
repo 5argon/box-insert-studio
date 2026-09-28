@@ -5,6 +5,7 @@
   import type { Solved, Tray } from '../core/layout';
   import { panelUse, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import type { Project } from '../core/types';
+  import Markdown from './Markdown.svelte';
   import { download, slug } from './state.svelte';
 
   let { project, solved, cut, plan }: { project: Project; solved: Solved; cut: CutList; plan: CutPlan } = $props();
@@ -100,7 +101,7 @@
         <h1>{project.name}</h1>
         <p class="facts">
           Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.material.thickness} mm material ·
-          {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {solved.headroom.toFixed(1)} mm left above
+          {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {mm(solved.headroom)} mm headroom
         </p>
         <p class="facts">
           <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from <b>{plan.sheets.length}</b>
@@ -116,6 +117,13 @@
     {#each errors as e, i (i)}
       <div class="issue error">{e.message}</div>
     {/each}
+
+    {#if project.readme?.trim()}
+      <section class="notes">
+        <h2>Notes</h2>
+        <Markdown source={project.readme} />
+      </section>
+    {/if}
 
     <section>
       <h2>Cut list</h2>
