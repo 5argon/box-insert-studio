@@ -100,8 +100,9 @@
     <div class="brand">Box Insert Studio</div>
     <nav>
       <button class:on={studio.view === 'layout'} onclick={() => (studio.view = 'layout')}>1 · Layout</button>
+      <button class:on={studio.view === '3d'} onclick={() => (studio.view = '3d')}>2 · 3D view</button>
       <button class:on={studio.view === 'report'} onclick={() => (studio.view = 'report')}>
-        2 · Cut list &amp; assembly{errorCount ? ` (${errorCount} problem${errorCount === 1 ? '' : 's'})` : ''}
+        3 · Cut list &amp; assembly{errorCount ? ` (${errorCount} problem${errorCount === 1 ? '' : 's'})` : ''}
       </button>
     </nav>
     <div class="history">
@@ -171,6 +172,15 @@
         {/if}
       </aside>
     </div>
+  {:else if studio.view === '3d'}
+    <!-- Loaded on first use, so three.js stays out of the editor's initial download. -->
+    {#await import('./lib/three/View3D.svelte')}
+      <p class="loading">Loading 3D view…</p>
+    {:then { default: View3D }}
+      <View3D project={studio.project} {solved} />
+    {:catch err}
+      <p class="loading">Could not load the 3D view: {err.message}</p>
+    {/await}
   {:else}
     <Report project={studio.project} {solved} {cut} {plan} />
   {/if}
@@ -263,6 +273,10 @@
   .canvas-wrap {
     min-height: 0;
     padding: 12px 16px;
+  }
+  .loading {
+    margin: 40px;
+    color: var(--muted);
   }
   .list-item {
     display: flex;

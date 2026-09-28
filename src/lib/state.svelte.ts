@@ -7,6 +7,9 @@ const OLD_KEY = 'box-insert-studio/foam-project';
 
 export type Selection = { kind: 'section' | 'split'; id: string } | null;
 
+/** How trays that are not highlighted are drawn in the 3D view. */
+export type ViewStyle = 'wire' | 'glass' | 'solid';
+
 function load(): Project {
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
@@ -24,7 +27,18 @@ export const studio = $state({
   project: initial,
   layerId: initial.layers[initial.layers.length - 1]?.id ?? '',
   selected: null as Selection,
-  view: 'layout' as 'layout' | 'report',
+  view: 'layout' as 'layout' | '3d' | 'report',
+  /** 3D view settings: not part of the project, so not saved or undone. */
+  view3d: {
+    outer: true,
+    style: 'wire' as ViewStyle,
+    /** Tray keys drawn solid while the rest use `style`. */
+    highlighted: [] as string[],
+    hiddenTrays: [] as string[],
+    hiddenLayers: [] as string[],
+    panel: true,
+    ortho: false,
+  },
   /** Cut-list group number highlighted in the canvas. */
   hoverGroup: null as number | null,
   showNumbers: false,

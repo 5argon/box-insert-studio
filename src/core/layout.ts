@@ -67,6 +67,8 @@ export interface Tray {
   /** For a box inside a compartment: that compartment's id and the tray it sits in. */
   wellId?: string;
   parentTrayId?: string;
+  /** The layout node this tray was built from; stable while the layout is edited. */
+  nodeId: string;
   /** Part of a stack of two identical boxes. */
   stacked: boolean;
   /** For the upper box of a stack: the tray id of the identical box below it. */
@@ -237,6 +239,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       wallHeight: trayWall,
       wellId: ctx.wellId,
       parentTrayId: ctx.parentTrayId,
+      nodeId: node.id,
       stacked: !!ctx.stacked,
     };
     trays.push(tray);
