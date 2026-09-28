@@ -123,6 +123,13 @@ export function setInsert(layer: Layer, sectionId: string, on: boolean): boolean
   return true;
 }
 
+/** Set the number of raised-floor layers in a compartment; 0 removes the raised floor. */
+export function setPad(section: SectionNode, layers: number) {
+  const n = Math.max(0, Math.floor(layers));
+  if (n) section.pad = n;
+  else delete section.pad;
+}
+
 /** Stack two identical half-height boxes in the compartment, or go back to one full-height box. */
 export function setStacked(section: SectionNode, stacked: boolean) {
   if (!section.insert) return;

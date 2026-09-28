@@ -60,6 +60,15 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
       groups: [num(d)],
     });
   }
+  // Raised floors go in once the compartment around them is built.
+  const pads = pieces.filter((p) => p.kind === 'pad');
+  for (const c of solved.compartments.filter((x) => pads.some((p) => p.padFor === x.id))) {
+    const mine = pads.filter((p) => p.padFor === c.id);
+    steps.push({
+      text: `Glue ${refs(mine, cut)} flat into compartment ${c.label}, one on top of another, to raise its floor ${mm(mine.length * project.material.thickness)} mm.`,
+      groups: mine.map(num),
+    });
+  }
   if (tray.depth === 1) {
     const well = solved.compartments.find((c) => c.id === tray.wellId)?.label ?? '?';
     steps.push({

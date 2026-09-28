@@ -623,3 +623,110 @@ describe('3D scene', () => {
     expect(buildScene(p, solveProject(p)).trays.map((t) => t.key)).toEqual(before);
   });
 });
+
+describe('raised floors', () => {
+  async function padded(layers: number, label = 'S') {
+    const { setPad } = await import('./edit');
+    const p = defaultProject();
+    const c0 = solveProject(p).compartments.find((c) => c.label === label)!;
+    setPad(c0.node, layers);
+    return p;
+  }
+
+  it('stacks pads cut to the inside size less clearance and reports the height left', async () => {
+    const p = await padded(2);
+    const s = solveProject(p);
+    const c = s.compartments.find((x) => x.label === 'S')!;
+    const T = p.material.thickness;
+    expect(c.pad).toBe(2);
+    expect(c.padHeight).toBe(2 * T);
+    expect(c.fullHeight).toBe(p.layers[1].height - T);
+    expect(c.height).toBe(c.fullHeight - 2 * T);
+    const pads = s.pieces.filter((x) => x.kind === 'pad' && x.padFor === c.id);
+    expect(pads).toHaveLength(2);
+    expect(pads[0].length).toBeCloseTo(c.rect.w - p.clearance, 6);
+    expect(pads[0].height).toBeCloseTo(c.rect.h - p.clearance, 6);
+  });
+
+  it('reports overpadding after the material gets thicker', async () => {
+    const { maxPad } = await import('./layout');
+    const p0 = defaultProject();
+    const full = solveProject(p0).compartments.find((x) => x.label === 'S')!.fullHeight;
+    const most = maxPad(full, p0.material.thickness);
+    expect(most * p0.material.thickness).toBeLessThan(full);
+    expect((most + 1) * p0.material.thickness).toBeGreaterThanOrEqual(full);
+    const p = await padded(most);
+    expect(solveProject(p).compartments.find((x) => x.label === 'S')!.issues).toEqual([]);
+    p.material.thickness = 6;
+    const c = solveProject(p).compartments.find((x) => x.label === 'S')!;
+    const err = c.issues.find((i) => i.level === 'error');
+    expect(err?.message).toMatch(/Raised floor .* taller than/);
+    const remove = Number(/Remove (\d+) layer/.exec(err!.message)![1]);
+    expect((c.pad - remove) * 6).toBeLessThan(c.fullHeight);
+    expect((c.pad - remove + 1) * 6).toBeGreaterThanOrEqual(c.fullHeight);
+  });
+
+  it('shows pads stacked in 3D without overlapping anything', async () => {
+    const { buildScene, overlap } = await import('./scene');
+    const p = await padded(3);
+    const s = solveProject(p);
+    const model = buildScene(p, s);
+    const T = p.material.thickness;
+    const pads = model.trays.flatMap((t) => t.blocks).filter((b) => b.kind === 'pad');
+    expect(pads.map((b) => b.z - p.layers[0].height).sort((a, b) => a - b)).toEqual([T, 2 * T, 3 * T]);
+    const blocks = model.trays.flatMap((t) => t.blocks);
+    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBe(0);
+  });
+
+  it('lists pads in the cut list and assembly steps', async () => {
+    const { panelUse } = await import('./pieces');
+    const p = await padded(2);
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const g = cut.groups.find((x) => x.pieces.some((q) => q.kind === 'pad'))!;
+    expect(panelUse(g)).toBe('pad');
+    expect(g.pieces).toHaveLength(2);
+    const tray = s.trays.find((t) => t.layerId === p.layers[1].id)!;
+    const steps = trayInstructions(p, s, cut, tray);
+    expect(steps.some((st) => new RegExp(`#${g.number} ×2 flat into compartment S`).test(st.text))).toBe(true);
+    expect(planCuts(p, cut).issues).toEqual([]);
+  });
+
+  it('lifts a removable box on a raised floor, shorter so its top stays flush', async () => {
+    const { buildScene, overlap } = await import('./scene');
+    const p = await padded(2, 'G');
+    const s = solveProject(p);
+    const T = p.material.thickness;
+    const H = p.layers[0].height;
+    const g = s.compartments.find((c) => c.label === 'G')!;
+    expect(s.pieces.filter((x) => x.padFor === g.id)).toHaveLength(2);
+    const box = s.trays.find((t) => t.wellId === g.id)!;
+    expect(box.height).toBe(H - T - 2 * T);
+    const model = buildScene(p, s);
+    const blocks = model.trays.flatMap((t) => t.blocks);
+    const boxTop = Math.max(...model.trays.find((t) => t.id === box.id)!.blocks.map((b) => b.z + b.h));
+    expect(boxTop).toBeCloseTo(H, 6);
+    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBe(0);
+  });
+
+  it('keeps a stacked pair on a raised floor flush, and flags a floor that leaves the boxes too shallow', async () => {
+    const { buildScene } = await import('./scene');
+    const { maxPad } = await import('./layout');
+    const p = await padded(1, 'G');
+    const g0 = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    setStacked(g0.node, true);
+    let s = solveProject(p);
+    const T = p.material.thickness;
+    const H = p.layers[0].height;
+    const boxes = s.trays.filter((t) => t.wellId === g0.id);
+    expect(boxes.map((b) => b.height)).toEqual([(H - 2 * T) / 2, (H - 2 * T) / 2]);
+    const top = Math.max(...buildScene(p, s).trays.flatMap((t) => (t.level === 1 ? t.blocks : [])).map((b) => b.z + b.h));
+    expect(top).toBeCloseTo(H, 6);
+    const g = s.compartments.find((c) => c.label === 'G')!;
+    const most = maxPad(g.fullHeight, T, 2);
+    g.node.pad = most + 1;
+    s = solveProject(p);
+    const err = s.compartments.find((c) => c.label === 'G')!.issues.find((i) => i.level === 'error');
+    expect(err?.message).toMatch(/too little height for the stacked boxes.*Remove 1 layer/);
+  });
+});

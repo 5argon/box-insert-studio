@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CutList, CutPlan } from '../core/pieces';
+  import { panelUse, type CutList, type CutPlan } from '../core/pieces';
   import type { Project } from '../core/types';
   import { studio } from './state.svelte';
 
@@ -28,12 +28,12 @@
           onmouseleave={() => (studio.hoverGroup = null)}
           onfocus={() => (studio.hoverGroup = g.number)}
           onblur={() => (studio.hoverGroup = null)}
-          title={g.kind === 'base' ? 'Base' : `${g.pieces.length} pieces ${g.length} long, ${g.height} tall${g.notches.length ? ', notched' : ''}`}
+          title={g.kind === 'base' ? `${g.pieces.length} × ${g.length} × ${g.height}: ${panelUse(g)}` : `${g.pieces.length} pieces ${g.length} long, ${g.height} tall${g.notches.length ? ', notched' : ''}`}
         >
           <span class="num">#{g.number}</span>
           <span class="qty">×{g.pieces.length}</span>
           <span class="size">{g.length}×{g.height}</span>
-          {#if g.kind === 'base'}<span class="tag">base</span>{/if}
+          {#if g.kind === 'base'}<span class="tag">{panelUse(g)}</span>{/if}
           {#if g.notches.length}<span class="tag notch">notch</span>{/if}
         </button>
       {/each}

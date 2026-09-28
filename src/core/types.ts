@@ -39,6 +39,8 @@ export interface SectionNode {
    * a top-level `trays` split gives separate boxes, `divider` splits give one box with dividers.
    * Only one level deep: compartments inside an insert cannot have inserts of their own.
    */
+  /** Layers of material glued on the floor to bring shallow contents up within reach. */
+  pad?: number;
   insert?: {
     root: LayoutNode;
     /** Two identical boxes stacked, each half the height, each with its own floor. */

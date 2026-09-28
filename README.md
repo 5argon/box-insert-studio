@@ -21,7 +21,8 @@ reproduces that insert's cut list.
 1. **Layout**: set the box's inside size, clearance and layers (stacked trays, bottom first,
    with the space left above for the board and rulebook). Divide each layer with dividers:
    drag them, type sizes to lock them, or distribute equally. Compartments are lettered in reading
-   order. Per compartment: inside size, finger notches per side, and optionally a removable box
+   order. Per compartment: inside size, finger notches per side, a raised floor (layers of the
+   material stacked on the floor, marked with * on the letter), and optionally a removable box
    standing inside it (one box with dividers, or separate boxes; compartments inside are labelled
    G1, G2, …). Per divider split: glued dividers or separate lift-out trays, and how much lower
    the dividers stand.
@@ -65,6 +66,10 @@ With board thickness T and tray height H (including the base):
   It is H − T tall, so its top sits flush with the walls around it; its walls and dividers are
   shortened to match. Boxes go one level deep. Stacking splits that height exactly in half: two
   identical boxes, each (H − T) / 2 tall with its own floor, so each holds (H − T) / 2 − T.
+- A raised floor of n layers stacks n pieces cut to the compartment's inside size (less the
+  clearance), taking n·T from its height. Under a removable box it lifts the box, which gets
+  n·T shorter so its top stays flush. A floor that no longer fits (say after switching to a
+  thicker material) is reported as an error with how many layers to remove.
 
 ## Code layout
 
