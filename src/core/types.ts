@@ -69,6 +69,8 @@ export interface SheetSpec {
 export interface Project {
   version: 2;
   name: string;
+  /** Notes about the insert, in Markdown; printed at the top of the export. */
+  readme?: string;
   box: { width: Mm; depth: Mm; height: Mm };
   /** The sheet material everything is cut from: foam board, MDF, greyboard… */
   material: {

@@ -37,6 +37,10 @@ reproduces that insert's cut list.
    one height chopped into lengths), per-tray assembly steps with a numbered diagram, and a
    true-size notch template. Print or save as PDF; export the cut list as CSV.
 
+Each project can have a **readme** in Markdown (Project → Add readme), printed as a Notes section
+at the top of the export. Raw HTML in it is shown as text and unsafe links are dropped, so a
+shared project file cannot run scripts.
+
 Projects autosave in the browser; **Save** / **Open** use `.insert.json` files. **New** starts an
 empty box with the same size and board settings; **Example** loads the DOOM insert.
 **Undo** / **Redo** (⌘Z / ⇧⌘Z, or Ctrl+Z / Ctrl+Y) cover every change: each click is a step, and a
