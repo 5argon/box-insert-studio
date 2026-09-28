@@ -25,7 +25,8 @@ reproduces that insert's cut list.
    material stacked on the floor, marked with * on the letter), and optionally a removable box
    standing inside it (one box with dividers, or separate boxes; compartments inside are labelled
    G1, G2, …). Per divider split: glued dividers or separate lift-out trays, and how much lower
-   the dividers stand.
+   the dividers stand. A small 3D preview in the corner shows the whole insert; click it for
+   the 3D view.
 2. **3D view**: the whole insert in 3D, view only. Drag to orbit around the box's centre (from
    straight down to level with the box, never underneath), scroll or pinch to zoom, or pick a
    preset (3/4, top, front, side), in perspective or orthographic. Show or hide the game box
@@ -84,7 +85,8 @@ With board thickness T and tray height H (including the base):
   - `scene.ts`: 3D placement of every piece, renderer-independent; tests use it to check that no
     two pieces overlap.
 - `src/lib/`: Svelte 5 UI.
-  - `three/`: the 3D view (three.js), loaded only when the 3D tab opens.
+  - `three/`: the 3D view and the layout's corner preview (three.js), loaded after the editor
+    appears so it never slows the first load.
 
 ## Deploying
 

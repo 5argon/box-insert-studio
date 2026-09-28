@@ -2,6 +2,8 @@
   import { blankProject, defaultProject, migrateProject } from './core/defaults';
   import { solveProject } from './core/layout';
   import { buildCutList, planCuts } from './core/pieces';
+  import { buildScene } from './core/scene';
+  import { trayColors } from './lib/trayColors';
   import type { Project } from './core/types';
   import BoxPanel from './lib/BoxPanel.svelte';
   import CompSquare from './lib/CompSquare.svelte';
@@ -15,9 +17,10 @@
   import SplitInspector from './lib/SplitInspector.svelte';
   import { breakStep, recordProject, redo, undo, undoState } from './lib/history.svelte';
   import { download, persist, replaceProject, slug, studio, type Selection } from './lib/state.svelte';
-  import { setTheme, theme, type ThemePref } from './lib/theme.svelte';
+  import { isDark, setTheme, theme, type ThemePref } from './lib/theme.svelte';
 
   const solved = $derived(solveProject(studio.project));
+  const thumbModel = $derived(buildScene(studio.project, solved, trayColors));
   const cut = $derived(buildCutList(solved, studio.project.precision));
   const plan = $derived(planCuts(studio.project, cut));
 
@@ -142,6 +145,12 @@
           <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - studio.project.material.thickness} mm tall</span>
         </div>
         <div class="canvas-wrap">
+          <!-- A fixed 3/4 preview of the whole insert; loads three.js after the editor is up. -->
+          {#await import('./lib/three/Thumbnail3D.svelte') then { default: Thumbnail3D }}
+            <div class="thumb-slot">
+              <Thumbnail3D model={thumbModel} dark={isDark()} onopen={() => (studio.view = '3d')} />
+            </div>
+          {/await}
           <LayoutCanvas
             project={studio.project}
             {layer}
@@ -311,8 +320,15 @@
     align-items: center;
   }
   .canvas-wrap {
+    position: relative;
     min-height: 0;
     padding: 12px 16px;
+  }
+  .thumb-slot {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    z-index: 2;
   }
   .loading {
     margin: 40px;
