@@ -20,6 +20,12 @@ export interface PieceGroup {
   key: string;
 }
 
+/** What a group of flat rectangles is used as: "base", "pad" or "base, pad". Empty for strips. */
+export function panelUse(g: PieceGroup): string {
+  if (g.kind !== 'base') return '';
+  return [...new Set(g.pieces.map((p) => p.kind))].sort().join(', ');
+}
+
 export interface CutList {
   groups: PieceGroup[];
   groupOf: Map<string, PieceGroup>;
@@ -58,7 +64,7 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     let height = H;
     let notches: Notch[] = [];
     let flip = false;
-    if (p.kind === 'base') {
+    if (p.kind === 'base' || p.kind === 'pad') {
       length = Math.max(L, H);
       height = Math.min(L, H);
       key = `base:${length}x${height}`;
@@ -72,7 +78,7 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     }
     let g = map.get(key);
     if (!g) {
-      g = { number: 0, kind: p.kind === 'base' ? 'base' : 'strip', length, height, notches, pieces: [], key };
+      g = { number: 0, kind: p.kind === 'base' || p.kind === 'pad' ? 'base' : 'strip', length, height, notches, pieces: [], key };
       map.set(key, g);
     }
     g.pieces.push(p);

@@ -3,7 +3,7 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
-  import type { CutList, CutPlan, PieceGroup, SheetItem } from '../core/pieces';
+  import { panelUse, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import type { Project } from '../core/types';
   import { download, slug } from './state.svelte';
 
@@ -23,7 +23,7 @@
       // The upper box of a stack is built like the one below it; count it there.
       const tray = trayById.get(p.trayId)!;
       const t = tray.copyOf ? trayById.get(tray.copyOf)!.number : tray.number;
-      const kind = p.kind === 'divider' ? 'divider' : p.kind === 'wall' ? 'wall' : 'base';
+      const kind = p.kind;
       const m = byTray.get(t) ?? new Map<string, number>();
       m.set(kind, (m.get(kind) ?? 0) + 1);
       byTray.set(t, m);
@@ -71,7 +71,7 @@
 
   function exportCsv() {
     const rows = [['#', 'Qty', 'Kind', 'Length mm', 'Height mm', 'Notches', 'Used in']];
-    for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? 'base' : 'strip', String(g.length), String(g.height), notchText(g), where(g)]);
+    for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', String(g.length), String(g.height), notchText(g), where(g)]);
     const csv = rows.map((r) => r.map((c) => (/[",;]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
     download(`${slug(project.name)}-cut-list.csv`, csv, 'text/csv');
   }
@@ -121,7 +121,7 @@
             <tr>
               <td class="num">#{g.number}</td>
               <td class="qty">{g.pieces.length}</td>
-              <td class="size">{mm(g.length)} × {mm(g.height)}{g.kind === 'base' ? ' base' : ''}</td>
+              <td class="size">{mm(g.length)} × {mm(g.height)}{g.kind === 'base' ? ` ${panelUse(g)}` : ''}</td>
               <td>{notchText(g)}</td>
               <td class="muted">{where(g)}</td>
             </tr>
@@ -165,7 +165,7 @@
               {#each sheet.items as item, i (i)}
                 <li>
                   {#if item.kind === 'base'}
-                    Base #{item.group?.number}: {mm(item.group?.length ?? 0)} × {mm(item.group?.height ?? 0)} mm
+                    {item.group && panelUse(item.group) === 'pad' ? 'Pad' : 'Base'} #{item.group?.number}: {mm(item.group?.length ?? 0)} × {mm(item.group?.height ?? 0)} mm
                   {:else}
                     {stripText(item)}
                   {/if}
@@ -201,10 +201,10 @@
               {#each comps as c (c.id)}
                 <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} fill={sectionColor(c.index, 90)} />
                 <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" fill={sectionInk(c.index)} font-size={Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3))}
-                  >{c.label}</text
+                  >{c.label}{c.stacked ? '²' : ''}{c.pad ? '*' : ''}</text
                 >
               {/each}
-              {#each pieces.filter((p) => p.kind !== 'base') as p (p.id)}
+              {#each pieces.filter((p) => p.kind === 'wall' || p.kind === 'divider') as p (p.id)}
                 <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="tray-piece" />
                 {#each p.notches as n, i (i)}
                   {#if p.axis === 'x'}
@@ -214,7 +214,7 @@
                   {/if}
                 {/each}
               {/each}
-              {#each pieces.filter((p) => p.kind !== 'base' && (p.axis === 'x' ? p.footprint.w : p.footprint.h) > 12) as p (p.id)}
+              {#each pieces.filter((p) => (p.kind === 'wall' || p.kind === 'divider') && (p.axis === 'x' ? p.footprint.w : p.footprint.h) > 12) as p (p.id)}
                 <g transform="translate({p.footprint.x + p.footprint.w / 2} {p.footprint.y + p.footprint.h / 2})">
                   <rect x={-5.5} y={-3} width={11} height={6} rx={1.5} class="tag" />
                   <text class="tag-text">{cut.groupOf.get(p.id)?.number}</text>

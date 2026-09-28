@@ -91,11 +91,13 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
   const trayById = new Map(solved.trays.map((t) => [t.id, t]));
   const labelOf = new Map(solved.compartments.map((c) => [c.id, c.label]));
 
-  /** Height of the tray's floor underside. */
+  const padUnder = new Map(solved.compartments.map((c) => [c.id, c.padHeight]));
+
+  /** Height of the tray's floor underside. A box stands on the tray's base and any raised floor. */
   function floorZ(t: Tray): Mm {
     const base = layerZ.get(t.layerId) ?? 0;
     if (t.depth === 0) return base;
-    return base + T + (t.copyOf ? t.height : 0);
+    return base + T + (padUnder.get(t.wellId ?? '') ?? 0) + (t.copyOf ? t.height : 0);
   }
 
   const keyOf = (t: Tray) => `${t.layerId}:${t.nodeId}:${t.copyOf ? 1 : 0}`;
@@ -118,8 +120,9 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       .filter((p) => p.trayId === t.id)
       .map((p) => {
         const onBase = p.kind === 'divider' || (p.kind === 'wall' && project.base === 'under');
-        const pz = p.kind === 'base' ? bottom : bottom + (onBase ? T : 0);
-        const h = p.kind === 'base' ? T : p.height;
+        // Raised-floor layers stack on the base, one thickness each.
+        const pz = p.kind === 'base' ? bottom : p.kind === 'pad' ? bottom + T + (p.padLevel ?? 0) * T : bottom + (onBase ? T : 0);
+        const h = p.kind === 'base' || p.kind === 'pad' ? T : p.height;
         return { id: p.id, kind: p.kind, x: p.footprint.x, y: p.footprint.y, z: pz, w: p.footprint.w, d: p.footprint.h, h, axis: p.axis, notches: p.notches };
       });
     const lower = t.copyOf ? trayById.get(t.copyOf) : undefined;

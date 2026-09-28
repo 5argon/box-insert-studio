@@ -4,6 +4,7 @@
   import { buildCutList, planCuts } from './core/pieces';
   import type { Project } from './core/types';
   import BoxPanel from './lib/BoxPanel.svelte';
+  import CompLabel from './lib/CompLabel.svelte';
   import LayoutCanvas from './lib/LayoutCanvas.svelte';
   import PiecesBar from './lib/PiecesBar.svelte';
   import Report from './lib/Report.svelte';
@@ -161,7 +162,7 @@
             {#each solvedLayer.compartments as c (c.id)}
               {@const errs = c.issues.filter((i) => i.level === 'error').length}
               <button class="list-item" class:nested={c.depth === 1} onclick={() => select({ kind: 'section', id: c.id })}>
-                <b>{c.label}{c.stacked ? '²' : ''}</b>
+                <b><CompLabel {c} /></b>
                 <span>{Math.round(c.rect.w * 10) / 10} × {Math.round(c.rect.h * 10) / 10} × {Math.round(c.height * 10) / 10} mm</span>
                 {#if c.node.insert && c.depth === 0}<span class="hint">box inside</span>{/if}
                 {#if c.node.notches.length}<span class="hint">notch</span>{/if}

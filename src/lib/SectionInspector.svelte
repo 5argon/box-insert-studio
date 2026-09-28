@@ -1,11 +1,12 @@
 <script lang="ts">
   import { sectionColor, sectionInk } from '../core/defaults';
-  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from '../core/edit';
+  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setPad, setStacked, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
   import { hasNotch, notchSharedWith, toggleNotch } from '../core/notches';
-  import type { Compartment, Solved, SolvedLayer } from '../core/layout';
+  import { maxPad, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
+  import CompLabel from './CompLabel.svelte';
   import LockButton from './LockButton.svelte';
   import NumberField from './NumberField.svelte';
   import type { Selection } from './state.svelte';
@@ -102,8 +103,11 @@
 
   const SIDE_ORDER: Side[] = ['back', 'front', 'left', 'right'];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
-  /** Height of one box: what is left above the tray floor, halved when two are stacked. */
-  const boxHeight = $derived((layer.height - T) / (stacked ? 2 : 1));
+  /** Height of one box: what is left above the tray floor and any raised floor, halved when two are stacked. */
+  const boxHeight = $derived((layer.height - T - (well?.padHeight ?? 0)) / (stacked ? 2 : 1));
+  /** Boxes standing on this compartment's floor: 0, 1, or 2 when stacked. */
+  const boxesHere = $derived(c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0);
+  const padLimit = $derived(maxPad(c.fullHeight, T, boxesHere));
   /** Sides whose divider stands lower than the walls, with how much lower. */
   const lowSides = $derived(
     SIDE_ORDER.flatMap((side) => {
@@ -115,9 +119,9 @@
 </script>
 
 <div class="panel-section head">
-  <span class="swatch" style:background={sectionColor(c.index)} style:border-color={sectionInk(c.index)}>{c.label}{c.stacked ? '²' : ''}</span>
+  <span class="swatch" style:background={sectionColor(c.index)} style:border-color={sectionInk(c.index)}><CompLabel {c} /></span>
   <div>
-    <div class="title">Compartment {c.label}{c.stacked ? '² (in both stacked boxes)' : ''}</div>
+    <div class="title">Compartment <CompLabel {c} />{c.stacked ? ' (in both stacked boxes)' : ''}</div>
     <div class="hint">
       {#if c.depth === 1}
         In the box inside {well?.label} · {mm(c.rect.w)} × {mm(c.rect.h)} × {mm(c.height)} mm inside
@@ -171,12 +175,14 @@
     <b>{mm(c.height)} mm{c.stacked ? ' each' : ''}</b>
     <span class="hint">
       {#if c.depth === 1 && c.stacked}
-        In each box: ({layer.name} {mm(layer.height)} − {mm(T)} tray floor) ÷ 2 = {mm(boxHeight)} per box, − {mm(T)} box floor
+        In each box: ({layer.name} {mm(layer.height)} − {mm(T)} tray floor{well?.pad ? ` − ${mm(well.padHeight)} raised floor` : ''}) ÷ 2 = {mm(boxHeight)}
+        per box, − {mm(T)} box floor
       {:else if c.depth === 1}
-        {layer.name} {mm(layer.height)} − {mm(T)} tray floor − {mm(T)} box floor
+        {layer.name} {mm(layer.height)} − {mm(T)} tray floor{well?.pad ? ` − ${mm(well.padHeight)} raised floor` : ''} − {mm(T)} box floor
       {:else}
         {layer.name} {mm(layer.height)} − {mm(T)} floor
       {/if}
+      {#if c.pad}− {c.pad} × {mm(T)} raised floor{/if}
     </span>
   </div>
   {#if lowSides.length}
@@ -185,6 +191,34 @@
   <p class="hint">
     Locked sizes stay put; flex ones share what is left, and one part in each row stays flex. Typing a size locks it.
     {#if c.depth === 1}Where nothing inside the box divides this direction, the size resizes {well?.label} to fit the box.{/if}
+  </p>
+</div>
+
+<div class="panel-section">
+  <h2>Raised floor</h2>
+  <div class="stepper">
+    <button class="small" onclick={() => setPad(c.node, c.pad - 1)} disabled={c.pad <= 0} aria-label="Remove a layer">−</button>
+    <span><b>{c.pad}</b> layer{c.pad === 1 ? '' : 's'} of {mm(T)} mm</span>
+    <button class="small" onclick={() => setPad(c.node, c.pad + 1)} disabled={c.pad + 1 > padLimit} aria-label="Add a layer">+</button>
+  </div>
+  <p class="hint">
+    {#if c.pad && boxesHere}
+      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked boxes stand' : 'box stands'} on it, {mm(boxHeight)} mm tall{boxesHere === 2
+        ? ' each'
+        : ''}, so the top stays flush. Marked <CompLabel {c} /> in the layout.
+    {:else if c.pad}
+      Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked
+      <CompLabel {c} /> in the layout.
+    {:else if boxesHere}
+      Raise the floor under the {boxesHere === 2 ? 'stacked boxes' : 'box'} to make {boxesHere === 2 ? 'them' : 'it'} shallower; {boxesHere === 2
+        ? 'they get'
+        : 'it gets'} shorter so the top stays flush. Up to {padLimit} layer{padLimit === 1 ? '' : 's'} fit here.
+    {:else}
+      Stack layers of {project.material.name.toLowerCase()} on the floor to bring a few flat tokens up within reach. Up to {padLimit} layer{padLimit ===
+      1
+        ? ''
+        : 's'} fit here.
+    {/if}
   </p>
 </div>
 
@@ -214,7 +248,7 @@
         its own floor, {mm(boxHeight - T)} mm inside. Together they sit flush.
       {:else}
         {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls, {mm(boxHeight - T)} mm inside,
-        standing on the base so the top sits flush.
+        standing on the {well.pad ? 'raised floor' : 'base'} so the top sits flush.
       {/if}
     </p>
     <label class="check">
@@ -223,7 +257,7 @@
     </label>
     <div class="row">
       {#each solved.compartments.filter((x) => x.wellId === well.id) as x (x.id)}
-        <button class="chip" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })}>{x.label}{x.stacked ? '²' : ''}</button>
+        <button class="chip" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })}><CompLabel c={x} /></button>
       {/each}
       {#if c.id === well.id}
         <button class="small" onclick={() => setInsert(layer, c.id, false)}>Remove box</button>
@@ -321,6 +355,14 @@
     color: var(--accent);
     background: none;
     text-align: left;
+  }
+  .stepper {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .stepper button {
+    width: 30px;
   }
   .check {
     display: flex;

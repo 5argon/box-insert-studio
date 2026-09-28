@@ -20,7 +20,7 @@ export interface Notch {
   depth: Mm;
 }
 
-export type PieceKind = 'base' | 'wall' | 'divider';
+export type PieceKind = 'base' | 'wall' | 'divider' | 'pad';
 
 export interface PieceInst {
   id: string;
@@ -45,7 +45,10 @@ export interface PieceInst {
   notchFrom: { compartmentId: string; side: Side; from: Mm; to: Mm }[];
   /** Glue order inside its tray. */
   order: number;
-  role: 'base' | 'back wall' | 'front wall' | 'left wall' | 'right wall' | 'divider';
+  role: 'base' | 'back wall' | 'front wall' | 'left wall' | 'right wall' | 'divider' | 'pad';
+  /** Pads: the compartment raised, and this layer's place in the stack (0 at the bottom). */
+  padFor?: string;
+  padLevel?: number;
   splitId?: string;
   barIndex?: number;
   lower?: Mm;
@@ -85,8 +88,13 @@ export interface Compartment {
   depth: 0 | 1;
   /** Set on compartments inside a removable box: the compartment the box stands in. */
   wellId?: string;
-  /** Usable height from this compartment's floor to the top of the walls around it. */
+  /** Usable height: from the top of any raised floor to the top of the walls around it. */
   height: Mm;
+  /** From the compartment's floor to the top of the walls, before any raised floor. */
+  fullHeight: Mm;
+  /** Layers of raised floor, and how much they raise it. */
+  pad: number;
+  padHeight: Mm;
   /** Inside a stacked pair of boxes: the same compartment exists in both. */
   stacked: boolean;
   rect: Rect;
@@ -137,6 +145,19 @@ export interface Solved {
 }
 
 export const SIDES: Side[] = ['back', 'front', 'left', 'right'];
+
+/** A removable box needs at least this much height inside it. */
+export const MIN_BOX_INSIDE = 5;
+
+/**
+ * Most raised-floor layers a compartment can take: something must be left above them, and a
+ * removable box standing on them (`boxes` high) must keep MIN_BOX_INSIDE inside each box.
+ */
+export function maxPad(fullHeight: Mm, thickness: Mm, boxes = 0): number {
+  if (thickness <= 0) return 0;
+  if (boxes) return Math.max(0, Math.floor((fullHeight - boxes * (thickness + MIN_BOX_INSIDE)) / thickness + 1e-9));
+  return Math.max(0, Math.ceil(fullHeight / thickness - 1e-9) - 1);
+}
 
 export function allocate(total: Mm, sizes: ChildSize[]): { sizes: Mm[]; issue?: string } {
   const fixed = sizes.reduce((a, s) => a + (s.mode === 'fixed' ? s.mm : 0), 0);
@@ -289,6 +310,13 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     ctx: TrayCtx,
   ) {
     if (node.kind === 'section') {
+      // A raised floor: layers cut to the inside size less the clearance, stacked on the floor.
+      // Under a removable box it lifts the box, which gets shorter so its top stays flush.
+      const pad = Math.max(0, Math.floor(node.pad ?? 0));
+      for (let i = 0; i < pad; i++) {
+        const fp: Rect = inset(rect, c / 2);
+        add({ kind: 'pad', role: 'pad', length: fp.w, height: fp.h, footprint: fp, axis: 'x', start: fp.x, padFor: node.id, padLevel: i });
+      }
       if (ctx.copy) return;
       raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - T, stacked: !!ctx.stacked });
       if (!node.insert) return;
@@ -296,12 +324,13 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
         issues.push({ level: 'warn', message: 'A box inside a box is not supported; the inner one is ignored.' });
         return;
       }
-      // The box stands on this tray's base, so it is one board thickness shorter and its top
-      // sits flush with the walls around it. A stack of two splits that height exactly in half.
+      // The box stands on this tray's base and any raised floor, so it is that much shorter and its
+      // top sits flush with the walls around it. A stack of two splits that height exactly in half.
       const stacked = !!node.insert.stacked;
-      const height = (ctx.height - T) / (stacked ? 2 : 1);
-      if (height - T < 5) {
-        issues.push({ level: 'error', message: `${layer.name} is too shallow for ${stacked ? 'two stacked boxes' : 'a box'} inside a compartment.` });
+      const height = (ctx.height - T - pad * T) / (stacked ? 2 : 1);
+      if (height - T < MIN_BOX_INSIDE) {
+        // With a raised floor the compartment reports it, with how many layers to remove.
+        if (!pad) issues.push({ level: 'error', message: `${layer.name} is too shallow for ${stacked ? 'two stacked boxes' : 'a box'} inside a compartment.` });
         return;
       }
       const box = { height, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked };
@@ -384,6 +413,9 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     trayId: r.trayId,
     depth: r.depth,
     wellId: r.wellId,
+    fullHeight: r.height,
+    pad: Math.max(0, Math.floor(r.node.pad ?? 0)),
+    padHeight: 0,
     height: r.height,
     stacked: r.stacked,
     rect: r.rect,
@@ -458,6 +490,23 @@ export function solveProject(project: Project): Solved {
     const T = project.material.thickness;
     for (const c of sl.compartments) {
       const { w, h } = c.rect;
+      c.padHeight = c.pad * T;
+      c.height = c.fullHeight - c.padHeight;
+      const boxes = c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0;
+      if (c.pad && boxes && c.pad > maxPad(c.fullHeight, T, boxes)) {
+        const remove = c.pad - maxPad(c.fullHeight, T, boxes);
+        c.issues.push({
+          level: 'error',
+          message: `Raised floor of ${c.pad} × ${T} mm = ${c.padHeight} mm leaves too little height for the ${boxes === 2 ? 'stacked boxes' : 'box'} on it. Remove ${remove} layer${remove === 1 ? '' : 's'}.`,
+        });
+      } else if (c.pad && c.height <= 0) {
+        // Fewest layers to remove so something is left above the raised floor.
+        const remove = Math.floor(-c.height / T + 1e-9) + 1;
+        c.issues.push({
+          level: 'error',
+          message: `Raised floor of ${c.pad} × ${T} mm = ${c.padHeight} mm is ${c.height === 0 ? 'as tall as' : 'taller than'} the ${c.fullHeight} mm compartment. Remove ${remove} layer${remove === 1 ? '' : 's'}.`,
+        });
+      }
       if (w <= 0 || h <= 0) c.issues.push({ level: 'error', message: 'No space left for this compartment.' });
       else if (Math.min(w, h) < 10) c.issues.push({ level: 'warn', message: `Only ${Math.min(w, h).toFixed(1)} mm wide.` });
       for (const side of SIDES) {
