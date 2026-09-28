@@ -375,7 +375,7 @@
     background: var(--accent-soft);
   }
   .shared {
-    color: #a26400;
+    color: var(--warn);
   }
   .notches {
     display: grid;

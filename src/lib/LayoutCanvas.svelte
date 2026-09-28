@@ -147,9 +147,9 @@
   function pieceFill(p: PieceInst): string {
     const g = cut.groupOf.get(p.id)?.number;
     if (hoverGroup !== null && g === hoverGroup) return 'var(--accent)';
-    if (p.kind === 'divider' && p.splitId === selectedSplit) return '#6d8fd6';
-    if (p.depth === 1) return '#6a6258';
-    return '#3f3b35';
+    if (p.kind === 'divider' && p.splitId === selectedSplit) return 'var(--piece-selected)';
+    if (p.depth === 1) return 'var(--piece-inner)';
+    return 'var(--piece)';
   }
 
   // The upper box of a stack sits exactly over the lower one; draw one of them.
@@ -217,23 +217,23 @@
           y={c.rect.y}
           width={Math.max(0, c.rect.w)}
           height={Math.max(0, c.rect.h)}
-          fill={sectionColor(c.index, depth === 1 ? 93 : 88)}
+          style:fill={sectionColor(c.index, depth === 1 ? 93 : 88)}
           class:sel={isSel}
           class:well={!!c.node.insert && depth === 0}
         />
         {#if size > 0}
-          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} fill={sectionInk(c.index)} class="letter"
+          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.index)} class="letter"
             >{c.label}{c.stacked ? '²' : ''}{#if c.pad}<tspan dy="-0.35em" font-size="0.65em">*</tspan>{/if}</text
           >
         {/if}
         {#if c.rect.h > 14 && readable(dims)}
-          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} fill={sectionInk(c.index)} class="dims">{dimsText}</text>
+          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} style:fill={sectionInk(c.index)} class="dims">{dimsText}</text>
         {/if}
       </g>
     {/each}
 
     {#each strips.filter((p) => p.depth === depth) as p (p.id)}
-      <rect x={p.footprint.x} y={p.footprint.y} width={Math.max(0, p.footprint.w)} height={Math.max(0, p.footprint.h)} fill={pieceFill(p)} class="piece" />
+      <rect x={p.footprint.x} y={p.footprint.y} width={Math.max(0, p.footprint.w)} height={Math.max(0, p.footprint.h)} style:fill={pieceFill(p)} class="piece" />
       {#each p.notches as n, i (i)}
         {#if p.axis === 'x'}
           <rect x={p.start + n.center - n.width / 2} y={p.footprint.y} width={n.width} height={p.footprint.h} class="notch" />
@@ -325,23 +325,23 @@
     outline: none;
   }
   .box {
-    fill: #fbfaf7;
-    stroke: #8a8378;
+    fill: var(--canvas-box);
+    stroke: var(--canvas-edge);
     stroke-width: 0.4;
     stroke-dasharray: 2 1.5;
   }
   .base {
-    fill: #cfc8bb;
+    fill: var(--canvas-base);
   }
   .base.inner {
-    fill: #e2dccf;
+    fill: var(--canvas-base-inner);
   }
   .box-hit {
     fill: transparent;
     cursor: pointer;
   }
   .compartment rect.well {
-    stroke: #8a8378;
+    stroke: var(--canvas-edge);
     stroke-width: 0.3;
     stroke-dasharray: 1.5 1;
   }
@@ -361,7 +361,7 @@
     pointer-events: none;
   }
   .notch {
-    fill: #f2b233;
+    fill: var(--notch);
     pointer-events: none;
   }
   .letter {
@@ -377,8 +377,8 @@
     font-variant-numeric: tabular-nums;
   }
   .tag {
-    fill: #fff;
-    stroke: #3f3b35;
+    fill: var(--tag-bg);
+    stroke: var(--piece);
     stroke-width: 0.3;
     pointer-events: none;
   }
@@ -387,18 +387,18 @@
     font-weight: 700;
     text-anchor: middle;
     dominant-baseline: central;
-    fill: #22201c;
+    fill: var(--text);
     pointer-events: none;
   }
   .hit {
     fill: transparent;
   }
   .hit.trays {
-    fill: rgba(0, 0, 0, 0.04);
+    fill: var(--tray-gap);
   }
   .hit:hover,
   .hit.sel {
-    fill: rgba(47, 111, 219, 0.28);
+    fill: var(--hit);
   }
   .dim line {
     stroke: var(--accent);
@@ -414,10 +414,10 @@
     stroke-linejoin: round;
   }
   .dim.strong line {
-    stroke: #6f6a61;
+    stroke: var(--muted);
   }
   .dim.strong text {
-    fill: #3f3b35;
+    fill: var(--text);
     font-weight: 600;
   }
   .ext {
@@ -434,6 +434,6 @@
     font-weight: 700;
     letter-spacing: 1px;
     text-anchor: middle;
-    fill: #6f6a61;
+    fill: var(--muted);
   }
 </style>

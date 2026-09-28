@@ -65,27 +65,29 @@ function pieceGeometry(b: Block): THREE.BufferGeometry {
   return g;
 }
 
-export function buildObjects(model: SceneModel): SceneObjects {
+/** `dark`: lines are lightened to stand out on the dark background. */
+export function buildObjects(model: SceneModel, dark = false): SceneObjects {
   const root = new THREE.Group();
   const { w, d, h } = model.box;
   root.position.set(-w / 2, 0, -d / 2);
 
   const outerGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d));
   outerGeo.translate(w / 2, h / 2, d / 2);
-  const outer = new THREE.LineSegments(outerGeo, new THREE.LineDashedMaterial({ color: 0x8a8378, dashSize: 4, gapSize: 3 }));
+  const guide = dark ? 0x8f887d : 0x8a8378;
+  const outer = new THREE.LineSegments(outerGeo, new THREE.LineDashedMaterial({ color: guide, dashSize: 4, gapSize: 3 }));
   outer.computeLineDistances();
   root.add(outer);
 
   // A small arrow on the floor pointing to the front of the box.
   const arrow = new THREE.BufferGeometry();
   arrow.setAttribute('position', new THREE.Float32BufferAttribute([w / 2 - 9, 0, d + 8, w / 2, 0, d + 20, w / 2 + 9, 0, d + 8], 3));
-  root.add(new THREE.Mesh(arrow, new THREE.MeshBasicMaterial({ color: 0x8a8378, side: THREE.DoubleSide })));
+  root.add(new THREE.Mesh(arrow, new THREE.MeshBasicMaterial({ color: guide, side: THREE.DoubleSide })));
 
   const trays = model.trays.map((t): TrayObjects => {
     const group = new THREE.Group();
     const color = new THREE.Color(t.color);
     const materials = {
-      line: new THREE.LineBasicMaterial({ color }),
+      line: new THREE.LineBasicMaterial({ color: dark ? color.clone().lerp(new THREE.Color(0xffffff), 0.25) : color }),
       glass: new THREE.MeshStandardMaterial({
         color,
         transparent: true,

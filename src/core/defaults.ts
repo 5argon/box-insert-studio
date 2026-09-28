@@ -17,12 +17,17 @@ export const MATERIAL_NAMES = ['Foam board', 'MDF', 'Greyboard', 'Plywood', 'Cor
 /** Compartment colours, indexed by label order. Hues spaced so neighbours differ. */
 export const SECTION_HUES = [205, 28, 140, 330, 262, 55, 180, 0, 95, 300, 230, 15];
 
+/**
+ * Compartment fill. `lightness` is for the light theme; the dark theme maps it to a deep tint
+ * through CSS variables (see app.css), so use it as a CSS value (style), not an SVG attribute.
+ */
 export function sectionColor(index: number, lightness = 88): string {
-  return `hsl(${SECTION_HUES[index % SECTION_HUES.length]} 70% ${lightness}%)`;
+  return `hsl(${SECTION_HUES[index % SECTION_HUES.length]} var(--sec-sat, 70%) calc(var(--sec-a, 0%) + var(--sec-b, 1) * ${lightness}%))`;
 }
 
+/** Text and outline colour on a compartment fill: dark ink in light mode, light ink in dark mode. */
 export function sectionInk(index: number): string {
-  return `hsl(${SECTION_HUES[index % SECTION_HUES.length]} 60% 30%)`;
+  return `hsl(${SECTION_HUES[index % SECTION_HUES.length]} 60% var(--sec-ink, 30%))`;
 }
 
 /** A, B, …, Z, AA, AB, … */

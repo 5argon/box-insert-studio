@@ -8,6 +8,7 @@
   import { buildScene } from '../../core/scene';
   import type { Project } from '../../core/types';
   import { studio, type ViewStyle } from '../state.svelte';
+  import { isDark } from '../theme.svelte';
   import type { Preset, TrayStyle } from './meshes';
   import Viewer3D from './Viewer3D.svelte';
 
@@ -52,7 +53,7 @@
 
 <div class="view3d" class:full={!v.panel}>
   <div class="stage">
-    <Viewer3D bind:this={viewer} {model} {styleOf} outer={v.outer} ortho={v.ortho} />
+    <Viewer3D bind:this={viewer} {model} {styleOf} outer={v.outer} ortho={v.ortho} dark={isDark()} />
     <div class="hint">Drag to rotate · scroll or pinch to zoom</div>
     {#if !v.panel}
       <button class="small show-tools" onclick={() => (v.panel = true)}>Show tools</button>

@@ -12,6 +12,7 @@
   import SplitInspector from './lib/SplitInspector.svelte';
   import { breakStep, recordProject, redo, undo, undoState } from './lib/history.svelte';
   import { download, persist, replaceProject, slug, studio, type Selection } from './lib/state.svelte';
+  import { setTheme, theme, type ThemePref } from './lib/theme.svelte';
 
   const solved = $derived(solveProject(studio.project));
   const cut = $derived(buildCutList(solved, studio.project.precision));
@@ -110,6 +111,14 @@
       <button class="small" onclick={undo} disabled={!undoState.canUndo} title="Undo ({undoKeys})" aria-label="Undo">↶ Undo</button>
       <button class="small" onclick={redo} disabled={!undoState.canRedo} title="Redo ({redoKeys})" aria-label="Redo">↷ Redo</button>
     </div>
+    <label class="theme">
+      <span class="sr-only">Theme</span>
+      <select value={theme.pref} onchange={(e) => setTheme(e.currentTarget.value as ThemePref)} aria-label="Theme" title="Light or dark appearance">
+        <option value="system">System theme</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
     <div class="file">
       <a class="credit" href="https://github.com/5argon/box-insert-studio" target="_blank" rel="noopener">Source · CC BY 4.0</a>
       <button class="small" onclick={newProject} title="Empty insert, keeping the box size and material settings">New</button>
@@ -204,10 +213,30 @@
   .brand {
     font-weight: 700;
     font-size: 15px;
+    white-space: nowrap;
+  }
+  header button {
+    white-space: nowrap;
+  }
+  @media (max-width: 1100px) {
+    .credit {
+      display: none;
+    }
   }
   nav {
     display: flex;
     gap: 6px;
+  }
+  .theme select {
+    font-size: 12px;
+    padding: 2px 4px;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
   .history {
     display: flex;
