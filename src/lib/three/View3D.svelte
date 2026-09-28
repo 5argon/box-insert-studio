@@ -1,8 +1,3 @@
-<script lang="ts" module>
-  /** Tray colours for the session: a tray keeps its colour while other trays come and go. */
-  const trayColors = new Map<string, number>();
-</script>
-
 <script lang="ts">
   import type { Solved } from '../../core/layout';
   import { buildScene } from '../../core/scene';
@@ -11,6 +6,7 @@
   import { isDark } from '../theme.svelte';
   import type { Preset, TrayStyle } from './meshes';
   import Viewer3D from './Viewer3D.svelte';
+  import { trayColors } from '../trayColors';
   import CompSquare from '../CompSquare.svelte';
   import LayerIcon from '../LayerIcon.svelte';
   import { layerColor } from '../../core/defaults';
