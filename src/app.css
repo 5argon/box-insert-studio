@@ -22,6 +22,7 @@
   --piece-inner: #6a6258;
   --piece-selected: #6d8fd6;
   --notch: #f2b233;
+  --notch-custom: #1aa6b7;
   --tag-bg: #ffffff;
   --tray-gap: rgba(0, 0, 0, 0.04);
   --hit: rgba(47, 111, 219, 0.28);
@@ -66,6 +67,7 @@
     --piece-inner: #9d9587;
     --piece-selected: #7aa7ff;
     --notch: #e0a23a;
+    --notch-custom: #3cc9d6;
     --tag-bg: #242320;
     --tray-gap: rgba(255, 255, 255, 0.05);
     --hit: rgba(122, 167, 255, 0.3);
@@ -99,6 +101,7 @@
   --piece-inner: #9d9587;
   --piece-selected: #7aa7ff;
   --notch: #e0a23a;
+  --notch-custom: #3cc9d6;
   --tag-bg: #242320;
   --tray-gap: rgba(255, 255, 255, 0.05);
   --hit: rgba(122, 167, 255, 0.3);

@@ -236,9 +236,9 @@
       <rect x={p.footprint.x} y={p.footprint.y} width={Math.max(0, p.footprint.w)} height={Math.max(0, p.footprint.h)} style:fill={pieceFill(p)} class="piece" />
       {#each p.notches as n, i (i)}
         {#if p.axis === 'x'}
-          <rect x={p.start + n.center - n.width / 2} y={p.footprint.y} width={n.width} height={p.footprint.h} class="notch" />
+          <rect x={p.start + n.center - n.width / 2} y={p.footprint.y} width={n.width} height={p.footprint.h} class="notch" class:custom={n.custom} />
         {:else}
-          <rect x={p.footprint.x} y={p.start + n.center - n.width / 2} width={p.footprint.w} height={n.width} class="notch" />
+          <rect x={p.footprint.x} y={p.start + n.center - n.width / 2} width={p.footprint.w} height={n.width} class="notch" class:custom={n.custom} />
         {/if}
       {/each}
     {/each}
@@ -363,6 +363,9 @@
   .notch {
     fill: var(--notch);
     pointer-events: none;
+  }
+  .notch.custom {
+    fill: var(--notch-custom);
   }
   .letter {
     font-weight: 700;

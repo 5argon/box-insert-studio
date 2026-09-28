@@ -320,9 +320,27 @@
       <p class="hint shared">The {side} notch is shared with {shared.join(', ')}: it is cut through the divider between you.</p>
     {/if}
   {/each}
+  <div class="notch-size">
+    {#if c.node.notchSize}
+      {@const size = c.node.notchSize}
+      <div class="override-head">
+        <span class="custom-mark" aria-hidden="true"></span>
+        <span>Own size for this compartment</span>
+        <button class="small" onclick={() => delete c.node.notchSize} data-tip="Go back to the project's notch size">Use default</button>
+      </div>
+      <NumberField label="Width" value={size.width} min={5} onchange={(v) => (size.width = v)} />
+      <NumberField label="Depth" value={size.depth} min={2} onchange={(v) => (size.depth = v)} />
+    {:else}
+      <span class="hint">Size {mm(project.notch.width)} × {mm(project.notch.depth)} mm, the project default</span>
+      <button
+        class="small"
+        onclick={() => (c.node.notchSize = { ...project.notch })}
+        data-tip="Give this compartment's notches their own width and depth; they are drawn in a different colour">Override</button
+      >
+    {/if}
+  </div>
   <p class="hint">
-    A {project.notch.width} × {project.notch.depth} mm U-notch is cut into the wall or divider on that side, centred on this compartment. It goes through the board, so the
-    compartment across a divider gets it too.
+    The U-notch is cut into the wall or divider on that side, centred on this compartment. It goes through the board, so the compartment across a divider gets it too.
     {#if c.node.insert}Notches here help lift the box out.{/if}
   </p>
   {#each c.issues as issue, i (i)}
@@ -431,6 +449,32 @@
   .chip.on {
     border-color: var(--accent);
     background: var(--accent-soft);
+  }
+  .notch-size {
+    margin: 8px 0 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .notch-size :global(.field) {
+    width: 100%;
+  }
+  .override-head {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+  }
+  .override-head button {
+    margin-left: auto;
+  }
+  .custom-mark {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--notch-custom);
   }
   .shared {
     color: var(--warn);
