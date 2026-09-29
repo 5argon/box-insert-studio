@@ -97,6 +97,8 @@ export interface Tray {
   nodeId: string;
   /** Part of a stack of two identical boxes. */
   stacked: boolean;
+  /** A half-height box whose upper twin was left out: the space above it stays empty. */
+  emptyAbove?: boolean;
   /** For the upper box of a stack: the tray id of the identical box below it. */
   copyOf?: string;
 }
@@ -223,6 +225,8 @@ interface TrayCtx {
   wellId?: string;
   parentTrayId?: string;
   stacked?: boolean;
+  /** Half height with nothing stacked on top. */
+  emptyAbove?: boolean;
   /**
    * Building the upper box of a stack: its pieces are made, but compartments, bars, splits and
    * issues were already recorded by the identical box below.
@@ -294,6 +298,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       parentTrayId: ctx.parentTrayId,
       nodeId: node.id,
       stacked: !!ctx.stacked,
+      ...(ctx.emptyAbove ? { emptyAbove: true } : {}),
     };
     trays.push(tray);
     if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
@@ -358,12 +363,15 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
         return;
       }
       // The box stands on this tray's base and any raised floor, so it is that much shorter and its
-      // top sits flush with the walls around it. A stack of two splits that height exactly in half.
-      const stacked = !!node.insert.stacked;
-      const height = (ctx.height - ctx.base - pad * T) / (stacked ? 2 : 1);
+      // top sits flush with the walls around it. A stack of two splits that height exactly in half;
+      // leaving the top one out keeps the lower box at half height with the space above it empty.
+      const half = !!node.insert.stacked;
+      const emptyAbove = half && !!node.insert.emptyAbove;
+      const stacked = half && !emptyAbove;
+      const height = (ctx.height - ctx.base - pad * T) / (half ? 2 : 1);
       // Too shallow: the compartment reports it (see solveProject) and no box is built.
       if (height - T < MIN_BOX_INSIDE) return;
-      const box = { height, base: T, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked };
+      const box = { height, base: T, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked, emptyAbove };
       const first = trays.length;
       cellLevel(node.insert.root, rect, box);
       if (stacked) {
@@ -572,19 +580,21 @@ export function solveProject(project: Project): Solved {
       const { w, h } = c.rect;
       c.padHeight = c.pad * T;
       c.height = c.fullHeight - c.padHeight;
+      // Height is shared as if two boxes stood here even when the top one is left out.
       const boxes = c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0;
+      const pair = boxes === 2 && !c.node.insert?.emptyAbove;
       if (boxes && !c.pad && maxPad(c.fullHeight, T, boxes) === 0 && (c.fullHeight / boxes - T) < MIN_BOX_INSIDE) {
         // A box needs its floor plus MIN_BOX_INSIDE; stacked boxes need that twice.
         const need = boxes * (T + MIN_BOX_INSIDE) + baseThickness(project);
         c.issues.push({
           level: 'error',
-          message: `Too shallow for ${boxes === 2 ? 'two stacked boxes' : 'a box'}: the layer needs to be at least ${need} mm tall${boxes === 2 ? ', or stack one box' : ''}.`,
+          message: `Too shallow for ${pair ? 'two stacked boxes' : boxes === 2 ? 'a half-height box' : 'a box'}: the layer needs to be at least ${need} mm tall${boxes === 2 ? ', or use one full-height box' : ''}.`,
         });
       } else if (c.pad && boxes && c.pad > maxPad(c.fullHeight, T, boxes)) {
         const remove = c.pad - maxPad(c.fullHeight, T, boxes);
         c.issues.push({
           level: 'error',
-          message: `Raised floor of ${c.pad} × ${T} mm = ${c.padHeight} mm leaves too little height for the ${boxes === 2 ? 'stacked boxes' : 'box'} on it. Remove ${remove} layer${remove === 1 ? '' : 's'}.`,
+          message: `Raised floor of ${c.pad} × ${T} mm = ${c.padHeight} mm leaves too little height for the ${pair ? 'stacked boxes' : 'box'} on it. Remove ${remove} layer${remove === 1 ? '' : 's'}.`,
         });
       } else if (c.pad && c.height <= 0) {
         // Fewest layers to remove so something is left above the raised floor.

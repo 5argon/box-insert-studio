@@ -1095,3 +1095,53 @@ describe('lowered sides', () => {
     expect(planCuts(p, buildCutList(s, p.precision)).issues).toEqual([]);
   });
 });
+
+describe('stacked box with the top left out', () => {
+  it('builds only the lower half-height box and leaves the space above it empty', async () => {
+    const { setEmptyAbove } = await import('./edit');
+    const { buildScene, overlap } = await import('./scene');
+    const p = defaultProject();
+    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    setEmptyAbove(g.node, true);
+    expect(g.node.insert!.emptyAbove).toBeUndefined();
+    setStacked(g.node, true);
+    const pair = solveProject(p);
+    setEmptyAbove(g.node, true);
+    const s = solveProject(p);
+    const T = p.material.thickness;
+    const H = p.layers[0].height;
+
+    const boxes = s.trays.filter((t) => t.wellId === g.id);
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0].copyOf).toBeUndefined();
+    expect(boxes[0].stacked).toBe(false);
+    expect(boxes[0].emptyAbove).toBe(true);
+    expect(boxes[0].height).toBe((H - T) / 2);
+    // Same box as the lower one of the pair, and only half the pieces.
+    const lowerOfPair = pair.trays.find((t) => t.wellId === g.id && !t.copyOf)!;
+    const piecesOf = (sv: typeof s, id: string) => sv.pieces.filter((x) => x.trayId === id).map((x) => `${x.kind}:${x.length}x${x.height}`);
+    expect(piecesOf(s, boxes[0].id)).toEqual(piecesOf(pair, lowerOfPair.id));
+    expect(s.pieces.length).toBe(pair.pieces.length - piecesOf(pair, lowerOfPair.id).length);
+    // Its compartments are in one box only: no ² and a half-height inside.
+    const g1 = s.compartments.find((c) => c.label === 'G1')!;
+    expect(g1.stacked).toBe(false);
+    expect(g1.height).toBe((H - T) / 2 - T);
+
+    const model = buildScene(p, s);
+    const box = model.trays.find((t) => t.id === boxes[0].id)!;
+    expect(box.label).toBe('Box in G, half height');
+    expect(Math.max(...box.blocks.map((b) => b.z + b.h))).toBeCloseTo(T + (H - T) / 2, 6);
+    const blocks = model.trays.flatMap((t) => t.blocks);
+    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBeLessThan(1e-6);
+
+    const cut = buildCutList(s, p.precision);
+    const steps = trayInstructions(p, s, cut, boxes[0]);
+    expect(steps[steps.length - 1].text).toBe('Once dry, drop the box into compartment G. It is half as tall as the walls around it; the space above it stays empty.');
+
+    // Unstacking clears it, so stacking again brings both boxes back.
+    setStacked(g.node, false);
+    expect(g.node.insert!.emptyAbove).toBeUndefined();
+    setStacked(g.node, true);
+    expect(solveProject(p).trays.filter((t) => t.wellId === g.id)).toHaveLength(2);
+  });
+});

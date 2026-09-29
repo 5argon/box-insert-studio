@@ -182,7 +182,13 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
     const level: 0 | 1 = lower ? 1 : 0;
     const well = t.wellId ? labelOf.get(t.wellId) : undefined;
     const label =
-      t.depth === 0 ? `Tray ${t.number}` : t.stacked ? `Box in ${well}, ${level ? 'upper' : 'lower'}` : `Box in ${well}`;
+      t.depth === 0
+        ? `Tray ${t.number}`
+        : t.stacked
+          ? `Box in ${well}, ${level ? 'upper' : 'lower'}`
+          : t.emptyAbove
+            ? `Box in ${well}, half height`
+            : `Box in ${well}`;
     const key = keyOf(t);
     return {
       key,
