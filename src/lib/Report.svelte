@@ -1,5 +1,6 @@
 <script lang="ts">
   import { trayInstructions } from '../core/assembly';
+  import { NOTCH_BOTTOM, notchCorners } from '../core/notches';
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
@@ -52,9 +53,11 @@
     return [...seen.values()].sort((a, b) => b.width - a.width || b.depth - a.depth);
   });
 
+  /** The notch outline at true size, 1 mm in from the template's edge: two slants and a flat bottom. */
   function notchPathFor(w: number, d: number): string {
-    const r = Math.min(w / 2, d);
-    return `M1 1 L${1 + w / 2 - r} 1 L${1 + w / 2 - r} ${1 + d - r} A${r} ${r} 0 0 0 ${1 + w / 2 + r} ${1 + d - r} L${1 + w / 2 + r} 1 L${1 + w} 1`;
+    return notchCorners(w / 2, w, d)
+      .map(([x, y], i) => `${i ? 'L' : 'M'}${1 + x} ${1 + y}`)
+      .join(' ');
   }
 
   function stripText(item: SheetItem): string {
@@ -349,14 +352,17 @@
 
     <section class="template">
       <h2>Finger notch template{notchSizes.length > 1 ? 's' : ''}</h2>
-      <p class="muted small">Printed at 100% these are real size. Trace one at each notch mark, open side on the top edge.</p>
+      <p class="muted small">
+        Printed at 100% these are real size. Line the dashed edge up with the piece's top edge at each notch mark, trace, then make three straight cuts.
+      </p>
       <div class="templates">
         {#each notchSizes as n (`${n.width}x${n.depth}`)}
           <figure>
             <svg width="{n.width + 2}mm" height="{n.depth + 2}mm" viewBox="0 0 {n.width + 2} {n.depth + 2}" role="img" aria-label="Notch template {mm(n.width)} by {mm(n.depth)} mm">
+              <line x1="0" y1="1" x2={n.width + 2} y2="1" stroke="#8a8378" stroke-width="0.2" stroke-dasharray="1 0.8" />
               <path d={notchPathFor(n.width, n.depth)} fill="none" stroke="#22201c" stroke-width="0.3" />
             </svg>
-            <figcaption class="muted small">{mm(n.width)} × {mm(n.depth)} mm</figcaption>
+            <figcaption class="muted small">{mm(n.width)} × {mm(n.depth)} mm, {mm(n.width * NOTCH_BOTTOM)} mm flat bottom</figcaption>
           </figure>
         {/each}
       </div>

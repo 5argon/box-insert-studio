@@ -3,6 +3,7 @@
  * Y = box z (up), Z = box y (toward the front).
  */
 import * as THREE from 'three';
+import { notchCorners } from '../../core/notches';
 import type { Block, Box3, SceneItems, SceneModel } from '../../core/scene';
 
 export type TrayStyle = 'wire' | 'glass' | 'solid' | 'hidden';
@@ -29,7 +30,7 @@ export interface SceneObjects {
 
 /**
  * Side profile of a wall or divider (length × height): the top edge runs right to left, dipping
- * into each U-notch and stepping down across each lowered stretch.
+ * into each slanted notch and stepping down across each lowered stretch.
  */
 function profile(length: number, height: number, notches: Block['notches'], lows: Block['lows']): THREE.Shape {
   const shape = new THREE.Shape();
@@ -45,16 +46,12 @@ function profile(length: number, height: number, notches: Block['notches'], lows
   to(length, height);
   const features = [
     ...notches.map((n) => {
-      const r = Math.min(n.width / 2, n.depth);
+      // Right to left along the top edge: in at the right slant, across the bottom, out the left.
+      const corners = notchCorners(n.center, n.width, n.depth).reverse();
       return {
-        at: n.center + r,
+        at: corners[0][0],
         draw: () => {
-          const cy = height - (n.depth - r);
-          to(n.center + r, height);
-          to(n.center + r, cy);
-          shape.absarc(n.center, cy, r, 0, Math.PI, true);
-          last = { x: n.center - r, y: cy };
-          to(n.center - r, height);
+          for (const [x, down] of corners) to(x, height - down);
         },
       };
     }),

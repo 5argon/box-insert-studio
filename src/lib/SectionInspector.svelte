@@ -482,7 +482,7 @@
     {/if}
   </div>
   <p class="hint">
-    The U-notch is cut into the wall or divider on that side, centred on this compartment. It goes through the board, so the compartment across a divider gets it too.
+    The notch is cut into the wall or divider on that side, centred on this compartment: two straight slants down to a flat bottom half as wide as the opening. It goes through the board, so the compartment across a divider gets it too.
     {#if c.node.insert}Notches here help lift the box out.{/if}
   </p>
   {#each c.issues as issue, i (i)}
