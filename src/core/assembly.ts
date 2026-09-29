@@ -25,6 +25,15 @@ function notchText(p: PieceInst): string {
   return ` Notch${p.notches.length > 1 ? 'es' : ''} centred ${at} mm from the ${end} end, open side up.`;
 }
 
+/** Where a wall or divider is cut down for a lowered side. */
+function lowText(p: PieceInst): string {
+  if (!p.lows.length) return '';
+  const end = p.axis === 'x' ? 'left' : 'back';
+  const at = p.lows.map((l) => `${mm(l.depth)} mm lower from ${mm(l.from)} to ${mm(l.to)} mm`).join(', and ');
+  const whose = p.kind === 'wall' ? `the ${p.role}'s` : 'its';
+  return ` Cut ${whose} top edge ${at} from the ${end} end, for a lowered side.`;
+}
+
 /** Glue order for one tray: base, full-length walls, short walls, then dividers from the outside in. */
 export function trayInstructions(project: Project, solved: Solved, cut: CutList, tray: Tray): Step[] {
   const pieces = solved.pieces.filter((p) => p.trayId === tray.id).sort((a, b) => a.order - b.order);
@@ -38,17 +47,18 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
   steps.push({ text: `Start with base #${num(base)}${other}.`, groups: [num(base)] });
 
   const walls = pieces.filter((p) => p.kind === 'wall');
+  const wallCut = (p: PieceInst) => (p.cut ? ` The ${p.role} is ${mm(p.cut)} mm lower, for a lowered side.` : '');
   const full = walls.slice(0, 2);
   const short = walls.slice(2);
   const fullNames = project.fullWalls === 'x' ? 'back and front' : 'left and right';
   const shortNames = project.fullWalls === 'x' ? 'left and right' : 'back and front';
   const where = project.base === 'under' ? 'on top of the base, flush with its edges' : 'around the edges of the base';
   steps.push({
-    text: `Glue the ${fullNames} walls ${refs(full, cut)} ${where}.${full.map(notchText).join('')}`,
+    text: `Glue the ${fullNames} walls ${refs(full, cut)} ${where}.${full.map((p) => notchText(p) + lowText(p) + wallCut(p)).join('')}`,
     groups: full.map(num),
   });
   steps.push({
-    text: `Glue the ${shortNames} walls ${refs(short, cut)} between them.${short.map(notchText).join('')}`,
+    text: `Glue the ${shortNames} walls ${refs(short, cut)} between them.${short.map((p) => notchText(p) + lowText(p) + wallCut(p)).join('')}`,
     groups: short.map(num),
   });
 
@@ -57,9 +67,10 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
     const offset = vertical ? d.footprint.x - tray.inner.x : d.footprint.y - tray.inner.y;
     const wall = vertical ? 'left' : 'back';
     const between = d.sides ? ` between ${list(d.sides[0])} and ${list(d.sides[1])}` : '';
-    const lower = d.lower ? ` It stands ${mm(d.lower)} mm lower than the walls.` : '';
+    const drop = (d.lower ?? 0) + (d.cut ?? 0);
+    const lower = drop ? ` It stands ${mm(drop)} mm lower than the walls.` : '';
     steps.push({
-      text: `Glue divider #${num(d)}${between}, ${mm(offset)} mm from the ${wall} wall.${lower}${notchText(d)}`,
+      text: `Glue divider #${num(d)}${between}, ${mm(offset)} mm from the ${wall} wall.${lower}${notchText(d)}${lowText(d)}`,
       groups: [num(d)],
     });
   }

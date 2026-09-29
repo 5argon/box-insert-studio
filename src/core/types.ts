@@ -36,6 +36,8 @@ export interface SectionNode {
   notches: Side[];
   /** This compartment's notch size, instead of the project's. */
   notchSize?: { width: Mm; depth: Mm };
+  /** Sides whose wall or divider is cut down beside this compartment. Never also notched. */
+  lowered?: Side[];
   /** An arrow drawn beside the letter: which way the items in this slot face. */
   arrow?: Side;
   /** Items to simulate standing in a row along the arrow, e.g. cards or tokens on edge. */
@@ -119,6 +121,8 @@ export interface Project {
    */
   construction?: 'glued' | 'separate';
   notch: { width: Mm; depth: Mm };
+  /** How tall a lowered side stands, in percent of the compartment's depth. Unset: 75. */
+  lowered?: number;
   /** Bottom layer first. */
   layers: Layer[];
 }

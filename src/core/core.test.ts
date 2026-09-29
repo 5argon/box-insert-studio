@@ -1014,3 +1014,84 @@ describe('base thickness', () => {
     }
   });
 });
+
+describe('lowered sides', () => {
+  /** Two identical layers, each split into a left and a right compartment. */
+  function twoByTwo() {
+    const p = blankProject();
+    p.layers = [newLayer('Bottom', 34), newLayer('Top', 34)];
+    for (const layer of p.layers) splitSection(layer, layer.root.id, 'row', p.material.thickness);
+    const s = solveProject(p);
+    const pair = (i: number) => s.compartments.filter((c) => c.layerId === p.layers[i].id).sort((a, b) => a.rect.x - b.rect.x);
+    return { p, s, pair };
+  }
+
+  it('lowers a divider along its whole length to a rounded share of the depth, shared with the compartment across', async () => {
+    const { hasLow, lowSharedWith, toggleLow } = await import('./notches');
+    const { p, s, pair } = twoByTwo();
+    const [left, right] = pair(0);
+    toggleLow(s, left, 'right');
+    const s2 = solveProject(p);
+    const divider = s2.pieces.find((x) => x.kind === 'divider' && x.layerId === p.layers[0].id)!;
+    // 34 mm layer, 5 mm base: 29 mm deep; 75% is 21.75, rounded to the 0.5 mm step.
+    expect(divider.height).toBe(22);
+    expect(divider.cut).toBe(7);
+    expect(divider.lows).toEqual([]);
+    const r2 = s2.compartments.find((c) => c.id === right.id)!;
+    expect(hasLow(s2, r2, 'left')).toBe(true);
+    expect(lowSharedWith(s2, r2, 'left')).toEqual([left.label]);
+    // Raising it from the other side takes the lowering away.
+    toggleLow(s2, r2, 'left');
+    expect(left.node.lowered).toBeUndefined();
+    expect(solveProject(p).pieces.find((x) => x.id === divider.id)!.height).toBe(29);
+  });
+
+  it('cuts a step into a wall beside the compartment only, and groups mirror images as one cut size', async () => {
+    const { p, pair } = twoByTwo();
+    pair(0)[0].node.lowered = ['back'];
+    pair(1)[1].node.lowered = ['back'];
+    const s = solveProject(p);
+    const backs = s.pieces.filter((x) => x.role === 'back wall');
+    for (const [i, wall] of backs.entries()) {
+      const c = pair(i)[i];
+      expect(wall.lows).toHaveLength(1);
+      expect(wall.lows[0].from).toBeCloseTo(c.rect.x - wall.start, 6);
+      expect(wall.lows[0].to).toBeCloseTo(c.rect.x + c.rect.w - wall.start, 6);
+      expect(wall.height - wall.lows[0].depth).toBe(22);
+    }
+    const cut = buildCutList(s, p.precision);
+    const g = cut.groupOf.get(backs[0].id)!;
+    expect(cut.groupOf.get(backs[1].id)).toBe(g);
+    expect(g.pieces).toHaveLength(2);
+    expect(g.lows).toHaveLength(1);
+    // Front walls stay plain and full height.
+    expect(s.pieces.filter((x) => x.role === 'front wall').every((x) => !x.lows.length && x.height === 29)).toBe(true);
+    const tray = s.trays.find((t) => t.layerId === p.layers[0].id)!;
+    expect(trayInstructions(p, s, cut, tray)[1].text).toMatch(/Cut the back wall's top edge 7 mm lower from [\d.]+ to [\d.]+ mm from the left end, for a lowered side\./);
+  });
+
+  it('never notches a lowered stretch', async () => {
+    const { hasNotch } = await import('./notches');
+    const { p, pair } = twoByTwo();
+    const left = pair(0)[0];
+    left.node.lowered = ['back'];
+    left.node.notches = ['back'];
+    const s = solveProject(p);
+    const c = s.compartments.find((x) => x.id === left.id)!;
+    expect(hasNotch(s, c, 'back')).toBe(false);
+    expect(s.pieces.find((x) => x.role === 'back wall' && x.layerId === p.layers[0].id)!.notches).toEqual([]);
+    expect(c.issues.map((i) => i.message)).toContain('The back side is lowered there, so it gets no finger notch.');
+  });
+
+  it('builds lowered pieces in 3D without overlaps', async () => {
+    const { buildScene, overlap } = await import('./scene');
+    const p = defaultProject();
+    for (const c of solveProject(p).compartments) if (!c.node.notches.length) c.node.lowered = ['left', 'front'];
+    const s = solveProject(p);
+    expect(s.pieces.some((x) => x.lows.length)).toBe(true);
+    expect(s.pieces.some((x) => x.cut)).toBe(true);
+    const blocks = buildScene(p, s).trays.flatMap((t) => t.blocks);
+    for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBeLessThan(1e-6);
+    expect(planCuts(p, buildCutList(s, p.precision)).issues).toEqual([]);
+  });
+});

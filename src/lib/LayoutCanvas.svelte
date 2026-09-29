@@ -245,6 +245,13 @@
 
     {#each strips.filter((p) => p.depth === depth) as p (p.id)}
       <rect x={p.footprint.x} y={p.footprint.y} width={Math.max(0, p.footprint.w)} height={Math.max(0, p.footprint.h)} style:fill={pieceFill(p)} class="piece" />
+      {#each p.lowFrom as l, i (i)}
+        {#if p.axis === 'x'}
+          <rect x={p.start + l.from} y={p.footprint.y} width={l.to - l.from} height={p.footprint.h} class="lowered" />
+        {:else}
+          <rect x={p.footprint.x} y={p.start + l.from} width={p.footprint.w} height={l.to - l.from} class="lowered" />
+        {/if}
+      {/each}
       {#each p.notches as n, i (i)}
         {#if p.axis === 'x'}
           <rect x={p.start + n.center - n.width / 2} y={p.footprint.y} width={n.width} height={p.footprint.h} class="notch" class:custom={n.custom} />
@@ -377,6 +384,10 @@
   }
   .notch.custom {
     fill: var(--notch-custom);
+  }
+  .lowered {
+    fill: var(--lowered);
+    pointer-events: none;
   }
   .letter {
     font-weight: 700;

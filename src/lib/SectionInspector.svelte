@@ -2,8 +2,9 @@
   import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
-  import { hasNotch, notchSharedWith, toggleNotch } from '../core/notches';
-  import { baseThickness, maxPad, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
+  import { baseThickness, LOWERED_DEFAULT, maxPad, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { roundTo } from '../core/geom';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
   import CompLabel from './CompLabel.svelte';
@@ -147,6 +148,11 @@
     }),
   );
   const boxWall = $derived(project.base === 'under' ? boxHeight - T : boxHeight);
+
+  /** A lowered side stands this share of the compartment's depth above its floor. */
+  const lowPct = $derived(project.lowered ?? LOWERED_DEFAULT);
+  const lowTop = $derived(roundTo((lowPct / 100) * c.fullHeight, project.precision));
+  const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 
   /** Items standing in a row along the arrow; a compartment holding a box has no room for them. */
   const spec = $derived(c.node.arrow && !c.node.insert ? c.node.items : undefined);
@@ -415,13 +421,18 @@
   <div class="notches">
     {#each SIDE_ORDER as side (side)}
       {@const p = pieceById.get(c.bounds[side])}
+      {@const notched = hasNotch(solved, c, side)}
+      {@const blocked = !notched && hasLow(solved, c, side)}
       <button
         class="small"
-        class:on={hasNotch(solved, c, side)}
+        class:on={notched}
+        disabled={blocked}
         onclick={() => toggleNotch(solved, c, side)}
-        data-tip="Cut a finger notch into the {p?.kind === 'divider' ? 'divider' : 'wall'} on the {side} (piece #{p ? cut.groupOf.get(p.id)?.number : '?'})"
+        data-tip={blocked
+          ? `The ${side} side is lowered; a side cannot have a notch too`
+          : `Cut a finger notch into the ${p?.kind === 'divider' ? 'divider' : 'wall'} on the ${side} (piece #${p ? cut.groupOf.get(p.id)?.number : '?'})`}
       >
-        {side[0].toUpperCase() + side.slice(1)}
+        {cap(side)}
         <span class="piece-ref">#{p ? cut.groupOf.get(p.id)?.number : '?'}</span>
       </button>
     {/each}
@@ -458,6 +469,39 @@
   {#each c.issues as issue, i (i)}
     <div class="issue {issue.level}">{issue.message}</div>
   {/each}
+</div>
+
+<div class="panel-section">
+  <h2>Lowered sides</h2>
+  <div class="notches">
+    {#each SIDE_ORDER as side (side)}
+      {@const p = pieceById.get(c.bounds[side])}
+      {@const low = hasLow(solved, c, side)}
+      {@const blocked = !low && hasNotch(solved, c, side)}
+      <button
+        class="small"
+        class:on={low}
+        disabled={blocked}
+        onclick={() => toggleLow(solved, c, side)}
+        data-tip={blocked
+          ? `The ${side} side has a finger notch; a side cannot be lowered too`
+          : `Cut the ${p?.kind === 'divider' ? 'divider' : 'wall'} on the ${side} down beside this compartment (piece #${p ? cut.groupOf.get(p.id)?.number : '?'})`}
+      >
+        {cap(side)}
+        <span class="piece-ref">#{p ? cut.groupOf.get(p.id)?.number : '?'}</span>
+      </button>
+    {/each}
+  </div>
+  {#each SIDE_ORDER as side (side)}
+    {@const shared = lowSharedWith(solved, c, side)}
+    {#if shared.length}
+      <p class="hint shared">The {side} side is lowered for {shared.join(', ')}: the divider between you is cut down.</p>
+    {/if}
+  {/each}
+  <p class="hint">
+    A lowered side stands {lowPct}% of the {mm(c.fullHeight)} mm depth, {mm(lowTop)} mm above the floor, along this compartment only, to reach in from that side.
+    Lowered along its whole length, a piece is just cut from a narrower strip. Set the share under Construction.
+  </p>
 </div>
 
 <style>

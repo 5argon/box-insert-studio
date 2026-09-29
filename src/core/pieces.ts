@@ -4,7 +4,7 @@
  * width, bases are cut as rectangles, and everything is packed onto sheets.
  */
 import { roundTo } from './geom';
-import type { Issue, Notch, PieceInst, Solved } from './layout';
+import type { Issue, Low, Notch, PieceInst, Solved } from './layout';
 import { pack } from './pack';
 import type { Mm, Project } from './types';
 
@@ -18,6 +18,8 @@ export interface PieceGroup {
   thickness: Mm;
   /** Notches measured from the end that the assembly steps call the start. */
   notches: Notch[];
+  /** Lowered stretches, measured from the same end as the notches. */
+  lows: Low[];
   pieces: PieceInst[];
   key: string;
 }
@@ -50,6 +52,22 @@ function compareNotches(a: Notch[], b: Notch[]): number {
   return a.length - b.length;
 }
 
+function lowKey(lows: Low[]): string {
+  return lows.map((l) => `${r1(l.from)}-${r1(l.to)}:${r1(l.depth)}`).join(',');
+}
+
+function compareLows(a: Low[], b: Low[]): number {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const d = r1(a[i].from) - r1(b[i].from) || r1(a[i].to) - r1(b[i].to) || r1(a[i].depth) - r1(b[i].depth);
+    if (d !== 0) return d;
+  }
+  return a.length - b.length;
+}
+
+function mirroredLows(lows: Low[], length: Mm): Low[] {
+  return lows.map((l) => ({ from: length - l.to, to: length - l.from, depth: l.depth })).sort((a, b) => a.from - b.from);
+}
+
 function mirrored(notches: Notch[], length: Mm): Notch[] {
   return notches.map((n) => ({ ...n, center: length - n.center })).sort((a, b) => a.center - b.center);
 }
@@ -65,6 +83,7 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     let length = L;
     let height = H;
     let notches: Notch[] = [];
+    let lows: Low[] = [];
     let flip = false;
     if (p.kind === 'base' || p.kind === 'pad') {
       length = Math.max(L, H);
@@ -73,14 +92,18 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     } else {
       const forward = [...p.notches].sort((a, b) => a.center - b.center);
       const back = mirrored(p.notches, p.length);
-      // Measure from whichever end puts the notches earliest, so mirror images share one key.
-      flip = compareNotches(back, forward) < 0;
+      const lowsForward = [...p.lows].sort((a, b) => a.from - b.from);
+      const lowsBack = mirroredLows(p.lows, p.length);
+      // Measure from whichever end puts the notches (then the lowered stretches) earliest, so
+      // mirror images share one key.
+      flip = (compareNotches(back, forward) || compareLows(lowsBack, lowsForward)) < 0;
       notches = flip ? back : forward;
-      key = `strip:${p.thickness}:${L}x${H}|${notchKey(notches)}`;
+      lows = flip ? lowsBack : lowsForward;
+      key = `strip:${p.thickness}:${L}x${H}|${notchKey(notches)}|${lowKey(lows)}`;
     }
     let g = map.get(key);
     if (!g) {
-      g = { number: 0, kind: p.kind === 'base' || p.kind === 'pad' ? 'base' : 'strip', length, height, thickness: p.thickness, notches, pieces: [], key };
+      g = { number: 0, kind: p.kind === 'base' || p.kind === 'pad' ? 'base' : 'strip', length, height, thickness: p.thickness, notches, lows, pieces: [], key };
       map.set(key, g);
     }
     g.pieces.push(p);
@@ -102,7 +125,7 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     for (let j = i + 1; j < strips.length; j++) {
       const a = strips[i];
       const b = strips[j];
-      if (a.notches.length || b.notches.length) continue;
+      if (a.notches.length || b.notches.length || a.lows.length || b.lows.length) continue;
       const dL = Math.abs(a.length - b.length);
       const dH = Math.abs(a.height - b.height);
       if (dH < 0.01 && dL > 0.01 && dL <= 2) {
