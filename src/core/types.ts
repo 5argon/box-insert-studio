@@ -35,7 +35,7 @@ export interface SectionNode {
   /** Sides that get a finger notch cut into the wall or divider there. */
   notches: Side[];
   /** This compartment's notch size, instead of the project's. */
-  notchSize?: { width: Mm; depth: Mm };
+  notchSize?: NotchSize;
   /** Sides whose wall or divider is cut down beside this compartment. Never also notched. */
   lowered?: Side[];
   /** An arrow drawn beside the letter: which way the items in this slot face. */
@@ -71,6 +71,14 @@ export interface ItemSpec {
   thickness: Mm;
   /** Space to leave free at the arrow's head, e.g. finger room. */
   spare: Mm;
+}
+
+/** A slanted finger notch: the opening at the top edge, how deep it goes, and its flat bottom. */
+export interface NotchSize {
+  width: Mm;
+  depth: Mm;
+  /** Flat bottom as a percentage of the opening; unset is 50. 0 is a V, 100 a straight-sided slot. */
+  bottom?: number;
 }
 
 export type LayoutNode = SplitNode | SectionNode;
@@ -122,7 +130,7 @@ export interface Project {
    * compartment is its own lift-out tray, as with separate boxes inside a removable box.
    */
   construction?: 'glued' | 'separate';
-  notch: { width: Mm; depth: Mm };
+  notch: NotchSize;
   /** How tall a lowered side stands, in percent of the compartment's depth. Unset: 75. */
   lowered?: number;
   /** Bottom layer first. */

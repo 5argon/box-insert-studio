@@ -1,6 +1,7 @@
 <script lang="ts">
   import { trayInstructions } from '../core/assembly';
-  import { NOTCH_BOTTOM, notchCorners } from '../core/notches';
+  import { notchCorners, notchSlant } from '../core/notches';
+  import { NOTCH_BOTTOM_DEFAULT } from '../core/layout';
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
@@ -37,9 +38,13 @@
       .join('; ');
   }
 
+  /** A notch's flat bottom is named only when it differs from the project's usual share. */
+  const flatNote = (n: { width: number; bottom: number }) =>
+    Math.abs(n.bottom - (n.width * (project.notch.bottom ?? NOTCH_BOTTOM_DEFAULT)) / 100) > 0.05 ? ` (${mm(n.bottom)} flat)` : '';
+
   function notchText(g: PieceGroup): string {
     const parts = [
-      ...g.notches.map((n) => `${mm(n.width)}×${mm(n.depth)} at ${mm(n.center)}`),
+      ...g.notches.map((n) => `${mm(n.width)}×${mm(n.depth)}${flatNote(n)} at ${mm(n.center)}`),
       ...g.lows.map((l) => `${mm(l.depth)} lower from ${mm(l.from)} to ${mm(l.to)}`),
     ];
     return parts.length ? parts.join(', ') + ' mm' : '';
@@ -47,15 +52,18 @@
 
   /** Every notch size in the design, for a true-size template each. */
   const notchSizes = $derived.by(() => {
-    const seen = new Map<string, { width: number; depth: number }>();
-    for (const g of cut.groups) for (const n of g.notches) seen.set(`${mm(n.width)}x${mm(n.depth)}`, { width: n.width, depth: n.depth });
-    if (!seen.size) seen.set('default', { ...project.notch });
+    const seen = new Map<string, { width: number; depth: number; bottom: number }>();
+    for (const g of cut.groups) for (const n of g.notches) seen.set(`${mm(n.width)}x${mm(n.depth)}/${mm(n.bottom)}`, { width: n.width, depth: n.depth, bottom: n.bottom });
+    if (!seen.size) {
+      const { width, depth } = project.notch;
+      seen.set('default', { width, depth, bottom: (width * (project.notch.bottom ?? NOTCH_BOTTOM_DEFAULT)) / 100 });
+    }
     return [...seen.values()].sort((a, b) => b.width - a.width || b.depth - a.depth);
   });
 
   /** The notch outline at true size, 1 mm in from the template's edge: two slants and a flat bottom. */
-  function notchPathFor(w: number, d: number): string {
-    return notchCorners(w / 2, w, d)
+  function notchPathFor(w: number, d: number, b: number): string {
+    return notchCorners(w / 2, w, d, b)
       .map(([x, y], i) => `${i ? 'L' : 'M'}${1 + x} ${1 + y}`)
       .join(' ');
   }
@@ -356,13 +364,15 @@
         Printed at 100% these are real size. Line the dashed edge up with the piece's top edge at each notch mark, trace, then make three straight cuts.
       </p>
       <div class="templates">
-        {#each notchSizes as n (`${n.width}x${n.depth}`)}
+        {#each notchSizes as n (`${n.width}x${n.depth}/${n.bottom}`)}
           <figure>
             <svg width="{n.width + 2}mm" height="{n.depth + 2}mm" viewBox="0 0 {n.width + 2} {n.depth + 2}" role="img" aria-label="Notch template {mm(n.width)} by {mm(n.depth)} mm">
               <line x1="0" y1="1" x2={n.width + 2} y2="1" stroke="#8a8378" stroke-width="0.2" stroke-dasharray="1 0.8" />
-              <path d={notchPathFor(n.width, n.depth)} fill="none" stroke="#22201c" stroke-width="0.3" />
+              <path d={notchPathFor(n.width, n.depth, n.bottom)} fill="none" stroke="#22201c" stroke-width="0.3" />
             </svg>
-            <figcaption class="muted small">{mm(n.width)} × {mm(n.depth)} mm, {mm(n.width * NOTCH_BOTTOM)} mm flat bottom</figcaption>
+            <figcaption class="muted small">
+              {mm(n.width)} × {mm(n.depth)} mm, {mm(n.bottom)} mm flat bottom, sides at {Math.round(notchSlant(n.width, n.depth, n.bottom))}°
+            </figcaption>
           </figure>
         {/each}
       </div>

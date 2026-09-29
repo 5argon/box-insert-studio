@@ -3,7 +3,7 @@
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
-  import { baseThickness, LOWERED_DEFAULT, maxPad, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { baseThickness, LOWERED_DEFAULT, maxPad, NOTCH_BOTTOM_DEFAULT, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import { roundTo } from '../core/geom';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
@@ -12,6 +12,7 @@
   import LayerIcon from './LayerIcon.svelte';
   import { layerInfo } from './layers';
   import LockButton from './LockButton.svelte';
+  import NotchFields from './NotchFields.svelte';
   import NumberField from './NumberField.svelte';
   import type { Selection } from './state.svelte';
 
@@ -470,19 +471,20 @@
         <span>Own size for this compartment</span>
         <button class="small" onclick={() => delete c.node.notchSize} data-tip="Go back to the project's notch size">Use default</button>
       </div>
-      <NumberField label="Width" value={size.width} min={5} onchange={(v) => (size.width = v)} />
-      <NumberField label="Depth" value={size.depth} min={2} onchange={(v) => (size.depth = v)} />
+      <NotchFields {size} />
     {:else}
-      <span class="hint">Size {mm(project.notch.width)} × {mm(project.notch.depth)} mm, the project default</span>
+      <span class="hint"
+        >Size {mm(project.notch.width)} × {mm(project.notch.depth)} mm with a {project.notch.bottom ?? NOTCH_BOTTOM_DEFAULT}% flat bottom, the project default</span
+      >
       <button
         class="small"
         onclick={() => (c.node.notchSize = { ...project.notch })}
-        data-tip="Give this compartment's notches their own width and depth; they are drawn in a different colour">Override</button
+        data-tip="Give this compartment's notches their own size and shape; they are drawn in a different colour">Override</button
       >
     {/if}
   </div>
   <p class="hint">
-    The notch is cut into the wall or divider on that side, centred on this compartment: two straight slants down to a flat bottom half as wide as the opening. It goes through the board, so the compartment across a divider gets it too.
+    The notch is cut into the wall or divider on that side, centred on this compartment: two straight slants down to a flat bottom. It goes through the board, so the compartment across a divider gets it too.
     {#if c.node.insert}Notches here help lift the box out.{/if}
   </p>
   {#each c.issues as issue, i (i)}

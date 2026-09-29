@@ -5,6 +5,7 @@
   import { LOWERED_DEFAULT, type Solved } from '../core/layout';
   import type { Project } from '../core/types';
   import LayerIcon from './LayerIcon.svelte';
+  import NotchFields from './NotchFields.svelte';
   import NumberField from './NumberField.svelte';
   import NumberInput from './NumberInput.svelte';
   import ReadmeDialog from './ReadmeDialog.svelte';
@@ -222,14 +223,7 @@
     </div>
   </div>
   <h2 class="sub">Finger notch</h2>
-  <NumberField
-    label="Width"
-    value={project.notch.width}
-    min={5}
-    hint="Opening at the top edge; the flat bottom is half as wide, joined by straight slants"
-    onchange={(v) => (project.notch.width = v)}
-  />
-  <NumberField label="Depth" value={project.notch.depth} min={2} hint="From the top edge down to the flat bottom" onchange={(v) => (project.notch.depth = v)} />
+  <NotchFields size={project.notch} />
   <h2 class="sub">Lowered sides</h2>
   <NumberField
     label="Height"
