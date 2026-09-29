@@ -39,7 +39,9 @@ export function toggleLow(solved: Solved, c: Compartment, side: Side) {
   if (!p) return;
   const facing = lowsFacing(p, c);
   if (!facing.length) {
-    (c.node.lowered ??= []).push(side);
+    // Assign a new array rather than push onto `??= []`: on reactive state that expression returns
+    // the plain array, not the tracked one, so the push would go unseen.
+    c.node.lowered = [...(c.node.lowered ?? []), side];
     return;
   }
   const byId = new Map(solved.compartments.map((x) => [x.id, x]));
