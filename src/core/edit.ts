@@ -134,7 +134,17 @@ export function setPad(section: SectionNode, layers: number) {
 export function setStacked(section: SectionNode, stacked: boolean) {
   if (!section.insert) return;
   if (stacked) section.insert.stacked = true;
-  else delete section.insert.stacked;
+  else {
+    delete section.insert.stacked;
+    delete section.insert.emptyAbove;
+  }
+}
+
+/** Of a stacked pair, leave out the top box so the space above the lower one stays empty. */
+export function setEmptyAbove(section: SectionNode, empty: boolean) {
+  if (!section.insert?.stacked) return;
+  if (empty) section.insert.emptyAbove = true;
+  else delete section.insert.emptyAbove;
 }
 
 /** `multiple` when the insert's top split makes separate boxes, `single` for one box. */

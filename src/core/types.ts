@@ -53,6 +53,8 @@ export interface SectionNode {
     root: LayoutNode;
     /** Two identical boxes stacked, each half the height, each with its own floor. */
     stacked?: boolean;
+    /** With `stacked`: build only the lower box and leave the half above it empty. */
+    emptyAbove?: boolean;
   };
 }
 

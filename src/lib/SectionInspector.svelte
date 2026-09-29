@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setInsert, setJoin, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
+  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setEmptyAbove, setInsert, setJoin, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
@@ -41,6 +41,9 @@
   const well = $derived(c.wellId ? solved.compartments.find((x) => x.id === c.wellId) : c.node.insert ? c : undefined);
   const boxes = $derived(well ? solved.trays.filter((t) => t.wellId === well.id && !t.copyOf) : []);
   const stacked = $derived(!!well?.node.insert?.stacked);
+  /** A stacked pair with the top box left out: one half-height box, empty above. */
+  const emptyAbove = $derived(stacked && !!well?.node.insert?.emptyAbove);
+  const pair = $derived(stacked && !emptyAbove);
   const insertRoot = $derived(well?.node.insert?.root);
   const mode = $derived(well ? insertMode(well.node) : 'single');
   const parent = $derived(findParent(layer.root, c.id));
@@ -137,6 +140,8 @@
     const pad = c.pad ? ` − ${c.pad} × ${mm(T)} mm raised floor` : '';
     if (c.depth === 1 && c.stacked)
       return `In each box: (${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm per box, − ${mm(T)} mm box floor${pad}`;
+    if (c.depth === 1 && emptyAbove)
+      return `(${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm box, − ${mm(T)} mm box floor${pad}; the half above stays empty`;
     if (c.depth === 1) return `${total} − ${mm(B)} mm tray floor${wellPad} − ${mm(T)} mm box floor${pad}`;
     return `${total} − ${mm(B)} mm floor${pad}`;
   });
@@ -348,11 +353,17 @@
     >
   </div>
   <p class="hint">
-    {#if c.pad && boxesHere}
+    {#if c.pad && boxesHere && c.node.insert?.emptyAbove}
+      Floor raised {mm(c.padHeight)} mm; the box stands on it, {mm(boxHeight)} mm tall, half the height left, with the rest above it empty. Marked
+      <CompLabel {c} /> in the layout.
+    {:else if c.pad && boxesHere}
       Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked boxes stand' : 'box stands'} on it, {mm(boxHeight)} mm tall{boxesHere === 2 ? ' each' : ''}, so the
       top stays flush. Marked <CompLabel {c} /> in the layout.
     {:else if c.pad}
       Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked <CompLabel {c} /> in the layout.
+    {:else if boxesHere && c.node.insert?.emptyAbove}
+      Raise the floor under the box to make it shallower; it stays half the height left above the raised floor, with the rest empty. Up to {padLimit}
+      layer{padLimit === 1 ? '' : 's'} fit here.
     {:else if boxesHere}
       Raise the floor under the {boxesHere === 2 ? 'stacked boxes' : 'box'} to make {boxesHere === 2 ? 'them' : 'it'} shallower; {boxesHere === 2 ? 'they get' : 'it gets'} shorter
       so the top stays flush. Up to {padLimit} layer{padLimit === 1 ? '' : 's'} fit here.
@@ -390,7 +401,10 @@
     {:else}
       <p class="hint">
         {#if mode === 'multiple'}Each part is its own box with four walls and {project.clearance} mm between them.{/if}
-        {#if stacked}
+        {#if emptyAbove}
+          {boxes.length === 1 ? 'One box' : `${boxes.length} boxes`}, {mm(boxHeight)} mm tall (half the height) with {mm(boxWall)} mm walls, {mm(boxHeight - T)} mm inside. The
+          {mm(boxHeight)} mm above {boxes.length === 1 ? 'it' : 'them'} stays empty.
+        {:else if pair}
           Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and its own floor,
           {mm(boxHeight - T)} mm inside. Together they sit flush.
         {:else}
@@ -403,6 +417,12 @@
       <input type="checkbox" checked={stacked} onchange={(e) => setStacked(well.node, e.currentTarget.checked)} />
       Stack two boxes (each half the height)
     </label>
+    {#if stacked}
+      <label class="check nested" data-tip="Build only the lower box; the space above it stays open for something else">
+        <input type="checkbox" checked={emptyAbove} onchange={(e) => setEmptyAbove(well.node, e.currentTarget.checked)} />
+        Leave out the top box (empty above)
+      </label>
+    {/if}
     <div class="row">
       {#each solved.compartments.filter((x) => x.wellId === well.id) as x (x.id)}
         <button class="square-link" class:on={x.id === c.id} onclick={() => onselect({ kind: 'section', id: x.id })} data-tip="Select {x.label}">
@@ -647,6 +667,9 @@
     gap: 6px;
     align-items: center;
     margin: 4px 0 8px;
+  }
+  .check.nested {
+    margin: -4px 0 8px 22px;
   }
   .chip.on {
     border-color: var(--accent);

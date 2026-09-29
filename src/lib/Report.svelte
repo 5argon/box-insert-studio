@@ -287,7 +287,7 @@
         <div class="tray">
           <h3>
             Tray {t.number}{t.stacked ? ' (make 2)' : ''} · {layerName.get(t.layerId)}{t.depth === 1
-              ? ` · ${t.stacked ? 'two boxes stacked' : 'box standing'} in ${wellLabel(t.wellId)} of tray ${parentNumber(t.parentTrayId)}`
+              ? ` · ${t.stacked ? 'two boxes stacked' : t.emptyAbove ? 'half-height box, empty above,' : 'box standing'} in ${wellLabel(t.wellId)} of tray ${parentNumber(t.parentTrayId)}`
               : ''} ·
             {mm(t.outer.w)} × {mm(t.outer.h)} × {mm(t.height)} mm · compartments {t.compartments.join(', ')}
           </h3>

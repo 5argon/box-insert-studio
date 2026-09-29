@@ -88,7 +88,9 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
     steps.push({
       text: tray.stacked
         ? `Make a second, identical box. Once dry, stack both in compartment ${well}; the top one sits flush with the walls around it.`
-        : `Once dry, drop the box into compartment ${well}; its top sits flush with the walls around it.`,
+        : tray.emptyAbove
+          ? `Once dry, drop the box into compartment ${well}. It is half as tall as the walls around it; the space above it stays empty.`
+          : `Once dry, drop the box into compartment ${well}; its top sits flush with the walls around it.`,
       groups: [],
     });
   }
