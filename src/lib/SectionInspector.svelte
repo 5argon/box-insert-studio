@@ -275,7 +275,6 @@
         data-tip={c.node.arrow === a.side ? 'Remove the arrow' : `Arrow toward the ${a.side}`}>{a.glyph}</button
       >
     {/each}
-    <span class="hint">{c.node.arrow ? `Toward the ${c.node.arrow}, drawn beside the letter` : 'Mark which way the items face, beside the letter'}</span>
   </div>
   {#if c.node.arrow && c.node.insert}
     <p class="hint">This compartment holds a box; simulate items in the box's compartments instead.</p>
@@ -617,9 +616,6 @@
     width: 30px;
     font-size: 14px;
     padding: 1px 0;
-  }
-  .arrows .hint {
-    margin-left: 4px;
   }
   .sim {
     margin: 10px 0 4px;
