@@ -24,11 +24,17 @@ export interface Low {
 /** Height of a lowered side, in percent of its compartment's depth, when the project sets none. */
 export const LOWERED_DEFAULT = 75;
 
+/** A finger notch's flat bottom, in percent of its opening, when the project sets none. */
+export const NOTCH_BOTTOM_DEFAULT = 50;
+
 export interface Notch {
   /** Centre along the piece, from its start (left or back end). */
   center: Mm;
+  /** Opening at the top edge. */
   width: Mm;
   depth: Mm;
+  /** Width of the flat bottom; straight slants join it to the opening. */
+  bottom: Mm;
   /** Sized by a compartment's own notch setting rather than the project's. */
   custom?: boolean;
 }
@@ -479,20 +485,31 @@ function mergeLows(lows: Low[]): Low[] {
   return out;
 }
 
+/** Overlapping notches become one: the outer slants of the two ends, one flat bottom between. */
 function mergeNotches(notches: Notch[]): Notch[] {
   const sorted = [...notches].sort((a, b) => a.center - b.center);
-  const out: { a: Mm; b: Mm; depth: Mm; custom: boolean }[] = [];
+  const out: { a: Mm; b: Mm; depth: Mm; custom: boolean; leftRun: Mm; rightRun: Mm }[] = [];
   for (const n of sorted) {
     const a = n.center - n.width / 2;
     const b = n.center + n.width / 2;
+    const run = (n.width - n.bottom) / 2;
     const last = out[out.length - 1];
     if (last && a <= last.b + 0.01) {
-      last.b = Math.max(last.b, b);
+      if (b > last.b) {
+        last.b = b;
+        last.rightRun = run;
+      }
       last.depth = Math.max(last.depth, n.depth);
       last.custom ||= !!n.custom;
-    } else out.push({ a, b, depth: n.depth, custom: !!n.custom });
+    } else out.push({ a, b, depth: n.depth, custom: !!n.custom, leftRun: run, rightRun: run });
   }
-  return out.map((o) => ({ center: (o.a + o.b) / 2, width: o.b - o.a, depth: o.depth, ...(o.custom ? { custom: true } : {}) }));
+  return out.map((o) => ({
+    center: (o.a + o.b) / 2,
+    width: o.b - o.a,
+    depth: o.depth,
+    bottom: Math.max(0, o.b - o.a - o.leftRun - o.rightRun),
+    ...(o.custom ? { custom: true } : {}),
+  }));
 }
 
 export function solveProject(project: Project): Solved {
@@ -627,7 +644,9 @@ export function solveProject(project: Project): Solved {
           c.issues.push({ level: 'warn', message: `The ${side} side is lowered there, so it gets no finger notch.` });
           continue;
         }
-        p.notches.push(c.node.notchSize ? { center, width, depth, custom: true } : { center, width, depth });
+        // The bottom keeps its share of the opening, so a notch narrowed to fit keeps its shape.
+        const bottom = (width * (size.bottom ?? NOTCH_BOTTOM_DEFAULT)) / 100;
+        p.notches.push(c.node.notchSize ? { center, width, depth, bottom, custom: true } : { center, width, depth, bottom });
         p.notchFrom.push({ compartmentId: c.id, side, from: center - width / 2, to: center + width / 2 });
       }
     }

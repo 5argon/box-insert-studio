@@ -41,12 +41,12 @@ export interface CutList {
 const r1 = (v: number) => roundTo(v, 0.5);
 
 function notchKey(notches: Notch[]): string {
-  return notches.map((n) => `${r1(n.center)}:${r1(n.width)}:${r1(n.depth)}`).join(',');
+  return notches.map((n) => `${r1(n.center)}:${r1(n.width)}:${r1(n.depth)}:${r1(n.bottom)}`).join(',');
 }
 
 function compareNotches(a: Notch[], b: Notch[]): number {
   for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    const d = r1(a[i].center) - r1(b[i].center) || r1(a[i].width) - r1(b[i].width) || r1(a[i].depth) - r1(b[i].depth);
+    const d = r1(a[i].center) - r1(b[i].center) || r1(a[i].width) - r1(b[i].width) || r1(a[i].depth) - r1(b[i].depth) || r1(a[i].bottom) - r1(b[i].bottom);
     if (d !== 0) return d;
   }
   return a.length - b.length;

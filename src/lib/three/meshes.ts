@@ -47,7 +47,7 @@ function profile(length: number, height: number, notches: Block['notches'], lows
   const features = [
     ...notches.map((n) => {
       // Right to left along the top edge: in at the right slant, across the bottom, out the left.
-      const corners = notchCorners(n.center, n.width, n.depth).reverse();
+      const corners = notchCorners(n.center, n.width, n.depth, n.bottom).reverse();
       return {
         at: corners[0][0],
         draw: () => {

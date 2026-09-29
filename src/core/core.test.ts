@@ -1148,12 +1148,64 @@ describe('stacked box with the top left out', () => {
 
 describe('slanted finger notch', () => {
   it('is an opening with straight slants down to a flat bottom half as wide', async () => {
-    const { notchCorners } = await import('./notches');
-    expect(notchCorners(50, 30, 15)).toEqual([
+    const { notchCorners, notchSlant } = await import('./notches');
+    expect(notchSlant(30, 15, 30)).toBe(90);
+    expect(notchSlant(30, 15, 0)).toBeCloseTo(45, 6);
+    expect(notchCorners(50, 30, 15, 15)).toEqual([
       [35, 0],
       [42.5, 15],
       [57.5, 15],
       [65, 0],
     ]);
+  });
+});
+
+describe('notch flat bottom setting', () => {
+  it('keeps its share when a notch is narrowed, joins overlapping notches by their outer slants, and splits cut sizes', async () => {
+    const p = blankProject();
+    p.layers = [newLayer('Only', 40)];
+    const layer = p.layers[0];
+    splitSection(layer, layer.root.id, 'row', p.material.thickness);
+    p.notch = { width: 30, depth: 10, bottom: 20 };
+    let s = solveProject(p);
+    const [left, right] = s.compartments.sort((a, b) => a.rect.x - b.rect.x);
+    left.node.notches = ['back'];
+    s = solveProject(p);
+    const back = () => s.pieces.find((x) => x.role === 'back wall')!;
+    expect(back().notches).toEqual([expect.objectContaining({ width: 30, depth: 10, bottom: 6 })]);
+
+    // A narrow compartment narrows the notch; the bottom stays 20% of it.
+    left.node.notchSize = { width: 400, depth: 10, bottom: 50 };
+    s = solveProject(p);
+    const n = back().notches[0];
+    expect(n.bottom).toBeCloseTo(n.width / 2, 6);
+    delete left.node.notchSize;
+
+    // A divider notched from both sides where the notches only partly overlap: one notch, running
+    // from the outer slant of one to the outer slant of the other, with one flat bottom between.
+    splitSection(layer, right.id, 'column', p.material.thickness);
+    p.notch = { width: 150, depth: 10, bottom: 20 };
+    s = solveProject(p);
+    const [l2, r1] = [s.compartments.find((c) => c.id === left.id)!, s.compartments.find((c) => c.id === right.id)!];
+    l2.node.notches = ['right'];
+    r1.node.notches = ['left'];
+    s = solveProject(p);
+    const divider = s.pieces.find((x) => x.kind === 'divider' && x.axis === 'y')!;
+    expect(divider.notchFrom).toHaveLength(2);
+    expect(divider.notches).toHaveLength(1);
+    const merged = divider.notches[0];
+    const outerRuns = divider.notchFrom.map((f) => ((f.to - f.from) * 0.8) / 2).reduce((x, y) => x + y, 0);
+    expect(merged.width).toBeCloseTo(Math.max(...divider.notchFrom.map((f) => f.to)) - Math.min(...divider.notchFrom.map((f) => f.from)), 6);
+    expect(merged.bottom).toBeCloseTo(merged.width - outerRuns, 6);
+    l2.node.notches = ['back'];
+    r1.node.notches = [];
+
+    // Same notch but another flat bottom is another cut size.
+    right.node.notches = [];
+    p.notch = { width: 30, depth: 10 };
+    const a = buildCutList(solveProject(p), p.precision).groups.map((g) => g.key);
+    p.notch = { width: 30, depth: 10, bottom: 80 };
+    const b = buildCutList(solveProject(p), p.precision).groups.map((g) => g.key);
+    expect(a).not.toEqual(b);
   });
 });
