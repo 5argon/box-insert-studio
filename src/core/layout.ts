@@ -5,13 +5,24 @@
  * and walls standing on the base are one thickness shorter than the tray.
  */
 import { labelFor } from './defaults';
-import { inset, type Rect } from './geom';
+import { inset, roundTo, type Rect } from './geom';
 import type { ChildSize, Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, Side, SplitNode } from './types';
 
 export interface Issue {
   level: 'error' | 'warn';
   message: string;
 }
+
+/** A lowered stretch of a wall or divider's top edge, from its start (left or back end). */
+export interface Low {
+  from: Mm;
+  to: Mm;
+  /** How much is cut off the top. */
+  depth: Mm;
+}
+
+/** Height of a lowered side, in percent of its compartment's depth, when the project sets none. */
+export const LOWERED_DEFAULT = 75;
 
 export interface Notch {
   /** Centre along the piece, from its start (left or back end). */
@@ -47,6 +58,12 @@ export interface PieceInst {
   notches: Notch[];
   /** Which compartment side asked for each notch, and the stretch of the piece it covers. */
   notchFrom: { compartmentId: string; side: Side; from: Mm; to: Mm }[];
+  /** Lowered stretches of the top edge. Empty when the whole piece is lowered: see `cut`. */
+  lows: Low[];
+  /** Which compartment side asked for each lowered stretch, even when it became `cut`. */
+  lowFrom: { compartmentId: string; side: Side; from: Mm; to: Mm }[];
+  /** Lowered along its whole length: this much shorter than it would be, already taken off `height`. */
+  cut?: Mm;
   /** Glue order inside its tray. */
   order: number;
   role: 'base' | 'back wall' | 'front wall' | 'left wall' | 'right wall' | 'divider' | 'pad';
@@ -281,9 +298,9 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     trays.push(tray);
     if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
     let order = 0;
-    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'depth' | 'copy'>): PieceInst => {
+    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'lows' | 'lowFrom' | 'depth' | 'copy'>): PieceInst => {
       const thickness = p.kind === 'base' ? ctx.base : T;
-      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, thickness, notches: [], notchFrom: [], depth: ctx.depth, copy: !!ctx.copy };
+      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, thickness, notches: [], notchFrom: [], lows: [], lowFrom: [], depth: ctx.depth, copy: !!ctx.copy };
       order += 1;
       pieces.push(piece);
       return piece;
@@ -322,7 +339,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     rect: Rect,
     bounds: Record<Side, string>,
     tray: Tray,
-    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'depth' | 'copy'>) => PieceInst,
+    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'lows' | 'lowFrom' | 'depth' | 'copy'>) => PieceInst,
     ctx: TrayCtx,
   ) {
     if (node.kind === 'section') {
@@ -441,6 +458,19 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
 
 const readingOrder = (a: Rect, b: Rect) => Math.round(a.y * 2) - Math.round(b.y * 2) || a.x - b.x;
 
+/** Join lowered stretches that touch or overlap. */
+function mergeLows(lows: Low[]): Low[] {
+  const out: Low[] = [];
+  for (const l of [...lows].sort((a, b) => a.from - b.from)) {
+    const last = out[out.length - 1];
+    if (last && l.from <= last.to + 0.01) {
+      last.to = Math.max(last.to, l.to);
+      last.depth = Math.max(last.depth, l.depth);
+    } else out.push({ ...l });
+  }
+  return out;
+}
+
 function mergeNotches(notches: Notch[]): Notch[] {
   const sorted = [...notches].sort((a, b) => a.center - b.center);
   const out: { a: Mm; b: Mm; depth: Mm; custom: boolean }[] = [];
@@ -502,6 +532,42 @@ export function solveProject(project: Project): Solved {
 
     const byId = new Map(sl.pieces.map((p) => [p.id, p]));
     const T = project.material.thickness;
+
+    // Lowered sides first, so no notch is placed where a side is cut down. The lowered top edge
+    // stands at a share of the compartment's depth above its floor, rounded like every cut size so
+    // identical walls lowered the same way stay one cut size.
+    const trayOf = new Map(sl.trays.map((t) => [t.id, t]));
+    const share = (project.lowered ?? LOWERED_DEFAULT) / 100;
+    for (const c of sl.compartments) {
+      for (const side of c.node.lowered ?? []) {
+        const p = byId.get(c.bounds[side]);
+        if (!p) continue;
+        // A wall wrapped around the base starts at the tray's bottom, one base below the floor.
+        const below = p.kind === 'wall' && project.base === 'inside' ? (trayOf.get(p.trayId)?.base ?? 0) : 0;
+        const top = roundTo(below + share * c.fullHeight, project.precision);
+        const depth = p.height - top;
+        if (depth < 1) {
+          c.issues.push({ level: 'warn', message: `The ${side} side already stands no higher than ${Math.round(share * 100)}% of the compartment.` });
+          continue;
+        }
+        const [a, b] = spanOn(p, c);
+        const from = Math.max(0, a);
+        const to = Math.min(p.length, b);
+        p.lows.push({ from, to, depth });
+        p.lowFrom.push({ compartmentId: c.id, side, from, to });
+      }
+    }
+    for (const p of sl.pieces) {
+      if (!p.lows.length) continue;
+      const merged = mergeLows(p.lows);
+      // Lowered end to end: simply a shorter piece, cut from a narrower strip.
+      if (merged.length === 1 && merged[0].from <= 0.01 && merged[0].to >= p.length - 0.01) {
+        p.cut = merged[0].depth;
+        p.height -= merged[0].depth;
+        p.lows = [];
+      } else p.lows = merged;
+    }
+
     for (const c of sl.compartments) {
       const { w, h } = c.rect;
       c.padHeight = c.pad * T;
@@ -547,6 +613,10 @@ export function solveProject(project: Project): Solved {
           continue;
         }
         const center = (p.axis === 'x' ? c.rect.x + w / 2 : c.rect.y + h / 2) - p.start;
+        if (p.lowFrom.some((l) => l.from < center + width / 2 && center - width / 2 < l.to)) {
+          c.issues.push({ level: 'warn', message: `The ${side} side is lowered there, so it gets no finger notch.` });
+          continue;
+        }
         p.notches.push(c.node.notchSize ? { center, width, depth, custom: true } : { center, width, depth });
         p.notchFrom.push({ compartmentId: c.id, side, from: center - width / 2, to: center + width / 2 });
       }
@@ -560,6 +630,9 @@ export function solveProject(project: Project): Solved {
       const twin = copyOf.has(p.trayId) ? byId.get(`${copyOf.get(p.trayId)}/${p.order}`) : undefined;
       if (!twin) continue;
       p.notches = twin.notches.map((n) => ({ ...n }));
+      p.lows = twin.lows.map((l) => ({ ...l }));
+      p.height = twin.height;
+      if (twin.cut) p.cut = twin.cut;
       p.sides = twin.sides?.map((x) => [...x]) as [string[], string[]] | undefined;
     }
   }
@@ -587,4 +660,10 @@ export function spanOn(p: PieceInst, c: Compartment): [Mm, Mm] {
 export function notchesFacing(p: PieceInst, c: Compartment): PieceInst['notchFrom'] {
   const [a, b] = spanOn(p, c);
   return p.notchFrom.filter((n) => n.from < b - 1e-6 && a < n.to - 1e-6);
+}
+
+/** The compartment sides whose lowering cuts down the stretch of this piece facing `c`. */
+export function lowsFacing(p: PieceInst, c: Compartment): PieceInst['lowFrom'] {
+  const [a, b] = spanOn(p, c);
+  return p.lowFrom.filter((l) => l.from < b - 1e-6 && a < l.to - 1e-6);
 }

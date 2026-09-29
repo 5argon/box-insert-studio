@@ -27,28 +27,56 @@ export interface SceneObjects {
   trays: TrayObjects[];
 }
 
-/** Side profile of a wall or divider (length × height) with its U-notches cut from the top edge. */
-function profile(length: number, height: number, notches: Block['notches']): THREE.Shape {
+/**
+ * Side profile of a wall or divider (length × height): the top edge runs right to left, dipping
+ * into each U-notch and stepping down across each lowered stretch.
+ */
+function profile(length: number, height: number, notches: Block['notches'], lows: Block['lows']): THREE.Shape {
   const shape = new THREE.Shape();
+  let last = { x: 0, y: 0 };
+  // Skip repeated points: a lowered stretch that reaches an end would otherwise double a corner.
+  const to = (x: number, y: number) => {
+    if (Math.abs(x - last.x) < 1e-6 && Math.abs(y - last.y) < 1e-6) return;
+    shape.lineTo(x, y);
+    last = { x, y };
+  };
   shape.moveTo(0, 0);
-  shape.lineTo(length, 0);
-  shape.lineTo(length, height);
-  for (const n of [...notches].sort((a, b) => b.center - a.center)) {
-    const r = Math.min(n.width / 2, n.depth);
-    const cy = height - (n.depth - r);
-    shape.lineTo(n.center + r, height);
-    shape.lineTo(n.center + r, cy);
-    shape.absarc(n.center, cy, r, 0, Math.PI, true);
-    shape.lineTo(n.center - r, height);
-  }
-  shape.lineTo(0, height);
+  to(length, 0);
+  to(length, height);
+  const features = [
+    ...notches.map((n) => {
+      const r = Math.min(n.width / 2, n.depth);
+      return {
+        at: n.center + r,
+        draw: () => {
+          const cy = height - (n.depth - r);
+          to(n.center + r, height);
+          to(n.center + r, cy);
+          shape.absarc(n.center, cy, r, 0, Math.PI, true);
+          last = { x: n.center - r, y: cy };
+          to(n.center - r, height);
+        },
+      };
+    }),
+    ...lows.map((l) => ({
+      at: l.to,
+      draw: () => {
+        to(l.to, height);
+        to(l.to, height - l.depth);
+        to(l.from, height - l.depth);
+        to(l.from, height);
+      },
+    })),
+  ].sort((a, b) => b.at - a.at);
+  for (const f of features) f.draw();
+  to(0, height);
   shape.closePath();
   return shape;
 }
 
 /** Geometry already placed in world coordinates. */
 function pieceGeometry(b: Block): THREE.BufferGeometry {
-  if (b.kind === 'base' || !b.notches.length) {
+  if (b.kind === 'base' || (!b.notches.length && !b.lows.length)) {
     const g = new THREE.BoxGeometry(b.w, b.h, b.d);
     g.translate(b.x + b.w / 2, b.z + b.h / 2, b.y + b.d / 2);
     return g;
@@ -56,7 +84,7 @@ function pieceGeometry(b: Block): THREE.BufferGeometry {
   const along = b.axis === 'x';
   const length = along ? b.w : b.d;
   const thick = along ? b.d : b.w;
-  const g = new THREE.ExtrudeGeometry(profile(length, b.h, b.notches), { depth: thick, bevelEnabled: false, curveSegments: 12 });
+  const g = new THREE.ExtrudeGeometry(profile(length, b.h, b.notches, b.lows), { depth: thick, bevelEnabled: false, curveSegments: 12 });
   if (along) {
     g.translate(b.x, b.z, b.y);
   } else {

@@ -2,7 +2,7 @@
   import { SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
   import { setBaseThickness, setConstruction } from '../core/edit';
   import { mm } from '../core/geom';
-  import type { Solved } from '../core/layout';
+  import { LOWERED_DEFAULT, type Solved } from '../core/layout';
   import type { Project } from '../core/types';
   import LayerIcon from './LayerIcon.svelte';
   import NumberField from './NumberField.svelte';
@@ -224,6 +224,18 @@
   <h2 class="sub">Finger notch</h2>
   <NumberField label="Width" value={project.notch.width} min={5} onchange={(v) => (project.notch.width = v)} />
   <NumberField label="Depth" value={project.notch.depth} min={2} onchange={(v) => (project.notch.depth = v)} />
+  <h2 class="sub">Lowered sides</h2>
+  <NumberField
+    label="Height"
+    unit="%"
+    value={project.lowered ?? LOWERED_DEFAULT}
+    min={10}
+    max={95}
+    step={5}
+    decimals={0}
+    hint="How tall a lowered side stands, as a share of its compartment's depth"
+    onchange={(v) => (project.lowered = v)}
+  />
 </div>
 
 {#if solved.issues.length}

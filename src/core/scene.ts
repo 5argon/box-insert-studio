@@ -7,7 +7,7 @@
  * stack stands on the lower one.
  */
 import { fitItems } from './items';
-import type { Notch, PieceKind, Solved, Tray } from './layout';
+import type { Low, Notch, PieceKind, Solved, Tray } from './layout';
 import type { Mm, Project } from './types';
 
 export interface Block {
@@ -25,6 +25,8 @@ export interface Block {
   axis: 'x' | 'y';
   /** Centres measured from the piece's start (its left or back end). */
   notches: Notch[];
+  /** Lowered stretches of the top edge, from the same start. */
+  lows: Low[];
 }
 
 /** An axis-aligned box: min corner and extent along x, y and z. */
@@ -174,7 +176,7 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
         // Raised-floor layers stack on the base, one thickness each.
         const pz = p.kind === 'base' ? bottom : p.kind === 'pad' ? bottom + t.base + (p.padLevel ?? 0) * T : bottom + (onBase ? t.base : 0);
         const h = p.kind === 'base' || p.kind === 'pad' ? p.thickness : p.height;
-        return { id: p.id, kind: p.kind, x: p.footprint.x, y: p.footprint.y, z: pz, w: p.footprint.w, d: p.footprint.h, h, axis: p.axis, notches: p.notches };
+        return { id: p.id, kind: p.kind, x: p.footprint.x, y: p.footprint.y, z: pz, w: p.footprint.w, d: p.footprint.h, h, axis: p.axis, notches: p.notches, lows: p.lows };
       });
     const lower = t.copyOf ? trayById.get(t.copyOf) : undefined;
     const level: 0 | 1 = lower ? 1 : 0;

@@ -37,8 +37,11 @@
   }
 
   function notchText(g: PieceGroup): string {
-    if (!g.notches.length) return '';
-    return g.notches.map((n) => `${mm(n.width)}×${mm(n.depth)} at ${mm(n.center)}`).join(', ') + ' mm';
+    const parts = [
+      ...g.notches.map((n) => `${mm(n.width)}×${mm(n.depth)} at ${mm(n.center)}`),
+      ...g.lows.map((l) => `${mm(l.depth)} lower from ${mm(l.from)} to ${mm(l.to)}`),
+    ];
+    return parts.length ? parts.join(', ') + ' mm' : '';
   }
 
   /** Every notch size in the design, for a true-size template each. */
@@ -106,7 +109,7 @@
   );
 
   function exportCsv() {
-    const rows = [['#', 'Qty', 'Kind', 'Length mm', 'Height mm', 'Notches', 'Used in']];
+    const rows = [['#', 'Qty', 'Kind', 'Length mm', 'Height mm', 'Notches, lowered', 'Used in']];
     for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', String(g.length), String(g.height), notchText(g), where(g)]);
     const csv = rows.map((r) => r.map((c) => (/[",;]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
     download(`${slug(project.name)}-cut-list.csv`, csv, 'text/csv');
@@ -198,7 +201,7 @@
       <h2>Cut list</h2>
       <table>
         <thead>
-          <tr><th>#</th><th>Qty</th><th>Size (mm)</th><th>Notches</th><th>Used in</th></tr>
+          <tr><th>#</th><th>Qty</th><th>Size (mm)</th><th>Notches, lowered</th><th>Used in</th></tr>
         </thead>
         {#each blocks as block (block.thickness)}
           <tbody class:own={block.thickness !== T}>
@@ -311,6 +314,13 @@
               {/each}
               {#each pieces.filter((p) => p.kind === 'wall' || p.kind === 'divider') as p (p.id)}
                 <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="tray-piece" />
+                {#each p.lowFrom as l, i (i)}
+                  {#if p.axis === 'x'}
+                    <rect x={p.start + l.from} y={p.footprint.y} width={l.to - l.from} height={p.footprint.h} class="tray-lowered" />
+                  {:else}
+                    <rect x={p.footprint.x} y={p.start + l.from} width={p.footprint.w} height={l.to - l.from} class="tray-lowered" />
+                  {/if}
+                {/each}
                 {#each p.notches as n, i (i)}
                   {#if p.axis === 'x'}
                     <rect x={p.start + n.center - n.width / 2} y={p.footprint.y} width={n.width} height={p.footprint.h} class="tray-notch" class:custom={n.custom} />
@@ -522,6 +532,9 @@
   }
   .tray-notch {
     fill: #f2b233;
+  }
+  .tray-lowered {
+    fill: #9b7fd4;
   }
   .tray-notch.custom {
     fill: #1aa6b7;
