@@ -1145,3 +1145,15 @@ describe('stacked box with the top left out', () => {
     expect(solveProject(p).trays.filter((t) => t.wellId === g.id)).toHaveLength(2);
   });
 });
+
+describe('slanted finger notch', () => {
+  it('is an opening with straight slants down to a flat bottom half as wide', async () => {
+    const { notchCorners } = await import('./notches');
+    expect(notchCorners(50, 30, 15)).toEqual([
+      [35, 0],
+      [42.5, 15],
+      [57.5, 15],
+      [65, 0],
+    ]);
+  });
+});

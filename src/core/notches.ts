@@ -1,6 +1,24 @@
 import { lowsFacing, notchesFacing, type Compartment, type Solved } from './layout';
 import type { Side } from './types';
 
+/** A finger notch's flat bottom is this share of its opening; the sides are straight slants. */
+export const NOTCH_BOTTOM = 0.5;
+
+/**
+ * Corners of a slanted finger notch as [along the piece, down from the top edge]: top-left,
+ * bottom-left, bottom-right, top-right. Three straight cuts: two slants and the flat bottom.
+ */
+export function notchCorners(center: number, width: number, depth: number): [number, number][] {
+  const top = width / 2;
+  const bottom = (width * NOTCH_BOTTOM) / 2;
+  return [
+    [center - top, 0],
+    [center - bottom, depth],
+    [center + bottom, depth],
+    [center + top, 0],
+  ];
+}
+
 function pieceOn(solved: Solved, c: Compartment, side: Side) {
   return solved.pieces.find((p) => p.id === c.bounds[side]);
 }
