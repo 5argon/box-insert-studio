@@ -11,6 +11,8 @@ export interface StepNote {
 }
 
 export interface Step {
+  /** A sentence to stand out, printed in bold before `text`. */
+  strong?: string;
   text: string;
   groups: number[];
   notes: StepNote[];
@@ -105,12 +107,13 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
     const well = solved.compartments.find((c) => c.id === tray.wellId)?.label ?? '?';
     steps.push({
       text: tray.stacked
-        ? `Make a second, identical box. Stack both in compartment ${well}; the top one sits flush with the walls around it.`
+        ? `Stack both in compartment ${well}; the top one sits flush with the walls around it.`
         : tray.emptyAbove
           ? `Drop the box into compartment ${well}. It is half as tall as the walls around it; the space above it stays empty.`
           : `Drop the box into compartment ${well}; its top sits flush with the walls around it.`,
       groups: [],
       notes: [],
+      ...(tray.stacked ? { strong: 'Make a second, identical box.' } : {}),
     });
   }
   return steps;

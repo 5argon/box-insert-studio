@@ -1,4 +1,4 @@
-import { defaultProject, migrateProject } from '../core/defaults';
+import { migrateProject, newProject, STARTER_SPEC } from '../core/defaults';
 import type { Project } from '../core/types';
 
 const KEY = 'box-insert-studio/project-v2';
@@ -10,6 +10,9 @@ export type Selection = { kind: 'section' | 'split'; id: string } | null;
 /** How trays that are not highlighted are drawn in the 3D view. */
 export type ViewStyle = 'wire' | 'glass' | 'solid';
 
+/** True when nothing was saved: the app opens the New dialog to set the design up. */
+export let firstRun = false;
+
 function load(): Project {
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
@@ -18,7 +21,8 @@ function load(): Project {
   } catch {
     // Storage unavailable or corrupt: start fresh.
   }
-  return defaultProject();
+  firstRun = true;
+  return newProject(STARTER_SPEC);
 }
 
 const initial = load();

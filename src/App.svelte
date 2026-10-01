@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { blankProject, defaultProject, migrateProject } from './core/defaults';
+  import { onMount } from 'svelte';
+  import { migrateProject } from './core/defaults';
   import { baseThickness, solveProject } from './core/layout';
   import { buildCutList, planCuts } from './core/pieces';
   import { buildScene } from './core/scene';
   import { trayColors } from './lib/trayColors';
   import type { Project } from './core/types';
   import BoxPanel from './lib/BoxPanel.svelte';
+  import NewDialog from './lib/NewDialog.svelte';
   import CompSquare from './lib/CompSquare.svelte';
   import LayerIcon from './lib/LayerIcon.svelte';
   import Tooltip from './lib/Tooltip.svelte';
@@ -16,7 +18,7 @@
   import SectionInspector from './lib/SectionInspector.svelte';
   import SplitInspector from './lib/SplitInspector.svelte';
   import { breakStep, recordProject, redo, undo, undoState } from './lib/history.svelte';
-  import { download, persist, replaceProject, setPreviewCollapsed, slug, studio, type Selection } from './lib/state.svelte';
+  import { download, firstRun, persist, replaceProject, setPreviewCollapsed, slug, studio, type Selection } from './lib/state.svelte';
   import { isDark, setTheme, theme, type ThemePref } from './lib/theme.svelte';
 
   const solved = $derived(solveProject(studio.project));
@@ -70,13 +72,12 @@
     studio.selected = sel;
   }
 
-  function newProject() {
-    if (confirm('Start a new, empty insert for this box size? Unsaved changes will be lost.')) replaceProject(blankProject($state.snapshot(studio.project) as Project));
-  }
+  let newDialog: NewDialog | undefined = $state();
 
-  function loadExample() {
-    if (confirm('Load the example DOOM insert? Unsaved changes will be lost.')) replaceProject(defaultProject());
-  }
+  // Nothing saved yet: set the design up first.
+  onMount(() => {
+    if (firstRun) newDialog?.open({ replacing: false });
+  });
 
   function save() {
     download(`${slug(studio.project.name)}.insert.json`, JSON.stringify($state.snapshot(studio.project), null, 2), 'application/json');
@@ -98,6 +99,7 @@
 
 <svelte:window onkeydown={keydown} onpointerdowncapture={breakStep} />
 <Tooltip />
+<NewDialog bind:this={newDialog} current={studio.project} oncreate={replaceProject} />
 
 <div class="app">
   <header class="no-print">
@@ -123,8 +125,7 @@
     </label>
     <div class="file">
       <a class="credit" href="https://github.com/5argon/box-insert-studio" target="_blank" rel="noopener">Source · CC BY 4.0</a>
-      <button class="small" onclick={newProject} data-tip="Empty insert, keeping the box size and material settings">New</button>
-      <button class="small" onclick={loadExample} data-tip="Load the example: a two-layer insert modelled on DOOM (2016)">Example</button>
+      <button class="small" onclick={() => newDialog?.open()} data-tip="Start a new design: box, material and first layer">New</button>
       <label class="small open">Open<input type="file" accept=".json,application/json" onchange={open} /></label>
       <button class="small" onclick={save}>Save</button>
     </div>

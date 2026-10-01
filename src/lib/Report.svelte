@@ -345,6 +345,7 @@
             <ol class="steps">
               {#each trayInstructions(project, solved, cut, t) as step, i (i)}
                 <li>
+                  {#if step.strong}<b class="strong">{step.strong}</b>{/if}
                   {step.text}
                   {#each step.notes as n, j (j)}
                     <span class="step-note {n.kind}"><b>{n.label}:</b> {n.text}</span>
@@ -555,6 +556,11 @@
     padding: 4px 10px;
     font-size: 12px;
     background: #e6eefc;
+  }
+  .strong {
+    background: #fff1c2;
+    padding: 0 3px;
+    border-radius: 3px;
   }
   .step-note {
     display: block;

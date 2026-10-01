@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
-import { blankProject, defaultProject, labelFor, migrateProject, newLayer, newSection } from './defaults';
+import { labelFor, migrateProject, newLayer, newSection } from './defaults';
+import { blankProject, doomExample } from './fixtures';
 import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from './edit';
 import { allocate, solveProject } from './layout';
 import { pack } from './pack';
@@ -36,13 +37,13 @@ describe('labels', () => {
 
 describe('foam solver', () => {
   it('reproduces the DOOM top tray cut list', () => {
-    const p = defaultProject();
+    const p = doomExample();
     p.layers.forEach((l) => clearNotches(l.root));
     expect(summary(p, 1)).toEqual(['1× 285x285', '2× 285x28', '3× 275x28', '1× 167x28', '6× 103x28', '1× 45x28', '3× 28x28']);
   });
 
   it('accounts for board thickness in every compartment', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const s = solveProject(p);
     const top = s.layers[1];
     const widths = top.compartments.filter((c) => c.rect.y < 50).map((c) => c.rect.w);
@@ -52,7 +53,7 @@ describe('foam solver', () => {
   });
 
   it('builds walls on the base or around it', () => {
-    const p = defaultProject();
+    const p = doomExample();
     p.layers = [newLayer('Only', 40)];
     expect(summary(p, 0)).toEqual(['1× 285x285', '2× 285x35', '2× 275x35']);
     p.base = 'inside';
@@ -64,7 +65,7 @@ describe('foam solver', () => {
   });
 
   it('makes separate trays with their own walls and a clearance gap', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const layer = newLayer('Trays', 40);
     p.layers = [layer];
     splitSection(layer, layer.root.id, 'row', p.material.thickness);
@@ -78,7 +79,7 @@ describe('foam solver', () => {
   });
 
   it('only allows separate trays where every enclosing split is separate trays', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const bottom = p.layers[0];
     if (bottom.root.kind !== 'split') throw new Error();
     const inner = bottom.root.children[0].node;
@@ -93,7 +94,7 @@ describe('foam solver', () => {
   });
 
   it('cuts finger notches into the piece on each chosen side', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const s = solveProject(p);
     const a = s.compartments.find((c) => c.label === 'A')!;
     const back = s.pieces.find((x) => x.id === a.bounds.back)!;
@@ -104,7 +105,7 @@ describe('foam solver', () => {
   });
 
   it('flags layers taller than the box', () => {
-    const p = defaultProject();
+    const p = doomExample();
     p.layers[0].height = 80;
     expect(solveProject(p).issues.some((i) => i.level === 'error')).toBe(true);
   });
@@ -112,7 +113,7 @@ describe('foam solver', () => {
 
 describe('cut list', () => {
   it('groups mirror-image notched pieces together', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const layer = newLayer('Mirror', 40, newSection());
     p.layers = [layer];
     const second = splitSection(layer, layer.root.id, 'row', p.material.thickness)!;
@@ -141,7 +142,7 @@ describe('cut list', () => {
   });
 
   it('suggests merging pieces that differ by a millimetre or two', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const layer = newLayer('Near', 40);
     p.layers = [layer];
     const right = splitSection(layer, layer.root.id, 'row', p.material.thickness)!;
@@ -160,7 +161,7 @@ describe('cut list', () => {
   });
 
   it('plans strips no longer than the sheet and accounts for every piece', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const s = solveProject(p);
     const cut = buildCutList(s, p.precision);
     const plan = planCuts(p, cut);
@@ -174,7 +175,7 @@ describe('cut list', () => {
   });
 
   it('reports bases that do not fit the sheet', () => {
-    const p = defaultProject();
+    const p = doomExample();
     p.material.sheet = { preset: 'A4', width: 210, height: 297 };
     const plan = planCuts(p, buildCutList(solveProject(p), p.precision));
     expect(plan.issues.some((i) => /does not fit/.test(i.message))).toBe(true);
@@ -195,7 +196,7 @@ describe('edit', () => {
   });
 
   it('keeps the layout filled when the last flex part gets locked', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const bottom = p.layers[0];
     if (bottom.root.kind !== 'split') throw new Error();
     lockChild(bottom.root, 1, 101, [168, 102]);
@@ -215,7 +216,7 @@ describe('edit', () => {
 
 describe('assembly', () => {
   it('glues base, full walls, short walls, then dividers outside-in', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const s = solveProject(p);
     const cut = buildCutList(s, p.precision);
     const top = s.trays.find((t) => t.layerId === p.layers[1].id)!;
@@ -248,7 +249,7 @@ describe('pack', () => {
 
 describe('switching to separate trays', () => {
   it('keeps locked compartments at their inside size', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const top = p.layers[1];
     if (top.root.kind !== 'split') throw new Error();
     setJoin(top, top.root, 'trays', p.material.thickness);
@@ -283,7 +284,7 @@ describe('lock toggle', () => {
 
 describe('boxes inside compartments', () => {
   function boxedProject() {
-    const p = defaultProject();
+    const p = doomExample();
     const s = solveProject(p);
     const g = s.compartments.find((c) => c.label === 'G')!;
     const box = s.trays.find((t) => t.wellId === g.id)!;
@@ -362,7 +363,7 @@ describe('boxes inside compartments', () => {
 
 describe('new project', () => {
   it('starts with one empty tray and keeps box and material settings', () => {
-    const from = defaultProject();
+    const from = doomExample();
     from.material.thickness = 3;
     from.box.width = 300;
     const p = blankProject(from);
@@ -442,7 +443,7 @@ describe('history', () => {
 
 describe('stacked boxes', () => {
   function stackedProject() {
-    const p = defaultProject();
+    const p = doomExample();
     const s0 = solveProject(p);
     const g = s0.compartments.find((c) => c.label === 'G')!;
     setStacked(g.node, true);
@@ -497,14 +498,15 @@ describe('stacked boxes', () => {
     const cut = buildCutList(s, p.precision);
     const lower = s.trays.find((t) => t.wellId === g.id && !t.copyOf)!;
     const steps = trayInstructions(p, s, cut, lower);
-    expect(steps[steps.length - 1].text).toMatch(/second, identical box\. Stack both in compartment G/);
+    expect(steps[steps.length - 1].strong).toBe('Make a second, identical box.');
+    expect(steps[steps.length - 1].text).toMatch(/^Stack both in compartment G/);
   });
 });
 
 describe('shared notches', () => {
   it('shows a divider notch from both sides and removes it from either side', async () => {
     const { hasNotch, notchSharedWith, toggleNotch } = await import('./notches');
-    const p = defaultProject();
+    const p = doomExample();
     const find = (s: ReturnType<typeof solveProject>, l: string) => s.compartments.find((c) => c.label === l)!;
     let s = solveProject(p);
     // D and E sit on top of each other in the bottom tray, sharing a horizontal divider.
@@ -520,7 +522,7 @@ describe('shared notches', () => {
 
   it('does not show a notch that is on another stretch of the same divider', async () => {
     const { hasNotch, toggleNotch } = await import('./notches');
-    const p = defaultProject();
+    const p = doomExample();
     const find = (s: ReturnType<typeof solveProject>, l: string) => s.compartments.find((c) => c.label === l)!;
     let s = solveProject(p);
     // A's front notch is on the long horizontal divider, far from G's stretch of it.
@@ -535,7 +537,7 @@ describe('shared notches', () => {
 
 describe('material', () => {
   it('migrates projects saved with the old foam setting', () => {
-    const old = JSON.parse(JSON.stringify(defaultProject()));
+    const old = JSON.parse(JSON.stringify(doomExample()));
     const sheet = old.material.sheet;
     old.foam = { thickness: 3, sheet, trim: 5, kerf: 0.5 };
     delete old.material;
@@ -554,7 +556,7 @@ describe('material', () => {
 describe('3D scene', () => {
   async function scene(edit?: (p: Project, s: ReturnType<typeof solveProject>) => void) {
     const { buildScene, overlap } = await import('./scene');
-    const p = defaultProject();
+    const p = doomExample();
     if (edit) edit(p, solveProject(p));
     const s = solveProject(p);
     return { p, s, model: buildScene(p, s), overlap };
@@ -604,7 +606,7 @@ describe('3D scene', () => {
 
   it('draws layer trays grey, and keeps box colours distinct and stable when another box is added', async () => {
     const { buildScene, LAYER_TRAY_COLOR } = await import('./scene');
-    const p = defaultProject();
+    const p = doomExample();
     const colors = new Map<string, number>();
     const before = new Map(buildScene(p, solveProject(p), colors).trays.map((t) => [t.key, t.color]));
     const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
@@ -619,7 +621,7 @@ describe('3D scene', () => {
 
   it('gives trays keys that survive unrelated edits', async () => {
     const { buildScene } = await import('./scene');
-    const p = defaultProject();
+    const p = doomExample();
     const before = buildScene(p, solveProject(p)).trays.map((t) => t.key);
     p.box.width = 300;
     p.layers[0].height = 50;
@@ -630,7 +632,7 @@ describe('3D scene', () => {
 describe('raised floors', () => {
   async function padded(layers: number, label = 'S') {
     const { setPad } = await import('./edit');
-    const p = defaultProject();
+    const p = doomExample();
     const c0 = solveProject(p).compartments.find((c) => c.label === label)!;
     setPad(c0.node, layers);
     return p;
@@ -653,7 +655,7 @@ describe('raised floors', () => {
 
   it('reports overpadding after the material gets thicker', async () => {
     const { maxPad } = await import('./layout');
-    const p0 = defaultProject();
+    const p0 = doomExample();
     const full = solveProject(p0).compartments.find((x) => x.label === 'S')!.fullHeight;
     const most = maxPad(full, p0.material.thickness);
     expect(most * p0.material.thickness).toBeLessThan(full);
@@ -736,7 +738,7 @@ describe('raised floors', () => {
 
 describe('box too shallow', () => {
   it('reports on the compartment instead of building a box, with the layer height needed', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
     p.layers[0].height = 12;
     let s = solveProject(p);
@@ -752,7 +754,7 @@ describe('box too shallow', () => {
 
 describe('notch size override', () => {
   it('cuts a compartment\'s notches at its own size and keeps them a separate cut', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const a = solveProject(p).compartments.find((c) => c.label === 'A')!;
     a.node.notchSize = { width: 20, depth: 10 };
     const s = solveProject(p);
@@ -763,7 +765,7 @@ describe('notch size override', () => {
     // B's notch on the same wall keeps the project size.
     const others = back.notches.filter((n) => n !== mine);
     expect(others.every((n) => n.width === p.notch.width && !n.custom)).toBe(true);
-    const before = buildCutList(solveProject(defaultProject()), p.precision).groups.length;
+    const before = buildCutList(solveProject(doomExample()), p.precision).groups.length;
     expect(buildCutList(s, p.precision).groups.length).toBeGreaterThanOrEqual(before);
   });
 });
@@ -823,7 +825,7 @@ describe('item simulation in 3D', () => {
   it('stands items from the arrow tail toward its head, centred across, on the raised floor, clear of every piece', async () => {
     const { buildScene, overlap } = await import('./scene');
     const { setPad } = await import('./edit');
-    const p = defaultProject();
+    const p = doomExample();
     const T = p.material.thickness;
     const a0 = solveProject(p).compartments.find((c) => c.label === 'A')!;
     setPad(a0.node, 2);
@@ -860,7 +862,7 @@ describe('item simulation in 3D', () => {
 
   it('fills both boxes of a stack and skips a compartment that holds a box', async () => {
     const { buildScene } = await import('./scene');
-    const p = defaultProject();
+    const p = doomExample();
     const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
     setStacked(g.node, true);
     const g1 = solveProject(p).compartments.find((c) => c.label === 'G1')!;
@@ -882,7 +884,7 @@ describe('item simulation in 3D', () => {
 describe('separate construction', () => {
   it('makes every top-level compartment its own tray and back, leaving removable boxes alone', async () => {
     const { setConstruction, splitJoin } = await import('./edit');
-    const p = defaultProject();
+    const p = doomExample();
     const before = solveProject(p);
     const boxDividers = (s: ReturnType<typeof solveProject>) => s.pieces.filter((x) => x.depth === 1 && x.kind === 'divider').length;
     setConstruction(p, 'separate');
@@ -918,7 +920,7 @@ describe('separate construction', () => {
   it('places every separate tray and the boxes inside them without overlaps', async () => {
     const { setConstruction } = await import('./edit');
     const { buildScene, overlap } = await import('./scene');
-    const p = defaultProject();
+    const p = doomExample();
     setConstruction(p, 'separate');
     const s = solveProject(p);
     const blocks = buildScene(p, s).trays.flatMap((t) => t.blocks);
@@ -934,7 +936,7 @@ describe('separate construction', () => {
 describe('base thickness', () => {
   async function thinBase() {
     const { setBaseThickness } = await import('./edit');
-    const p = defaultProject();
+    const p = doomExample();
     const before = solveProject(p);
     const heights = p.layers.map((l) => l.height);
     setBaseThickness(p, 3);
@@ -1088,7 +1090,7 @@ describe('lowered sides', () => {
 
   it('builds lowered pieces in 3D without overlaps', async () => {
     const { buildScene, overlap } = await import('./scene');
-    const p = defaultProject();
+    const p = doomExample();
     for (const c of solveProject(p).compartments) if (!c.node.notches.length) c.node.lowered = ['left', 'front'];
     const s = solveProject(p);
     expect(s.pieces.some((x) => x.lows.length)).toBe(true);
@@ -1103,7 +1105,7 @@ describe('stacked box with the top left out', () => {
   it('builds only the lower half-height box and leaves the space above it empty', async () => {
     const { setEmptyAbove } = await import('./edit');
     const { buildScene, overlap } = await import('./scene');
-    const p = defaultProject();
+    const p = doomExample();
     const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
     setEmptyAbove(g.node, true);
     expect(g.node.insert!.emptyAbove).toBeUndefined();
@@ -1256,11 +1258,11 @@ describe('cutting layouts', () => {
   async function plans() {
     const { setBaseThickness, setConstruction } = await import('./edit');
     const designs: Project[] = [];
-    designs.push(defaultProject());
-    const thin = defaultProject();
+    designs.push(doomExample());
+    const thin = doomExample();
     setBaseThickness(thin, 3);
     designs.push(thin);
-    const separate = defaultProject();
+    const separate = doomExample();
     setConstruction(separate, 'separate');
     designs.push(separate);
     return designs;
@@ -1316,7 +1318,7 @@ describe('cutting layouts', () => {
   });
 
   it('keeps the current layout as the default', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const cut = buildCutList(solveProject(p), p.precision);
     expect(planCuts(p, cut)).toEqual(planCuts({ ...p, material: { ...p.material, layout: 'fewest' } }, cut));
   });
@@ -1324,7 +1326,7 @@ describe('cutting layouts', () => {
 
 describe('assembly step notes', () => {
   it('calls out finger notches with a bold label, naming the wall when a step glues two', () => {
-    const p = defaultProject();
+    const p = doomExample();
     const s = solveProject(p);
     const cut = buildCutList(s, p.precision);
     const tray = s.trays.find((t) => t.depth === 0 && t.layerId === p.layers[0].id)!;
@@ -1337,5 +1339,23 @@ describe('assembly step notes', () => {
       expect(n.label).toMatch(/^Finger notch(es)?$/);
       expect(n.text).toMatch(/^(Back|Front) wall #\d+: centred [\d.]+( and [\d.]+)* mm from the left end, open side up\.$/);
     }
+  });
+});
+
+describe('new design', () => {
+  it('starts with one empty layer, 2 mm clearance, and notches a quarter of the layer height', async () => {
+    const { newProject, STARTER_SPEC } = await import('./defaults');
+    const p = newProject({ ...STARTER_SPEC, box: { width: 239, depth: 277, height: 74 }, layerHeight: 66, baseThickness: 3 });
+    expect(p.box).toEqual({ width: 239, depth: 277, height: 74 });
+    expect(p.clearance).toBe(2);
+    expect(p.layers).toHaveLength(1);
+    expect(p.layers[0].height).toBe(66);
+    expect(p.layers[0].root.kind).toBe('section');
+    expect(p.notch).toEqual({ width: 16.5, depth: 16.5, bottom: 50 });
+    expect(p.material.baseThickness).toBe(3);
+    expect(newProject(STARTER_SPEC).material.baseThickness).toBeUndefined();
+    const s = solveProject(p);
+    expect(s.issues.filter((i) => i.level === 'error')).toEqual([]);
+    expect(s.headroom).toBe(8);
   });
 });

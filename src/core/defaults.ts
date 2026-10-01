@@ -1,4 +1,4 @@
-import type { Layer, LayoutNode, Project, SectionNode, Side, SheetSpec, SplitChild, SplitNode, Dir } from './types';
+import type { Layer, LayoutNode, Mm, Project, SectionNode, Side, SheetSpec } from './types';
 
 export const SHEET_PRESETS: SheetSpec[] = [
   { preset: 'A4', width: 210, height: 297 },
@@ -61,86 +61,52 @@ export function newLayer(name: string, height: number, root: LayoutNode = newSec
   return { id: newId('l'), name, height, root };
 }
 
-const fixed = (mm: number, node: LayoutNode): SplitChild => ({ size: { mode: 'fixed', mm }, node });
-const flex = (node: LayoutNode, weight = 1): SplitChild => ({ size: { mode: 'flex', weight }, node });
-const split = (dir: Dir, children: SplitChild[], join: SplitNode['join'] = 'divider'): SplitNode => ({
-  kind: 'split',
-  id: newId('p'),
-  dir,
-  join,
-  lower: 0,
-  children,
-});
-const pair = () => split('row', [flex(newSection()), flex(newSection())]);
-/** A compartment holding one removable box with a divider, notched in front to lift it out. */
-const boxed = (): SectionNode => ({ ...newSection(['front']), insert: { root: pair() } });
-
-/** Modelled on a published 5 mm foam insert for DOOM (2016): a 56 mm bottom tray and a 33 mm top tray. */
-export function defaultProject(): Project {
-  const bottom = split('column', [
-    fixed(
-      168,
-      split('row', [
-        fixed(59, newSection(['back', 'front'])),
-        fixed(65, newSection(['back', 'front'])),
-        fixed(35, newSection()),
-        flex(split('column', [fixed(70, newSection()), flex(newSection())])),
-      ]),
-    ),
-    flex(split('row', [flex(newSection()), fixed(141, boxed())])),
-  ]);
-  const top = split('row', [
-    fixed(
-      103,
-      split('column', [
-        fixed(45, pair()),
-        fixed(28, newSection()),
-        fixed(28, newSection()),
-        fixed(28, pair()),
-        fixed(28, pair()),
-        fixed(28, pair()),
-        flex(newSection()),
-      ]),
-    ),
-    flex(split('column', [flex(newSection(['left'])), fixed(30, newSection())])),
-  ]);
-  return {
-    version: 2,
-    name: 'DOOM-style insert',
-    readme: `Insert for **DOOM: The Board Game** (2016), after a published 5 mm foam board design.
-
-## Where things go
-
-| Tray | Holds |
-| --- | --- |
-| Bottom | Cards in **A** and **B** (finger notches front and back), tokens in the rest, dice in the lift-out box in **G** |
-| Top | Map tiles in **J**, small tokens in the left column |
-
-## Building tips
-
-- The top tray sits on the bottom tray's walls; the board and rulebook go on top.
-- Glue with thick PVA and pin the walls while it dries.
-`,
-    box: { width: 286, depth: 286, height: 96 },
-    material: { thickness: 5, sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! }, trim: 5, kerf: 0.5 },
-    precision: 0.5,
-    clearance: 1,
-    base: 'under',
-    fullWalls: 'x',
-    notch: { width: 30, depth: 15 },
-    layers: [newLayer('Bottom tray', 56, bottom), newLayer('Top tray', 33, top)],
-  };
+/** What the New dialog asks for: the box, the material, and the one layer to start with. */
+export interface NewProjectSpec {
+  box: { width: Mm; depth: Mm; height: Mm };
+  thickness: Mm;
+  sheet: SheetSpec;
+  layerHeight: Mm;
+  /** Each layer's base from its own sheet, when set. */
+  baseThickness?: Mm;
 }
 
+/** Clearance for a new design: 1 mm on each side, so trays drop in without jamming. */
+export const NEW_CLEARANCE = 2;
+
+/** What the app starts with before anything is set up. */
+export const STARTER_SPEC: NewProjectSpec = {
+  box: { width: 280, depth: 280, height: 70 },
+  thickness: 5,
+  sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! },
+  layerHeight: 60,
+};
+
 /**
- * An empty box: one tray layer with a single compartment. Box size and material, construction
- * and notch settings carry over from `from` when given, since a new design is usually for the
- * same kind of board and often the same box.
+ * A new design: one empty layer in the given box. Finger notches start as wide and as deep as a
+ * quarter of the layer height, with a flat bottom half the opening.
  */
-export function blankProject(from?: Project): Project {
-  const base = from ? structuredClone(from) : defaultProject();
-  const height = Math.max(10, base.box.height - 10);
-  return { ...base, name: 'Untitled insert', readme: '', layers: [newLayer('Layer 1', height)] };
+export function newProject(spec: NewProjectSpec): Project {
+  const notch = spec.layerHeight / 4;
+  return {
+    version: 2,
+    name: 'Untitled insert',
+    readme: '',
+    box: { ...spec.box },
+    material: {
+      thickness: spec.thickness,
+      ...(spec.baseThickness !== undefined ? { baseThickness: spec.baseThickness } : {}),
+      sheet: { ...spec.sheet },
+      trim: 5,
+      kerf: 0.5,
+    },
+    precision: 0.5,
+    clearance: NEW_CLEARANCE,
+    base: 'under',
+    fullWalls: 'x',
+    notch: { width: notch, depth: notch, bottom: 50 },
+    layers: [newLayer('Layer 1', spec.layerHeight)],
+  };
 }
 
 /**
