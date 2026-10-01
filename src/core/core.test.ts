@@ -1209,3 +1209,25 @@ describe('notch flat bottom setting', () => {
     expect(a).not.toEqual(b);
   });
 });
+
+describe('parts off the rounding step', () => {
+  it('flags equal parts that miss the step, and rounds them with one part taking the rest', async () => {
+    const { offStep, roundParts } = await import('./edit');
+    const p = blankProject();
+    p.layers = [newLayer('Only', 40)];
+    const layer = p.layers[0];
+    splitSection(layer, layer.root.id, 'row', p.material.thickness);
+    const first = solveProject(p).compartments[0];
+    splitSection(layer, first.id, 'row', p.material.thickness);
+    const split = layer.root as Extract<LayoutNode, { kind: 'split' }>;
+    distributeEqually(split);
+    const sizes = () => solveProject(p).layers[0].splits.find((x) => x.id === split.id)!.childSizes;
+    // 286 box less 1 mm clearance, 5 mm walls and two 5 mm dividers: 265 mm over three parts.
+    expect(sizes().map((v) => Math.round(v * 100) / 100)).toEqual([88.33, 88.33, 88.33]);
+    expect(sizes().every((v) => offStep(v, p.precision))).toBe(true);
+    roundParts(split, sizes(), p.precision);
+    expect(sizes()).toEqual([88.5, 88.5, 88]);
+    expect(sizes().some((v) => offStep(v, p.precision))).toBe(false);
+    expect(split.children.map((c) => c.size.mode)).toEqual(['fixed', 'fixed', 'flex']);
+  });
+});
