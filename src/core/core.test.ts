@@ -356,7 +356,7 @@ describe('boxes inside compartments', () => {
     const steps = trayInstructions(p, s, cut, box);
     expect(steps[0].text).toMatch(/^Start with base/);
     expect(steps.some((st) => /Glue divider/.test(st.text))).toBe(true);
-    expect(steps[steps.length - 1].text).toMatch(/drop the box into compartment G/);
+    expect(steps[steps.length - 1].text).toMatch(/^Drop the box into compartment G/);
   });
 });
 
@@ -497,7 +497,7 @@ describe('stacked boxes', () => {
     const cut = buildCutList(s, p.precision);
     const lower = s.trays.find((t) => t.wellId === g.id && !t.copyOf)!;
     const steps = trayInstructions(p, s, cut, lower);
-    expect(steps[steps.length - 1].text).toMatch(/second, identical box.*stack both in compartment G/);
+    expect(steps[steps.length - 1].text).toMatch(/second, identical box\. Stack both in compartment G/);
   });
 });
 
@@ -1067,7 +1067,10 @@ describe('lowered sides', () => {
     // Front walls stay plain and full height.
     expect(s.pieces.filter((x) => x.role === 'front wall').every((x) => !x.lows.length && x.height === 29)).toBe(true);
     const tray = s.trays.find((t) => t.layerId === p.layers[0].id)!;
-    expect(trayInstructions(p, s, cut, tray)[1].text).toMatch(/Cut the back wall's top edge 7 mm lower from [\d.]+ to [\d.]+ mm from the left end, for a lowered side\./);
+    const backNote = trayInstructions(p, s, cut, tray)[1].notes[0];
+    expect(backNote.kind).toBe('lowered');
+    expect(backNote.label).toBe('Lowered');
+    expect(backNote.text).toMatch(/^Back wall #\d+: top edge cut 7 mm lower from [\d.]+ to [\d.]+ mm from the left end\.$/);
   });
 
   it('never notches a lowered stretch', async () => {
@@ -1136,7 +1139,7 @@ describe('stacked box with the top left out', () => {
 
     const cut = buildCutList(s, p.precision);
     const steps = trayInstructions(p, s, cut, boxes[0]);
-    expect(steps[steps.length - 1].text).toBe('Once dry, drop the box into compartment G. It is half as tall as the walls around it; the space above it stays empty.');
+    expect(steps[steps.length - 1].text).toBe('Drop the box into compartment G. It is half as tall as the walls around it; the space above it stays empty.');
 
     // Unstacking clears it, so stacking again brings both boxes back.
     setStacked(g.node, false);
@@ -1316,5 +1319,23 @@ describe('cutting layouts', () => {
     const p = defaultProject();
     const cut = buildCutList(solveProject(p), p.precision);
     expect(planCuts(p, cut)).toEqual(planCuts({ ...p, material: { ...p.material, layout: 'fewest' } }, cut));
+  });
+});
+
+describe('assembly step notes', () => {
+  it('calls out finger notches with a bold label, naming the wall when a step glues two', () => {
+    const p = defaultProject();
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const tray = s.trays.find((t) => t.depth === 0 && t.layerId === p.layers[0].id)!;
+    const steps = trayInstructions(p, s, cut, tray);
+    const walls = steps[1];
+    expect(walls.text).not.toMatch(/notch/i);
+    expect(walls.notes.length).toBeGreaterThan(0);
+    for (const n of walls.notes) {
+      expect(n.kind).toBe('notch');
+      expect(n.label).toMatch(/^Finger notch(es)?$/);
+      expect(n.text).toMatch(/^(Back|Front) wall #\d+: centred [\d.]+( and [\d.]+)* mm from the left end, open side up\.$/);
+    }
   });
 });
