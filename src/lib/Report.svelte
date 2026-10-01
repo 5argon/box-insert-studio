@@ -108,6 +108,12 @@
     new Map(CUT_LAYOUTS.map((l) => [l.value, l.value === layout ? plan : planCuts({ ...project, material: { ...project.material, layout: l.value } }, cut)])),
   );
 
+  /** Loads three.js on demand, like the 3D view, so the report stays light until it is asked for. */
+  async function exportObj() {
+    const { insertObj } = await import('./three/obj');
+    download(`${slug(project.name)}.obj`, insertObj(project, solved, cut), 'model/obj');
+  }
+
   function exportCsv() {
     const rows = [['#', 'Qty', 'Kind', 'Length mm', 'Height mm', 'Notches, lowered', 'Used in']];
     for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', String(g.length), String(g.height), notchText(g), where(g)]);
@@ -137,6 +143,7 @@
       <div class="actions no-print">
         <button class="primary" onclick={() => window.print()}>Print / Save PDF</button>
         <button onclick={exportCsv}>Cut list CSV</button>
+        <button onclick={exportObj} data-tip="Every piece as a 3D solid (OBJ, in millimetres), for CAD, 3D printing or rendering">Download OBJ</button>
       </div>
     </header>
 
