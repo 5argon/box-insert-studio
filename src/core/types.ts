@@ -73,6 +73,13 @@ export interface ItemSpec {
   spare: Mm;
 }
 
+/**
+ * Cutting layouts: `fewest` packs pieces anywhere (MaxRects) for the fewest sheets; `guillotine`
+ * keeps every cut edge to edge; `strips` cuts the sheet into full-length strips first, then
+ * crosses them.
+ */
+export type CutLayout = 'fewest' | 'guillotine' | 'strips';
+
 /** A slanted finger notch: the opening at the top edge, how deep it goes, and its flat bottom. */
 export interface NotchSize {
   width: Mm;
@@ -116,6 +123,8 @@ export interface Project {
     trim: Mm;
     /** Material lost per cut. */
     kerf: Mm;
+    /** How pieces are laid out on the sheets; unset is `fewest`. */
+    layout?: CutLayout;
   };
   /** Piece sizes are rounded to this step, so near-identical pieces become one cut size. */
   precision: Mm;

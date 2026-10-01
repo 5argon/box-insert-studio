@@ -137,3 +137,92 @@ export function pack(items: PackItem[], sheetW: Mm, sheetH: Mm, gap: Mm): PackRe
   }
   return best ?? { sheetCount: 0, placements: [], unplaced: [] };
 }
+
+/**
+ * How a guillotine bin divides what is left of a free rectangle after placing a piece in its corner:
+ * one straight cut right across it, either below the piece or beside it.
+ */
+type Split = 'shorterLeftover' | 'longerLeftover' | 'shorterAxis' | 'longerAxis';
+const SPLITS: Split[] = ['shorterLeftover', 'longerLeftover', 'shorterAxis', 'longerAxis'];
+
+/**
+ * Guillotine packing: free space is a set of disjoint rectangles, and each placement splits one of
+ * them with a single edge-to-edge cut. The resulting layout can always be cut with straight cuts
+ * that run all the way across the piece of sheet in hand.
+ */
+class GuillotineBin {
+  free: Rect[];
+  constructor(w: Mm, h: Mm) {
+    this.free = [{ x: 0, y: 0, w, h }];
+  }
+
+  /** Best short side fit, either way round. */
+  find(w: Mm, h: Mm) {
+    let best: { i: number; rotated: boolean; s1: number; s2: number } | undefined;
+    for (const rotated of [false, true]) {
+      const iw = rotated ? h : w;
+      const ih = rotated ? w : h;
+      this.free.forEach((f, i) => {
+        if (iw > f.w + EPS || ih > f.h + EPS) return;
+        const dx = f.w - iw;
+        const dy = f.h - ih;
+        const s1 = Math.min(dx, dy);
+        const s2 = Math.max(dx, dy);
+        if (!best || s1 < best.s1 - EPS || (Math.abs(s1 - best.s1) <= EPS && s2 < best.s2 - EPS)) best = { i, rotated, s1, s2 };
+      });
+    }
+    return best;
+  }
+
+  place(i: number, iw: Mm, ih: Mm, split: Split): { x: Mm; y: Mm } {
+    const f = this.free[i];
+    this.free.splice(i, 1);
+    const dw = f.w - iw;
+    const dh = f.h - ih;
+    // Horizontal: the cut runs below the piece across the free rectangle's whole width.
+    const horizontal =
+      split === 'shorterLeftover' ? dw <= dh : split === 'longerLeftover' ? dw > dh : split === 'shorterAxis' ? f.w <= f.h : f.w > f.h;
+    const right: Rect = { x: f.x + iw, y: f.y, w: dw, h: horizontal ? ih : f.h };
+    const below: Rect = { x: f.x, y: f.y + ih, w: horizontal ? f.w : iw, h: dh };
+    for (const r of [right, below]) if (r.w > EPS && r.h > EPS) this.free.push(r);
+    return { x: f.x, y: f.y };
+  }
+}
+
+function packGuillotineOrdered(items: PackItem[], W: Mm, H: Mm, gap: Mm, split: Split): PackResult {
+  const bins: GuillotineBin[] = [];
+  const placements: Placement[] = [];
+  const unplaced: string[] = [];
+  const BW = W + gap;
+  const BH = H + gap;
+  for (const item of items) {
+    const iw = item.w + gap;
+    const ih = item.h + gap;
+    if (!((iw <= BW + EPS && ih <= BH + EPS) || (ih <= BW + EPS && iw <= BH + EPS))) {
+      unplaced.push(item.id);
+      continue;
+    }
+    for (let s = 0; s <= bins.length; s++) {
+      if (s === bins.length) bins.push(new GuillotineBin(BW, BH));
+      const spot = bins[s].find(iw, ih);
+      if (!spot) continue;
+      const { x, y } = bins[s].place(spot.i, spot.rotated ? ih : iw, spot.rotated ? iw : ih, split);
+      placements.push({ id: item.id, sheet: s, x, y, rotated: spot.rotated });
+      break;
+    }
+  }
+  return { sheetCount: bins.length, placements, unplaced };
+}
+
+/** Guillotine packing with every item order and split rule; fewest sheets wins, ties go to the earlier try. */
+export function packGuillotine(items: PackItem[], sheetW: Mm, sheetH: Mm, gap: Mm): PackResult {
+  let best: PackResult | undefined;
+  for (const order of ORDERS) {
+    const sorted = [...items].sort(order);
+    for (const split of SPLITS) {
+      const r = packGuillotineOrdered(sorted, sheetW, sheetH, gap, split);
+      if (!best || r.unplaced.length < best.unplaced.length || (r.unplaced.length === best.unplaced.length && r.sheetCount < best.sheetCount)) best = r;
+    }
+  }
+  return best ?? { sheetCount: 0, placements: [], unplaced: [] };
+}

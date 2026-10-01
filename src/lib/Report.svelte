@@ -5,7 +5,8 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
-  import { panelUse, sheetSummary, thicknesses, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
+  import { CUT_LAYOUTS, panelUse, planCuts, sheetSummary, thicknesses, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
+  import { setCutLayout } from '../core/edit';
   import type { Project } from '../core/types';
   import Markdown from './Markdown.svelte';
   import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
@@ -84,7 +85,7 @@
 
   function segments(item: SheetItem) {
     const s = item.strip!;
-    const horizontal = item.w >= item.h;
+    const horizontal = item.along ? item.along === 'x' : item.w >= item.h;
     let offset = 0;
     return s.cuts.map((c) => {
       const seg = horizontal ? { x: item.x + offset, y: item.y, w: c.length, h: item.h } : { x: item.x, y: item.y + offset, w: item.w, h: c.length };
@@ -117,6 +118,13 @@
       .filter((g) => g.thickness !== T)
       .map((g) => `#${g.number}`)
       .join(', '),
+  );
+
+  /** Every layout planned side by side, so switching shows its sheet count before you pick it. */
+  const layout = $derived(project.material.layout ?? 'fewest');
+  const layoutInfo = $derived(CUT_LAYOUTS.find((l) => l.value === layout) ?? CUT_LAYOUTS[0]);
+  const alternatives = $derived(
+    new Map(CUT_LAYOUTS.map((l) => [l.value, l.value === layout ? plan : planCuts({ ...project, material: { ...project.material, layout: l.value } }, cut)])),
   );
 
   function exportCsv() {
@@ -238,8 +246,17 @@
 
     <section>
       <h2>Cutting plan</h2>
+      <div class="layouts no-print" role="group" aria-label="Cutting layout">
+        {#each CUT_LAYOUTS as l (l.value)}
+          {@const alt = alternatives.get(l.value)!}
+          <button class="layout" class:on={layout === l.value} aria-pressed={layout === l.value} onclick={() => setCutLayout(project, l.value)}>
+            <b>{l.name}</b>
+            <span>{sheetSummary(project, alt)}, {Math.round(alt.efficiency * 100)}% used</span>
+          </button>
+        {/each}
+      </div>
       <p class="muted small">
-        Trim {project.material.trim} mm off each sheet edge. Cut the bases, then cut each strip to its width across the sheet and chop it into the listed lengths.
+        <b>{layoutInfo.name}.</b> {layoutInfo.detail} Trim {project.material.trim} mm off each sheet edge first.
       </p>
       {#each plan.sheets as sheet (sheet.index)}
         {@const W = project.material.sheet.width}
@@ -584,6 +601,22 @@
     padding: 4px 10px;
     font-size: 12px;
     background: #e6eefc;
+  }
+  .layouts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 6px;
+  }
+  .layout {
+    display: grid;
+    gap: 1px;
+    text-align: left;
+    padding: 6px 10px;
+  }
+  .layout span {
+    font-size: 11.5px;
+    color: var(--muted);
   }
   .placement {
     display: grid;
