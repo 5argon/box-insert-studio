@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { canUseTrays, distributeEqually, insertHost, lockChild, sectionIds, setJoin } from '../core/edit';
+  import { canUseTrays, distributeEqually, insertHost, lockChild, offStep, roundParts, sectionIds, setJoin } from '../core/edit';
   import { baseThickness, type SolvedLayer, type SolvedSplit } from '../core/layout';
   import type { Layer, Project } from '../core/types';
   import LockButton from './LockButton.svelte';
@@ -16,6 +16,16 @@
   const hostLabel = $derived(host ? solvedLayer.compartments.find((c) => c.id === host.id)?.label : undefined);
   const unit = $derived(host ? 'box' : 'tray');
   const units = $derived(host ? 'boxes' : 'trays');
+  /** Parts whose size is off the rounding step that cut sizes use, e.g. after distributing equally. */
+  const step = $derived(project.precision);
+  const partLabel = (i: number) =>
+    sectionIds(node.children[i].node)
+      .map((id) => labelOf.get(id))
+      .join(' ');
+  /** Two decimals, as the size fields show: one would hide how far off a size is. */
+  const mm2 = (v: number) => String(Number(v.toFixed(2)));
+  const off = $derived(split.childSizes.flatMap((v, i) => (offStep(v, step) ? [i] : [])));
+  const offSizes = $derived([...new Set(off.map((i) => mm2(split.childSizes[i])))]);
   const maxLower = $derived(layer.height - baseThickness(project) - (host ? project.material.thickness : 0) - 5);
 </script>
 
@@ -58,18 +68,30 @@
 <div class="panel-section">
   <h2>Parts</h2>
   {#each node.children as child, i (child.node.id)}
-    <div class="part">
+    <div class="part" class:off={off.includes(i)}>
       <NumberField
-        label={sectionIds(child.node)
-          .map((id) => labelOf.get(id))
-          .join(' ')}
+        label={partLabel(i)}
         value={split.childSizes[i]}
         min={5}
+        hint={off.includes(i) ? `Not a multiple of the ${mm2(step)} mm rounding step` : ''}
         onchange={(v) => lockChild(node, i, v, split.childSizes)}
       />
       <LockButton split={node} index={i} sizes={split.childSizes} />
     </div>
   {/each}
+  {#if off.length}
+    <div class="issue warn off-step">
+      <p>
+        {off.length === node.children.length ? 'Every part is' : `${off.map(partLabel).join(', ')} ${off.length === 1 ? 'is' : 'are'}`}
+        {offSizes.join(' and ')} mm, off the {mm2(step)} mm step that cut sizes are rounded to (Material, Round sizes to). Pieces sized from {off.length === 1
+          ? 'it'
+          : 'them'} can come out up to {mm2(step / 2)} mm off.
+      </p>
+      <button class="small" onclick={() => roundParts(node, split.childSizes, step)} data-tip="Lock each part to the nearest step; one part takes what is left"
+        >Round to {mm2(step)} mm steps</button
+      >
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -89,5 +111,11 @@
   }
   .hint {
     margin: 4px 0 8px;
+  }
+  .part.off :global(.label) {
+    color: var(--warn);
+  }
+  .off-step p {
+    margin: 0 0 6px;
   }
 </style>

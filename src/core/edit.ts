@@ -1,4 +1,5 @@
 import { newSection } from './defaults';
+import { roundTo } from './geom';
 import type { Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, SplitNode } from './types';
 
 export const MIN_REGION = 5;
@@ -291,6 +292,24 @@ export function setBaseThickness(project: Project, next: Mm | undefined) {
   else project.material.baseThickness = next;
   const delta = (next ?? project.material.thickness) - before;
   if (delta) for (const layer of project.layers) layer.height = Math.max(5, Math.round((layer.height + delta) * 100) / 100);
+}
+
+/** Is a size off the project's rounding step (the step cut sizes are rounded to)? */
+export function offStep(size: Mm, step: Mm): boolean {
+  return step > 0 && Math.abs(size - roundTo(size, step)) > 0.005;
+}
+
+/**
+ * Lock every part to the nearest step except one, which takes what is left: the last flexible
+ * part, or the largest when all are locked. When the space being divided is itself on the step,
+ * so is the remainder.
+ */
+export function roundParts(split: SplitNode, sizes: Mm[], step: Mm) {
+  let absorber = split.children.map((c) => c.size.mode).lastIndexOf('flex');
+  if (absorber < 0) absorber = sizes.indexOf(Math.max(...sizes));
+  split.children.forEach((c, i) => {
+    c.size = i === absorber ? { mode: 'flex', weight: 1 } : { mode: 'fixed', mm: Math.max(MIN_REGION, roundTo(sizes[i], step)) };
+  });
 }
 
 export function distributeEqually(split: SplitNode) {
