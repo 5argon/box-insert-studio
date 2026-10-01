@@ -1,6 +1,5 @@
 <script lang="ts">
   import { trayInstructions } from '../core/assembly';
-  import { notchCorners, notchSlant } from '../core/notches';
   import { NOTCH_BOTTOM_DEFAULT } from '../core/layout';
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
@@ -49,24 +48,6 @@
       ...g.lows.map((l) => `${mm(l.depth)} lower from ${mm(l.from)} to ${mm(l.to)}`),
     ];
     return parts.length ? parts.join(', ') + ' mm' : '';
-  }
-
-  /** Every notch size in the design, for a true-size template each. */
-  const notchSizes = $derived.by(() => {
-    const seen = new Map<string, { width: number; depth: number; bottom: number }>();
-    for (const g of cut.groups) for (const n of g.notches) seen.set(`${mm(n.width)}x${mm(n.depth)}/${mm(n.bottom)}`, { width: n.width, depth: n.depth, bottom: n.bottom });
-    if (!seen.size) {
-      const { width, depth } = project.notch;
-      seen.set('default', { width, depth, bottom: (width * (project.notch.bottom ?? NOTCH_BOTTOM_DEFAULT)) / 100 });
-    }
-    return [...seen.values()].sort((a, b) => b.width - a.width || b.depth - a.depth);
-  });
-
-  /** The notch outline at true size, 1 mm in from the template's edge: two slants and a flat bottom. */
-  function notchPathFor(w: number, d: number, b: number): string {
-    return notchCorners(w / 2, w, d, b)
-      .map(([x, y], i) => `${i ? 'L' : 'M'}${1 + x} ${1 + y}`)
-      .join(' ');
   }
 
   function stripText(item: SheetItem): string {
@@ -299,10 +280,6 @@
 
     <section>
       <h2>Assembly</h2>
-      <p class="muted small">
-        Glue along the whole edge (thick PVA or wood glue) and hold pieces in place until it dries: pins pushed in at opposite angles for foam
-        board, clamps or masking tape for wood. Check each corner is square before the glue sets.
-      </p>
       {#if ownBase}
         <p class="material-note">
           The layer bases ({baseRefs}) are {mm(project.material.baseThickness ?? T)} mm, cut from their own sheets. Everything else, including removable box floors and raised
@@ -367,7 +344,12 @@
             </svg>
             <ol class="steps">
               {#each trayInstructions(project, solved, cut, t) as step, i (i)}
-                <li>{step.text}</li>
+                <li>
+                  {step.text}
+                  {#each step.notes as n, j (j)}
+                    <span class="step-note {n.kind}"><b>{n.label}:</b> {n.text}</span>
+                  {/each}
+                </li>
               {/each}
             </ol>
           </div>
@@ -375,25 +357,6 @@
       {/each}
     </section>
 
-    <section class="template">
-      <h2>Finger notch template{notchSizes.length > 1 ? 's' : ''}</h2>
-      <p class="muted small">
-        Printed at 100% these are real size. Line the dashed edge up with the piece's top edge at each notch mark, trace, then make three straight cuts.
-      </p>
-      <div class="templates">
-        {#each notchSizes as n (`${n.width}x${n.depth}/${n.bottom}`)}
-          <figure>
-            <svg width="{n.width + 2}mm" height="{n.depth + 2}mm" viewBox="0 0 {n.width + 2} {n.depth + 2}" role="img" aria-label="Notch template {mm(n.width)} by {mm(n.depth)} mm">
-              <line x1="0" y1="1" x2={n.width + 2} y2="1" stroke="#8a8378" stroke-width="0.2" stroke-dasharray="1 0.8" />
-              <path d={notchPathFor(n.width, n.depth, n.bottom)} fill="none" stroke="#22201c" stroke-width="0.3" />
-            </svg>
-            <figcaption class="muted small">
-              {mm(n.width)} × {mm(n.depth)} mm, {mm(n.bottom)} mm flat bottom, sides at {Math.round(notchSlant(n.width, n.depth, n.bottom))}°
-            </figcaption>
-          </figure>
-        {/each}
-      </div>
-    </section>
   </article>
 </div>
 
@@ -572,15 +535,6 @@
   .tray-notch.custom {
     fill: #1aa6b7;
   }
-  .templates {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    align-items: flex-end;
-  }
-  .templates figure {
-    margin: 0;
-  }
   .item-arrow {
     fill: none;
     stroke-linecap: round;
@@ -601,6 +555,24 @@
     padding: 4px 10px;
     font-size: 12px;
     background: #e6eefc;
+  }
+  .step-note {
+    display: block;
+    margin: 2px 0 1px;
+    padding: 1px 0 1px 7px;
+    border-left: 3px solid;
+  }
+  .step-note.notch {
+    border-color: #f2b233;
+  }
+  .step-note.notch b {
+    color: #a26400;
+  }
+  .step-note.lowered {
+    border-color: #9b7fd4;
+  }
+  .step-note.lowered b {
+    color: #6f4fb8;
   }
   .layouts {
     display: flex;
@@ -681,10 +653,6 @@
     letter-spacing: 1px;
     text-anchor: middle;
     fill: #6f6a61;
-  }
-  .template svg {
-    display: block;
-    margin-top: 6px;
   }
 
   @media print {

@@ -264,9 +264,11 @@ export function buildObjects(model: SceneModel, dark = false): SceneObjects {
   return { root, outer, trays };
 }
 
-export function applyStyle(t: TrayObjects, style: TrayStyle, items = true) {
+/** `glass`: opacity of see-through panels. */
+export function applyStyle(t: TrayObjects, style: TrayStyle, items = true, glass?: number) {
   t.group.visible = style !== 'hidden';
   t.items.visible = items;
+  if (glass !== undefined) t.materials.glass.opacity = glass;
   for (const f of t.fills) {
     f.visible = style === 'glass' || style === 'solid';
     f.material = style === 'glass' ? t.materials.glass : t.materials.solid;

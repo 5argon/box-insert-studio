@@ -64,7 +64,7 @@
 
 <div class="view3d" class:full={!v.panel}>
   <div class="stage">
-    <Viewer3D bind:this={viewer} {model} {styleOf} outer={v.outer} ortho={v.ortho} dark={isDark()} items={v.items} />
+    <Viewer3D bind:this={viewer} {model} {styleOf} outer={v.outer} ortho={v.ortho} dark={isDark()} items={v.items} glass={v.glass} />
     <div class="hint">Drag to rotate · scroll or pinch to zoom</div>
     {#if !v.panel}
       <button class="small show-tools" onclick={() => (v.panel = true)}>Show tools</button>
@@ -97,14 +97,28 @@
         <label class="check"><input type="checkbox" bind:checked={v.outer} /> Game box outline</label>
         <label class="check" data-tip={simulated ? '' : 'Turn on item simulation for a compartment in the layout inspector'}>
           <input type="checkbox" bind:checked={v.items} disabled={!simulated} />
-          Simulated items
-          {#if simulated}<span class="muted">in {simulated} compartment{simulated === 1 ? '' : 's'}</span>{/if}
+          Simulate items
         </label>
         <div class="row gap">
           {#each STYLES as s (s.value)}
             <button class="small" class:on={v.style === s.value} onclick={() => (v.style = s.value)}>{s.name}</button>
           {/each}
         </div>
+        {#if v.style === 'glass'}
+          <label class="slider">
+            <span>Translucency</span>
+            <input
+              type="range"
+              min="0.05"
+              max="0.95"
+              step="0.01"
+              value={1 - v.glass}
+              oninput={(e) => (v.glass = 1 - e.currentTarget.valueAsNumber)}
+              aria-label="Translucency"
+            />
+            <span class="muted">{Math.round((1 - v.glass) * 100)}%</span>
+          </label>
+        {/if}
         <p class="hint-text">Trays you highlight below are solid; the rest use this style.</p>
       </div>
 
@@ -212,6 +226,17 @@
     gap: 6px;
     align-items: center;
     margin-bottom: 8px;
+  }
+  .slider {
+    display: grid;
+    grid-template-columns: auto 1fr 36px;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .slider .muted {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
   .list-head {
     display: flex;

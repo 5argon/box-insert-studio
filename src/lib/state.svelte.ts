@@ -51,7 +51,9 @@ export const studio = $state({
   /** 3D view settings: not part of the project, so not saved or undone. */
   view3d: {
     outer: true,
-    style: 'wire' as ViewStyle,
+    style: 'glass' as ViewStyle,
+    /** See-through style: how opaque the panels are, 0 to 1. */
+    glass: 0.22,
     /** Tray keys drawn solid while the rest use `style`. */
     highlighted: [] as string[],
     hiddenTrays: [] as string[],

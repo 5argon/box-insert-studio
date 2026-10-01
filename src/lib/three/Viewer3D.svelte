@@ -12,6 +12,7 @@
     ortho,
     dark,
     items = true,
+    glass = 0.22,
   }: {
     model: SceneModel;
     /** Style for each tray key. */
@@ -22,6 +23,8 @@
     dark: boolean;
     /** Show simulated items. */
     items?: boolean;
+    /** Opacity of see-through panels. */
+    glass?: number;
   } = $props();
 
   let host: HTMLDivElement;
@@ -168,12 +171,12 @@
   function applyAll() {
     if (!objects) return;
     objects.outer.visible = outer;
-    for (const t of objects.trays) applyStyle(t, styleOf(t.key, t.layerId), items);
+    for (const t of objects.trays) applyStyle(t, styleOf(t.key, t.layerId), items, glass);
   }
 
   // Restyle without rebuilding when view settings change.
   $effect(() => {
-    void [outer, styleOf, items];
+    void [outer, styleOf, items, glass];
     applyAll();
     kick();
   });
