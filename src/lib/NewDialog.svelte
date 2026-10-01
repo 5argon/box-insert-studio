@@ -94,10 +94,16 @@
           {/each}
         </select>
       </label>
-      {#if preset}<p class="hint source">Inside dimensions: {preset.source}.</p>{/if}
+      {#if preset}
+        <p class="hint source">
+          {preset.dimensionBasis === 'insert-fit' ? 'Insert-fit reference' : 'Inside dimensions'} from {preset.source}.
+          {preset.note ?? ''} Editions and print runs can differ; measure your box to be sure.
+        </p>
+      {/if}
       <NumberField label="Width" value={spec.box.width} min={20} onchange={(v) => (spec.box.width = v)} />
       <NumberField label="Depth" value={spec.box.depth} min={20} onchange={(v) => (spec.box.depth = v)} />
       <NumberField label="Height" value={spec.box.height} min={5} onchange={(v) => (spec.box.height = v)} />
+      <p class="hint">Width runs across the upright cover, depth runs top to bottom, and height is box thickness.</p>
       <p class="hint">Measured inside the box bottom. Trays get {NEW_CLEARANCE} mm of clearance ({NEW_CLEARANCE / 2} mm each side); change it later under Box inside.</p>
     </section>
 
