@@ -1231,3 +1231,90 @@ describe('parts off the rounding step', () => {
     expect(split.children.map((c) => c.size.mode)).toEqual(['fixed', 'fixed', 'flex']);
   });
 });
+
+describe('cutting layouts', () => {
+  type R = { x: number; y: number; w: number; h: number };
+  /** Can these rectangles be separated by straight cuts that always run all the way across? */
+  function guillotine(rects: R[]): boolean {
+    if (rects.length <= 1) return true;
+    for (const axis of ['x', 'y'] as const) {
+      const lo = (r: R) => (axis === 'x' ? r.x : r.y);
+      const hi = (r: R) => lo(r) + (axis === 'x' ? r.w : r.h);
+      for (const r of rects) {
+        const c = hi(r);
+        const before = rects.filter((o) => hi(o) <= c + 1e-6);
+        const after = rects.filter((o) => lo(o) >= c - 1e-6);
+        if (before.length && after.length && before.length + after.length === rects.length) return guillotine(before) && guillotine(after);
+      }
+    }
+    return false;
+  }
+
+  async function plans() {
+    const { setBaseThickness, setConstruction } = await import('./edit');
+    const designs: Project[] = [];
+    designs.push(defaultProject());
+    const thin = defaultProject();
+    setBaseThickness(thin, 3);
+    designs.push(thin);
+    const separate = defaultProject();
+    setConstruction(separate, 'separate');
+    designs.push(separate);
+    return designs;
+  }
+
+  it('places every piece once, inside the trimmed sheet, without overlaps, in every layout', async () => {
+    for (const base of await plans()) {
+      const s = solveProject(base);
+      const cut = buildCutList(s, base.precision);
+      const pieces = cut.groups.reduce((n, g) => n + g.pieces.length, 0);
+      for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
+        const p = { ...base, material: { ...base.material, layout } };
+        const plan = planCuts(p, cut);
+        expect(plan.issues).toEqual([]);
+        const placed = plan.sheets.flatMap((sh) => sh.items).reduce((n, it) => n + (it.kind === 'base' ? 1 : it.strip!.cuts.length), 0);
+        expect(placed).toBe(pieces);
+        const { width, height } = p.material.sheet;
+        const t = p.material.trim;
+        for (const sheet of plan.sheets) {
+          for (const [i, a] of sheet.items.entries()) {
+            expect(a.x).toBeGreaterThanOrEqual(t - 1e-6);
+            expect(a.y).toBeGreaterThanOrEqual(t - 1e-6);
+            expect(a.x + a.w).toBeLessThanOrEqual(width - t + 1e-6);
+            expect(a.y + a.h).toBeLessThanOrEqual(height - t + 1e-6);
+            for (const b of sheet.items.slice(i + 1)) {
+              const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+              const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+              expect(ox > 1e-6 && oy > 1e-6).toBe(false);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('keeps every cut edge to edge in the guillotine and strip layouts, with all first cuts parallel for strips', async () => {
+    for (const base of await plans()) {
+      const cut = buildCutList(solveProject(base), base.precision);
+      for (const layout of ['guillotine', 'strips'] as const) {
+        const plan = planCuts({ ...base, material: { ...base.material, layout } }, cut);
+        for (const sheet of plan.sheets) expect(guillotine(sheet.items)).toBe(true);
+        if (layout !== 'strips') continue;
+        // Bands run the sheet's long way: across it, any two pieces share a band start or don't overlap.
+        const longX = base.material.sheet.width >= base.material.sheet.height;
+        for (const sheet of plan.sheets) {
+          const across = sheet.items.map((it) => (longX ? [it.y, it.y + it.h] : [it.x, it.x + it.w]));
+          for (const [i, [a0, a1]] of across.entries()) {
+            for (const [b0, b1] of across.slice(i + 1)) expect(Math.abs(a0 - b0) < 1e-6 || a1 <= b0 + 1e-6 || b1 <= a0 + 1e-6).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it('keeps the current layout as the default', () => {
+    const p = defaultProject();
+    const cut = buildCutList(solveProject(p), p.precision);
+    expect(planCuts(p, cut)).toEqual(planCuts({ ...p, material: { ...p.material, layout: 'fewest' } }, cut));
+  });
+});

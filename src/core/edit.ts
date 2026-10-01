@@ -1,6 +1,6 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
-import type { Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, SplitNode } from './types';
+import type { CutLayout, Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, SplitNode } from './types';
 
 export const MIN_REGION = 5;
 
@@ -292,6 +292,12 @@ export function setBaseThickness(project: Project, next: Mm | undefined) {
   else project.material.baseThickness = next;
   const delta = (next ?? project.material.thickness) - before;
   if (delta) for (const layer of project.layers) layer.height = Math.max(5, Math.round((layer.height + delta) * 100) / 100);
+}
+
+/** Choose how pieces are laid out on the sheets; the default layout is stored as unset. */
+export function setCutLayout(project: Project, layout: CutLayout) {
+  if (layout === 'fewest') delete project.material.layout;
+  else project.material.layout = layout;
 }
 
 /** Is a size off the project's rounding step (the step cut sizes are rounded to)? */
