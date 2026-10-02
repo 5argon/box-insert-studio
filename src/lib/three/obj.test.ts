@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { setConstruction, setPad, setStacked } from '../../core/edit';
+import { setConstruction, setInsertLid, setInsertLidSecondary, setLidNotchSide, setPad, setSecondaryThickness, setStacked } from '../../core/edit';
 import { doomExample } from '../../core/fixtures';
 import { solveProject } from '../../core/layout';
 import { buildCutList } from '../../core/pieces';
@@ -11,6 +11,12 @@ describe('OBJ export', () => {
     const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
     setStacked(g.node, true);
     setPad(g.node, 1);
+    setSecondaryThickness(p, 3);
+    setInsertLid(g.node, true);
+    setInsertLidSecondary(g.node, true);
+    setLidNotchSide(g.node, 'front', true);
+    setLidNotchSide(g.node, 'left', true);
+    g.node.insert!.lidNotchSize = { width: 20, depth: 8, bottom: 0 };
     const s = solveProject(p);
     const cut = buildCutList(s, p.precision);
     const obj = insertObj(p, s, cut);
@@ -23,6 +29,7 @@ describe('OBJ export', () => {
     const back = s.pieces.find((x) => x.role === 'back wall' && x.depth === 0)!;
     expect(objects).toContain(`o Tray_1_piece_${cut.groupOf.get(back.id)!.number}_back_wall`);
     expect(objects.some((o) => o.startsWith('o Box_in_G_upper_piece_'))).toBe(true);
+    expect(objects.filter((o) => o.endsWith('_lid'))).toHaveLength(2);
     expect(lines.filter((l) => l.startsWith('f ')).length).toBeGreaterThan(s.pieces.length * 6);
 
     // Every vertex lies inside the box: x across, y up, z toward the front.

@@ -20,3 +20,10 @@ export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.ma
 
 /** 12.5 → "12.5", 12 → "12". */
 export const mm = (v: number) => String(Math.round(v * 10) / 10);
+
+/** Four corners of a slanted notch, measured along an edge and inward from it. */
+export function notchCorners(center: number, width: number, depth: number, bottom: number): [number, number][] {
+  const top = width / 2;
+  const flat = Math.min(bottom, width) / 2;
+  return [[center - top, 0], [center - flat, depth], [center + flat, depth], [center + top, 0]];
+}

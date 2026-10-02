@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setEmptyAbove, setInsert, setJoin, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
+  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setInsertSharedLid, setJoin, setLidNotchSide, setNotchOverrideSide, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
+  import { LID_NOTCH_DEFAULT } from '../core/lidNotches';
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
-  import { baseThickness, LOWERED_DEFAULT, maxPad, NOTCH_BOTTOM_DEFAULT, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { baseThickness, insertBaseThickness, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, maxPad, NOTCH_BOTTOM_DEFAULT, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import { roundTo } from '../core/geom';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
@@ -40,6 +41,11 @@
   const tray = $derived(solved.trays.find((t) => t.id === c.trayId));
   /** The compartment a box stands in: this one if it holds a box, or the one around this box. */
   const well = $derived(c.wellId ? solved.compartments.find((x) => x.id === c.wellId) : c.node.insert ? c : undefined);
+  const boxBase = $derived(well ? insertBaseThickness(project, well.node) : T);
+  const hasLid = $derived(!!well?.node.insert?.lid);
+  const boxLid = $derived(well ? insertLidThickness(project, well.node) : 0);
+  const sharedLid = $derived(well ? usesSharedLid(well.node) : false);
+  const lidAllowance = $derived(well ? insertLidAllowance(project, well.node) : 0);
   const boxes = $derived(well ? solved.trays.filter((t) => t.wellId === well.id && !t.copyOf) : []);
   const stacked = $derived(!!well?.node.insert?.stacked);
   /** A stacked pair with the top box left out: one half-height box, empty above. */
@@ -127,11 +133,12 @@
     { side: 'right', glyph: '→' },
   ];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
-  /** Height of one box: what is left above the tray floor and any raised floor, halved when two are stacked. */
+  /** Total height of one box including any lid, halved when two are stacked. */
   const boxHeight = $derived((layer.height - B - (well?.padHeight ?? 0)) / (stacked ? 2 : 1));
+  const boxBody = $derived(boxHeight - lidAllowance);
   /** Boxes standing on this compartment's floor: 0, 1, or 2 when stacked. */
   const boxesHere = $derived(c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0);
-  const padLimit = $derived(maxPad(c.fullHeight, T, boxesHere));
+  const padLimit = $derived(maxPad(c.fullHeight, T, boxesHere, insertBaseThickness(project, c.node), insertLidAllowance(project, c.node)));
   const li = $derived(layerInfo(project, layer.id));
 
   /** How the height adds up, every number with its unit. The layer is named only when there are several. */
@@ -139,11 +146,12 @@
     const total = `${mm(layer.height)} mm${li.multi ? '' : ' tray'}`;
     const wellPad = well?.pad ? ` − ${mm(well.padHeight)} mm raised floor` : '';
     const pad = c.pad ? ` − ${c.pad} × ${mm(T)} mm raised floor` : '';
+    const lid = boxLid ? sharedLid && pair ? ` − ${mm(lidAllowance)} mm share of the shared lid` : ` − ${mm(boxLid)} mm ${sharedLid ? 'shared lid' : 'lid'}` : '';
     if (c.depth === 1 && c.stacked)
-      return `In each box: (${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm per box, − ${mm(T)} mm box floor${pad}`;
+      return `In each box: (${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm per box${lid} − ${mm(boxBase)} mm box floor${pad}`;
     if (c.depth === 1 && emptyAbove)
-      return `(${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm box, − ${mm(T)} mm box floor${pad}; the half above stays empty`;
-    if (c.depth === 1) return `${total} − ${mm(B)} mm tray floor${wellPad} − ${mm(T)} mm box floor${pad}`;
+      return `(${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm box${lid} − ${mm(boxBase)} mm box floor${pad}; the half above stays empty`;
+    if (c.depth === 1) return `${total} − ${mm(B)} mm tray floor${wellPad}${lid} − ${mm(boxBase)} mm box floor${pad}`;
     return `${total} − ${mm(B)} mm floor${pad}`;
   });
   /** Sides whose divider stands lower than the walls, with how much lower. */
@@ -153,7 +161,7 @@
       return p?.kind === 'divider' && p.lower ? [`${side} ${mm(p.lower)} mm`] : [];
     }),
   );
-  const boxWall = $derived(project.base === 'under' ? boxHeight - T : boxHeight);
+  const boxWall = $derived(project.base === 'under' ? boxBody - boxBase : boxBody);
 
   /** A lowered side stands this share of the compartment's depth above its floor. */
   const lowPct = $derived(project.lowered ?? LOWERED_DEFAULT);
@@ -354,11 +362,11 @@
   </div>
   <p class="hint">
     {#if c.pad && boxesHere && c.node.insert?.emptyAbove}
-      Floor raised {mm(c.padHeight)} mm; the box stands on it, {mm(boxHeight)} mm tall, half the height left, with the rest above it empty. Marked
+      Floor raised {mm(c.padHeight)} mm; the box stands on it, {mm(sharedLid ? boxBody : boxHeight)} mm tall{sharedLid ? ' beneath its shared lid' : ''}, half the height left, with the rest above it empty. Marked
       <CompLabel {c} /> in the layout.
     {:else if c.pad && boxesHere}
-      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked boxes stand' : 'box stands'} on it, {mm(boxHeight)} mm tall{boxesHere === 2 ? ' each' : ''}, so the
-      top stays flush. Marked <CompLabel {c} /> in the layout.
+      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked boxes stand' : 'box stands'} on it, {mm(sharedLid ? boxBody : boxHeight)} mm tall{boxesHere === 2 ? ' each' : ''}, so the
+      top stays flush{sharedLid ? ' with the shared lid on' : ''}. Marked <CompLabel {c} /> in the layout.
     {:else if c.pad}
       Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked <CompLabel {c} /> in the layout.
     {:else if boxesHere && c.node.insert?.emptyAbove}
@@ -401,21 +409,70 @@
     {:else}
       <p class="hint">
         {#if mode === 'multiple'}Each part is its own box with four walls and {project.clearance} mm between them.{/if}
-        {#if emptyAbove}
-          {boxes.length === 1 ? 'One box' : `${boxes.length} boxes`}, {mm(boxHeight)} mm tall (half the height) with {mm(boxWall)} mm walls, {mm(boxHeight - T)} mm inside. The
+        {#if sharedLid}
+          {boxes.length} separate boxes{pair ? ' on each stack level' : ''}: each box body is {mm(boxBody)} mm tall with {mm(boxWall)} mm walls and {mm(boxBody - boxBase)} mm inside.
+          One {mm(boxLid)} mm lid covers the whole group{pair ? ', above both stack levels' : ''}{emptyAbove ? '; the half above stays empty' : ', keeping the top flush'}.
+        {:else if emptyAbove}
+          {boxes.length === 1 ? 'One box' : `${boxes.length} boxes`}, {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} (half the height) with {mm(boxWall)} mm walls, {mm(boxBody - boxBase)} mm inside. The
           {mm(boxHeight)} mm above {boxes.length === 1 ? 'it' : 'them'} stays empty.
         {:else if pair}
-          Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and its own floor,
-          {mm(boxHeight - T)} mm inside. Together they sit flush.
+          Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box is {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} with {mm(boxWall)} mm walls and its own floor,
+          {mm(boxBody - boxBase)} mm inside. Together they sit flush.
         {:else}
-          {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls, {mm(boxHeight - T)} mm inside, standing on
+          {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} with {mm(boxWall)} mm walls, {mm(boxBody - boxBase)} mm inside, standing on
           the {well.pad ? 'raised floor' : 'base'} so the top sits flush.
         {/if}
       </p>
     {/if}
+    {#if project.material.secondaryThickness !== undefined}
+      <label class="check" data-tip="Use the secondary material for every base of this removable box, including both boxes when stacked">
+        <input type="checkbox" checked={!!well.node.insert?.secondaryBase} onchange={(e) => setInsertBaseSecondary(well.node, e.currentTarget.checked)} />
+        Use secondary material for bases
+      </label>
+      <p class="hint">Bases are {mm(boxBase)} mm; thinner bases give each box more space inside while keeping its total height.</p>
+    {/if}
+    <label class="check" data-tip="Add a loose lid; shorten the walls and dividers so the closed top stays flush">
+      <input type="checkbox" checked={hasLid} onchange={(e) => setInsertLid(well.node, e.currentTarget.checked)} />
+      Add a lid
+    </label>
+    {#if hasLid}
+      {#if mode === 'multiple'}
+        <div class="row" role="group" aria-label="Lid coverage">
+          <button class="small" class:on={!sharedLid} aria-pressed={!sharedLid} onclick={() => setInsertSharedLid(well.node, false)}>Lid for each box</button>
+          <button class="small" class:on={sharedLid} aria-pressed={sharedLid} onclick={() => setInsertSharedLid(well.node, true)}>One lid over all boxes</button>
+        </div>
+      {/if}
+      {#if project.material.secondaryThickness !== undefined}
+        <label class="check nested lid-material" data-tip={sharedLid ? 'Use the secondary material for the shared lid' : 'Use the secondary material for every lid, including both boxes when stacked'}>
+          <input type="checkbox" checked={!!well.node.insert?.secondaryLid} onchange={(e) => setInsertLidSecondary(well.node, e.currentTarget.checked)} />
+          Use secondary material for {sharedLid ? 'the lid' : 'lids'}
+        </label>
+      {/if}
+      {#if sharedLid}
+        <p class="hint">The shared lid covers all the separate boxes and the gaps between them. Build and position every box first, then place the lid on top{pair ? ' of the entire stack' : ''}. Its {mm(boxLid)} mm thickness comes out of the height{pair ? ' before the two equal box bodies are divided' : ''}{emptyAbove ? '; the half above stays empty' : ' so the closed group stays flush'}.</p>
+      {:else}
+        <p class="hint">Each {mm(boxLid)} mm lid rests on the walls. The box beneath it is {mm(boxBody)} mm tall; adding or removing a lid keeps the total height at {mm(boxHeight)} mm{emptyAbove ? ', with the half above still empty' : ' so the top stays flush'}.</p>
+      {/if}
+      <div class="lid-notches">
+        <h3>Lid finger notches</h3>
+        <div class="notches" role="group" aria-label="Lid finger notch sides">
+          {#each SIDE_ORDER as side (side)}
+            {@const selected = !!well.node.insert?.lidNotches?.includes(side)}
+            <button class="small" class:on={selected} aria-pressed={selected} aria-label="Lid {side} notch"
+              onclick={() => setLidNotchSide(well.node, side, !selected)} data-tip="Cut a finger notch through the lid on its {side} edge">{cap(side)}</button>
+          {/each}
+        </div>
+        <p class="hint">Select edges to lift the lid from above. Width runs along each edge; depth goes inward across the lid. This lid's shape is independent of the wall notch settings.</p>
+        <NotchFields size={well.node.insert?.lidNotchSize ?? LID_NOTCH_DEFAULT} plane="lid"
+          onchange={(size) => { if (well.node.insert) well.node.insert.lidNotchSize = size; }} />
+        {#each solvedLayer.issues.filter((i) => solved.trays.some((box) => box.wellId === well.id && box.id === i.trayId)) as issue, i (i)}
+          <div class="issue {issue.level}">{issue.message}</div>
+        {/each}
+      </div>
+    {/if}
     <label class="check">
       <input type="checkbox" checked={stacked} onchange={(e) => setStacked(well.node, e.currentTarget.checked)} />
-      Stack two boxes (each half the height)
+      Stack two boxes ({sharedLid ? 'two equal box bodies beneath one lid' : 'each half the height'})
     </label>
     {#if stacked}
       <label class="check nested" data-tip="Build only the lower box; the space above it stays open for something else">
@@ -461,6 +518,15 @@
     {@const shared = notchSharedWith(solved, c, side)}
     {#if shared.length}
       <p class="hint shared">The {side} notch is shared with {shared.join(', ')}: it is cut through the divider between you.</p>
+      {#if !c.node.notches.includes(side)}
+        <div class="row">
+          {#each solved.compartments.filter((x) => shared.includes(x.label)) as owner (owner.id)}
+            <button class="small" onclick={() => onselect({ kind: 'section', id: owner.id })} data-tip="Select the compartment that sets this shared notch's size">
+              Edit {owner.label}'s notch
+            </button>
+          {/each}
+        </div>
+      {/if}
     {/if}
   {/each}
   <div class="notch-size">
@@ -468,9 +534,30 @@
       {@const size = c.node.notchSize}
       <div class="override-head">
         <span class="custom-mark" aria-hidden="true"></span>
-        <span>Own size for this compartment</span>
+        <span>Override size</span>
         <button class="small" onclick={() => delete c.node.notchSize} data-tip="Go back to the project's notch size">Use default</button>
       </div>
+      <div class="notches override-sides" role="group" aria-label="Sides using the notch override">
+        {#each SIDE_ORDER as side (side)}
+          {@const own = c.node.notches.includes(side)}
+          {@const selected = own && usesNotchOverride(c.node, side)}
+          {@const shared = notchSharedWith(solved, c, side)}
+          <button
+            class="small"
+            class:on={selected}
+            aria-label="Override {side} notch"
+            aria-pressed={selected}
+            disabled={!own}
+            onclick={() => setNotchOverrideSide(c.node, side, !selected)}
+            data-tip={own
+              ? `Use ${selected ? 'the project default' : 'the override size and shape'} for the ${side} notch`
+              : shared.length
+                ? `This notch is set by ${shared.join(', ')}; select that compartment to change its override`
+                : `Add a ${side} notch above to override it`}
+          >{cap(side)}</button>
+        {/each}
+      </div>
+      <p class="hint override-hint">Select notched sides to use this size and shape. Other sides use the project default.</p>
       <NotchFields {size} />
     {:else}
       <span class="hint"
@@ -478,8 +565,8 @@
       >
       <button
         class="small"
-        onclick={() => (c.node.notchSize = { ...project.notch })}
-        data-tip="Give this compartment's notches their own size and shape; they are drawn in a different colour">Override</button
+        onclick={() => (c.node.notchSize = { ...project.notch, sides: [...c.node.notches] })}
+        data-tip="Choose which notched sides use their own size and shape; they are drawn in a different colour">Override</button
       >
     {/if}
   </div>
@@ -526,6 +613,15 @@
 </div>
 
 <style>
+  .lid-notches {
+    margin: 12px 0;
+    padding-left: 8px;
+    border-left: 2px solid var(--line-strong);
+  }
+  .lid-notches h3 {
+    font-size: 12px;
+    margin: 0 0 6px;
+  }
   .head {
     display: flex;
     gap: 10px;
@@ -669,6 +765,9 @@
   .check.nested {
     margin: -4px 0 8px 22px;
   }
+  .check.lid-material {
+    margin-top: 8px;
+  }
   .chip.on {
     border-color: var(--accent);
     background: var(--accent-soft);
@@ -682,6 +781,10 @@
     justify-content: space-between;
   }
   .notch-size :global(.field) {
+    width: 100%;
+  }
+  .override-sides,
+  .override-hint {
     width: 100%;
   }
   .override-head {

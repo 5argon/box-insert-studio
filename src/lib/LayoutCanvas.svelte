@@ -2,8 +2,9 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { dragBar, findSplit, sectionIds } from '../core/edit';
   import { mm } from '../core/geom';
+  import { lidNotchPoints, lidOutline, polygonPath } from '../core/lidNotches';
   import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
-  import type { Bar, PieceInst, SolvedLayer } from '../core/layout';
+  import { dividerThickness, type Bar, type PieceInst, type SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
   import type { Layer, Project } from '../core/types';
   import type { Selection } from './state.svelte';
@@ -17,6 +18,7 @@
     hoverGroup,
     showNumbers,
     onselect,
+    readonly = false,
   }: {
     project: Project;
     layer: Layer;
@@ -26,6 +28,8 @@
     hoverGroup: number | null;
     showNumbers: boolean;
     onselect: (s: Selection) => void;
+    /** Static reference plan, including in printed reports. */
+    readonly?: boolean;
   } = $props();
 
   let svg: SVGSVGElement;
@@ -81,13 +85,14 @@
   }
 
   function barDown(e: PointerEvent, bar: Bar) {
+    if (readonly) return;
     e.stopPropagation();
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const split = solved.splits.find((s) => s.id === bar.splitId);
     if (!split) return;
     const p = toMm(e);
     drag = { bar, start: bar.dir === 'row' ? p.x : p.y, sizes: [...split.childSizes], targets: snapTargets(bar) };
-    onselect({ kind: 'split', id: bar.splitId });
+    onselect({ kind: 'split', id: bar.splitId, index: bar.index });
   }
 
   function move(e: PointerEvent) {
@@ -102,6 +107,7 @@
   }
 
   const selectedSplit = $derived(selected?.kind === 'split' ? selected.id : null);
+  const selectedIndex = $derived(selected?.kind === 'split' ? selected.index : undefined);
 
   interface Span {
     from: number;
@@ -129,16 +135,18 @@
       const trays = sp.node.join === 'trays';
       const c = project.clearance;
       let cursor = row ? sp.rect.x : sp.rect.y;
-      const spans = sp.childSizes.map((size) => {
+      const spans = sp.childSizes.map((size, i) => {
         const from = trays ? cursor + c / 2 : cursor;
-        cursor += trays ? size + c : size + project.material.thickness;
+        cursor += trays ? size + c : size + dividerThickness(project, sp.node, i);
         return { from, to: from + size, label: mm(size) };
       });
       return row ? { x: spans, y: [] } : { x: [], y: spans };
     }
     return { x: [], y: [] };
   });
-  const labelSize = (w: number, h: number) => Math.max(5, Math.min(30, Math.min(w, h) * 0.34));
+  const labelSize = (w: number, h: number) => readonly
+    ? Math.max(0, Math.min(30, h * 0.75, Math.max(12, Math.min(w, h) * 0.5)))
+    : Math.max(5, Math.min(30, Math.min(w, h) * 0.34));
 
   /** Largest font size (mm) up to `wanted` at which `text` fits `width` with a little margin. */
   const fitText = (text: string, width: number, wanted: number) => Math.min(wanted, (width - 2) / (text.length * 0.6));
@@ -148,7 +156,7 @@
   function pieceFill(p: PieceInst): string {
     const g = cut.groupOf.get(p.id)?.number;
     if (hoverGroup !== null && g === hoverGroup) return 'var(--accent)';
-    if (p.kind === 'divider' && p.splitId === selectedSplit) return 'var(--piece-selected)';
+    if (p.kind === 'divider' && p.splitId === selectedSplit && (selectedIndex === undefined || p.barIndex === selectedIndex)) return 'var(--piece-selected)';
     if (p.depth === 1) return 'var(--piece-inner)';
     return 'var(--piece)';
   }
@@ -157,19 +165,28 @@
   // Raised-floor pads lie under the compartment's colour; its label carries a * instead.
   const strips = $derived(solved.pieces.filter((p) => (p.kind === 'wall' || p.kind === 'divider') && !p.copy));
   const bases = $derived(solved.pieces.filter((p) => p.kind === 'base' && !p.copy));
+  const lids = $derived(solved.pieces.filter((p) => p.kind === 'lid' && !p.copy));
+  const canvasId = $props.id();
+  const lidPatternId = `lid-stripes-${canvasId}`;
 </script>
 
 <svg
   bind:this={svg}
   class="canvas"
+  class:readonly
   viewBox="{-padStart} {-padStart} {W + padStart + padEnd} {D + padStart + fs * 2.4}"
   onpointermove={move}
   onpointerup={up}
   onpointercancel={up}
   onpointerdown={() => onselect(null)}
-  role="application"
+  role={readonly ? 'img' : 'application'}
   aria-label="Top view of {layer.name}"
 >
+  <defs>
+    <pattern id={lidPatternId} width={5} height={5} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1={0} y1={0} x2={0} y2={5} class="lid-stripe" />
+    </pattern>
+  </defs>
   <rect x={0} y={0} width={W} height={D} class="box" />
 
   <!-- Trays of the layer first, then removable boxes standing in their compartments. -->
@@ -179,7 +196,7 @@
       <rect x={b.footprint.x} y={b.footprint.y} width={b.footprint.w} height={b.footprint.h} class="base" class:inner={depth === 1} class:hot />
     {/each}
 
-    {#if depth === 1}
+    {#if depth === 1 && !readonly}
       {#each solved.trays.filter((t) => t.depth === 1 && !t.copyOf) as t (t.id)}
         <!-- Clicking a box's walls selects the compartment it stands in. -->
         <rect
@@ -200,18 +217,14 @@
 
     {#each solved.compartments.filter((c) => c.depth === depth) as c (c.id)}
       {@const isSel = selected?.kind === 'section' && selected.id === c.id}
-      {@const label = c.label + (c.stacked ? '²' : '') + (c.pad ? '*' : '')}
-      {@const place = labelLayout(c.rect, labelSize(c.rect.w, c.rect.h), label.length, !!c.node.arrow)}
-      {@const size = place.size}
-      {@const dimsText = `${mm(c.rect.w)} × ${mm(c.rect.h)}`}
-      {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3)))}
       <g
         class="compartment"
         onpointerdown={(e) => {
           e.stopPropagation();
           onselect({ kind: 'section', id: c.id });
         }}
-        role="button"
+        role={readonly ? undefined : 'button'}
+        aria-label={readonly ? undefined : `Compartment ${c.label}`}
         tabindex="-1"
       >
         <rect
@@ -223,23 +236,6 @@
           class:sel={isSel}
           class:well={!!c.node.insert && depth === 0}
         />
-        {#if size > 0}
-          <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.index)} class="letter"
-            >{c.label}{c.stacked ? '²' : ''}{#if c.pad}<tspan dy="-0.35em" font-size="0.65em">*</tspan>{/if}</text
-          >
-          {#if place.arrow && c.node.arrow}
-            <path
-              d={arrowPath(place.arrow.len)}
-              transform="translate({place.arrow.x} {place.arrow.y}) rotate({ARROW_ANGLE[c.node.arrow]})"
-              class="item-arrow"
-              style:stroke={sectionInk(c.index)}
-              style:stroke-width={Math.max(0.6, size * 0.09)}
-            />
-          {/if}
-        {/if}
-        {#if c.rect.h > 14 && readable(dims)}
-          <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} style:fill={sectionInk(c.index)} class="dims">{dimsText}</text>
-        {/if}
       </g>
     {/each}
 
@@ -260,6 +256,52 @@
         {/if}
       {/each}
     {/each}
+
+    {#each lids.filter((lid) => lid.depth === depth) as lid (lid.id)}
+      <path
+        d={polygonPath(lidOutline(lid.length, lid.height, lid.lidNotches), lid.footprint.x, lid.footprint.y)}
+        fill="url(#{lidPatternId})"
+        class="lid-cover"
+        data-piece={lid.id}
+        data-shared-lid={lid.sharedLidFor}
+      />
+    {/each}
+
+    <!-- Letters and item arrows stay above the lid stripes. -->
+    {#each solved.compartments.filter((c) => c.depth === depth) as c (c.id)}
+      {@const label = c.label + (c.stacked ? '²' : '') + (c.pad ? '*' : '')}
+      {@const place = labelLayout(c.rect, labelSize(c.rect.w, c.rect.h), label.length, !!c.node.arrow)}
+      {@const size = place.size}
+      {@const dimsText = `${mm(c.rect.w)} × ${mm(c.rect.h)}`}
+      {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3)))}
+      {#if size > 0}
+        <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.index)} class="letter"
+          >{c.label}{c.stacked ? '²' : ''}{#if c.pad}<tspan dy="-0.35em" font-size="0.65em">*</tspan>{/if}</text
+        >
+        {#if place.arrow && c.node.arrow}
+          <path
+            d={arrowPath(place.arrow.len)}
+            transform="translate({place.arrow.x} {place.arrow.y}) rotate({ARROW_ANGLE[c.node.arrow]})"
+            class="item-arrow"
+            style:stroke={sectionInk(c.index)}
+            style:stroke-width={Math.max(0.6, size * 0.09)}
+          />
+        {/if}
+      {/if}
+      {#if !readonly && c.rect.h > 14 && readable(dims)}
+        <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} style:fill={sectionInk(c.index)} class="dims">{dimsText}</text>
+      {/if}
+    {/each}
+  {/each}
+
+  <!-- Show a lid's footprint when its cut-list piece is hovered, leaving the inside editable. -->
+  {#each lids.filter((p) => hoverGroup !== null && cut.groupOf.get(p.id)?.number === hoverGroup) as lid (lid.id)}
+    <path d={polygonPath(lidOutline(lid.length, lid.height, lid.lidNotches), lid.footprint.x, lid.footprint.y)} class="lid-hot" />
+  {/each}
+  {#each lids as lid (lid.id)}
+    {#each lid.lidNotches ?? [] as notch (notch.side)}
+      <path d={polygonPath(lidNotchPoints(lid.length, lid.height, notch), lid.footprint.x, lid.footprint.y)} class="lid-notch" />
+    {/each}
   {/each}
 
   {#if showNumbers}
@@ -274,7 +316,7 @@
     {/each}
   {/if}
 
-  {#each solved.bars as bar (bar.splitId + ':' + bar.index)}
+  {#each readonly ? [] : solved.bars as bar (bar.splitId + ':' + bar.index)}
     {@const vertical = bar.dir === 'row'}
     {@const hit = Math.max(bar.thickness, 4)}
     <rect
@@ -284,7 +326,7 @@
       height={vertical ? bar.to - bar.from : hit}
       class="hit"
       class:trays={bar.join === 'trays'}
-      class:sel={selectedSplit === bar.splitId}
+      class:sel={selectedSplit === bar.splitId && (selectedIndex === undefined || selectedIndex === bar.index)}
       style:cursor={vertical ? 'ew-resize' : 'ns-resize'}
       onpointerdown={(e) => barDown(e, bar)}
       role="separator"
@@ -342,6 +384,11 @@
   .canvas :focus {
     outline: none;
   }
+  .canvas.readonly {
+    pointer-events: none;
+    touch-action: auto;
+    user-select: auto;
+  }
   .box {
     fill: var(--canvas-box);
     stroke: var(--canvas-edge);
@@ -353,6 +400,31 @@
   }
   .base.inner {
     fill: var(--canvas-base-inner);
+  }
+  .lid-stripe {
+    stroke: var(--text);
+    stroke-width: 0.6;
+    stroke-opacity: 0.3;
+  }
+  .lid-cover {
+    stroke: var(--canvas-edge);
+    stroke-width: 0.5;
+    pointer-events: none;
+  }
+  .lid-hot {
+    fill: var(--accent-soft);
+    fill-opacity: 0.3;
+    stroke: var(--accent);
+    stroke-width: 1;
+    stroke-dasharray: 3 2;
+    pointer-events: none;
+  }
+  .lid-notch {
+    fill: var(--notch);
+    fill-opacity: 0.6;
+    stroke: var(--notch);
+    stroke-width: 0.4;
+    pointer-events: none;
   }
   .box-hit {
     fill: transparent;

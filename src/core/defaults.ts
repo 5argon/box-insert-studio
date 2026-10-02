@@ -12,6 +12,7 @@ export const SHEET_PRESETS: SheetSpec[] = [
 ];
 
 export const THICKNESS_PRESETS = [3, 5, 10];
+export const SECONDARY_THICKNESS_PRESETS = [2, 3, 5];
 
 /** Layer colours, by position from the bottom; used with the layer icon when there are 2+ layers. */
 const LAYER_COLORS = ['#7b6fd6', '#d9822b', '#2a9d8f', '#c44569', '#5a8f29', '#3d7cc9'];
@@ -67,8 +68,9 @@ export interface NewProjectSpec {
   thickness: Mm;
   sheet: SheetSpec;
   layerHeight: Mm;
-  /** Each layer's base from its own sheet, when set. */
-  baseThickness?: Mm;
+  secondaryThickness?: Mm;
+  /** Use the secondary material for the first layer's base. */
+  secondaryBase?: boolean;
 }
 
 /** Clearance for a new design: 1 mm on each side, so trays drop in without jamming. */
@@ -95,7 +97,7 @@ export function newProject(spec: NewProjectSpec): Project {
     box: { ...spec.box },
     material: {
       thickness: spec.thickness,
-      ...(spec.baseThickness !== undefined ? { baseThickness: spec.baseThickness } : {}),
+      ...(spec.secondaryThickness !== undefined ? { secondaryThickness: spec.secondaryThickness } : {}),
       sheet: { ...spec.sheet },
       trim: 5,
       kerf: 0.5,
@@ -103,6 +105,7 @@ export function newProject(spec: NewProjectSpec): Project {
     precision: 0.5,
     clearance: NEW_CLEARANCE,
     base: 'under',
+    ...(spec.secondaryBase ? { secondaryBase: true } : {}),
     fullWalls: 'x',
     notch: { width: notch, depth: notch, bottom: 50 },
     layers: [newLayer('Layer 1', spec.layerHeight)],
@@ -123,5 +126,12 @@ export function migrateProject(raw: unknown): Project | undefined {
   }
   if (!p.material) return undefined;
   delete (p.material as Project['material'] & { name?: string }).name;
+  // Preserve the dimensions and base choice of designs saved before secondary material.
+  const material = p.material as Project['material'] & { baseThickness?: Mm };
+  if (material.baseThickness !== undefined) {
+    material.secondaryThickness ??= material.baseThickness;
+    p.secondaryBase = true;
+    delete material.baseThickness;
+  }
   return p;
 }

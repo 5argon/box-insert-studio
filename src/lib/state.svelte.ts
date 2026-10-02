@@ -5,7 +5,7 @@ const KEY = 'box-insert-studio/project-v2';
 /** Where autosaves lived before the material setting; read once, then saved under KEY. */
 const OLD_KEY = 'box-insert-studio/foam-project';
 
-export type Selection = { kind: 'section' | 'split'; id: string } | null;
+export type Selection = { kind: 'section'; id: string } | { kind: 'split'; id: string; index?: number } | null;
 
 /** How trays that are not highlighted are drawn in the 3D view. */
 export type ViewStyle = 'wire' | 'glass' | 'solid';

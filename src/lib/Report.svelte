@@ -1,13 +1,16 @@
 <script lang="ts">
-  import { trayInstructions } from '../core/assembly';
+  import { sharedLidInstructions, trayInstructions } from '../core/assembly';
   import { NOTCH_BOTTOM_DEFAULT } from '../core/layout';
+  import { lidNotchPoints, lidNotchText, lidOutline, polygonPath } from '../core/lidNotches';
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
-  import { CUT_LAYOUTS, panelUse, planCuts, sheetSummary, thicknesses, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
+  import { CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import { setCutLayout } from '../core/edit';
   import type { Project } from '../core/types';
   import Markdown from './Markdown.svelte';
+  import ReportOverview from './ReportOverview.svelte';
+  import PieceCutting from './PieceCutting.svelte';
   import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
   import { download, slug } from './state.svelte';
 
@@ -23,7 +26,12 @@
 
   function where(g: PieceGroup): string {
     const byTray = new Map<number, Map<string, number>>();
+    const shared = new Map<string, number>();
     for (const p of g.pieces) {
+      if (p.sharedLidFor) {
+        shared.set(p.sharedLidFor, (shared.get(p.sharedLidFor) ?? 0) + 1);
+        continue;
+      }
       // The upper box of a stack is built like the one below it; count it there.
       const tray = trayById.get(p.trayId)!;
       const t = tray.copyOf ? trayById.get(tray.copyOf)!.number : tray.number;
@@ -32,10 +40,16 @@
       m.set(kind, (m.get(kind) ?? 0) + 1);
       byTray.set(t, m);
     }
-    return [...byTray.entries()]
+    const uses = [...byTray.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([t, m]) => `Tray ${t}: ${[...m.entries()].map(([k, n]) => `${n} ${k}${n > 1 ? 's' : ''}`).join(', ')}`)
-      .join('; ');
+      .map(([t, m]) => `Tray ${t}: ${[...m.entries()].map(([k, n]) => `${n} ${k}${n > 1 ? 's' : ''}`).join(', ')}`);
+    return [...uses, ...[...shared.entries()].map(([well, n]) => `Compartment ${wellLabel(well)}: ${n} shared lid${n === 1 ? '' : 's'} over all separate boxes`)].join('; ');
+  }
+
+  const assemblyTrays = $derived(solved.trays.filter((t) => !t.copyOf));
+  function sharedLidAfter(t: Tray) {
+    if (t.depth !== 1 || assemblyTrays.findLast((other) => other.wellId === t.wellId)?.id !== t.id) return undefined;
+    return solved.pieces.find((p) => p.sharedLidFor === t.wellId);
   }
 
   /** A notch's flat bottom is named only when it differs from the project's usual share. */
@@ -47,8 +61,12 @@
       ...g.notches.map((n) => `${mm(n.width)}×${mm(n.depth)}${flatNote(n)} at ${mm(n.center)}`),
       ...g.lows.map((l) => `${mm(l.depth)} lower from ${mm(l.from)} to ${mm(l.to)}`),
     ];
+    if (g.lidNotches?.length) return `Cut orientation (long edge across): ${g.lidNotches.map(lidNotchText).join('; ')}`;
     return parts.length ? parts.join(', ') + ' mm' : '';
   }
+
+  const notchGroups = $derived(cut.groups.filter((g) => g.notches.length || g.lidNotches?.length));
+  const loweredGroups = $derived(cut.groups.filter((g) => g.lows.length));
 
   function stripText(item: SheetItem): string {
     const s = item.strip!;
@@ -89,20 +107,22 @@
   const boxesIn = (layerId: string) => solved.trays.filter((t) => t.layerId === layerId && t.depth === 1 && !t.copyOf);
   const scale = $derived(Math.max(project.box.width, project.box.depth) / 100);
 
-  /** Bases from their own sheet thickness: listed, planned and called out apart from the rest. */
+  /** Keep the chosen material visible throughout cutting and assembly. */
   const T = $derived(project.material.thickness);
-  const ownBase = $derived(cut.groups.some((g) => g.thickness !== T));
-  const blocks = $derived(thicknesses(project, cut).map((t) => ({ thickness: t, groups: cut.groups.filter((g) => g.thickness === t) })));
-  const materialName = (t: number) => (t === T ? `${mm(t)} mm sheet` : `${mm(t)} mm base sheet, for layer bases only`);
-  const baseRefs = $derived(
+  const hasSecondary = $derived(cut.groups.some((g) => g.material === 'secondary'));
+  const blocks = $derived([...new Set(cut.groups.map((g) => g.material))].map((material) => {
+    const groups = cut.groups.filter((g) => g.material === material);
+    return { material, thickness: groups[0]!.thickness, groups };
+  }));
+  const secondaryRefs = $derived(
     cut.groups
-      .filter((g) => g.thickness !== T)
+      .filter((g) => g.material === 'secondary')
       .map((g) => `#${g.number}`)
       .join(', '),
   );
 
   /** Every layout planned side by side, so switching shows its sheet count before you pick it. */
-  const layout = $derived(project.material.layout ?? 'fewest');
+  const layout = $derived(project.material.layout ?? 'strips');
   const layoutInfo = $derived(CUT_LAYOUTS.find((l) => l.value === layout) ?? CUT_LAYOUTS[0]);
   const alternatives = $derived(
     new Map(CUT_LAYOUTS.map((l) => [l.value, l.value === layout ? plan : planCuts({ ...project, material: { ...project.material, layout: l.value } }, cut)])),
@@ -115,8 +135,8 @@
   }
 
   function exportCsv() {
-    const rows = [['#', 'Qty', 'Kind', 'Length mm', 'Height mm', 'Notches, lowered', 'Used in']];
-    for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', String(g.length), String(g.height), notchText(g), where(g)]);
+    const rows = [['#', 'Qty', 'Kind', 'Material', 'Thickness mm', 'Length mm', 'Height mm', 'Notches, lowered', 'Used in']];
+    for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', g.material, String(g.thickness), String(g.length), String(g.height), notchText(g), where(g)]);
     const csv = rows.map((r) => r.map((c) => (/[",;]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
     download(`${slug(project.name)}-cut-list.csv`, csv, 'text/csv');
   }
@@ -131,8 +151,8 @@
       <div>
         <h1>{project.name}</h1>
         <p class="facts">
-          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {project.material.thickness} mm material{project.material.baseThickness !== undefined
-            ? `, ${mm(project.material.baseThickness)} mm bases`
+          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · Primary material {mm(T)} mm{project.material.secondaryThickness !== undefined
+            ? `, secondary material ${mm(project.material.secondaryThickness)} mm`
             : ''} ·
           {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {mm(solved.headroom)} mm headroom
         </p>
@@ -150,6 +170,8 @@
     {#each errors as e, i (i)}
       <div class="issue error">{e.message}</div>
     {/each}
+
+    <ReportOverview {project} {solved} {cut} />
 
     {#if project.readme?.trim()}
       <section class="notes">
@@ -210,11 +232,9 @@
         <thead>
           <tr><th>#</th><th>Qty</th><th>Size (mm)</th><th>Notches, lowered</th><th>Used in</th></tr>
         </thead>
-        {#each blocks as block (block.thickness)}
-          <tbody class:own={block.thickness !== T}>
-            {#if ownBase}
-              <tr class="material"><th colspan="5">From the {materialName(block.thickness)}</th></tr>
-            {/if}
+        {#each blocks as block (block.material)}
+          <tbody class:own={block.material === 'secondary'}>
+            <tr class="material"><th colspan="5">From {materialLabel(block.material, block.thickness)}</th></tr>
             {#each block.groups as g (g.key)}
               <tr>
                 <td class="num">#{g.number}</td>
@@ -245,6 +265,7 @@
       </div>
       <p class="muted small">
         <b>{layoutInfo.name}.</b> {layoutInfo.detail} Trim {project.material.trim} mm off each sheet edge first.
+        Cut out and number the rectangular pieces first{#if notchGroups.length || loweredGroups.length}; complete the notch and edge cuts below before assembly{/if}.
       </p>
       {#each plan.sheets as sheet (sheet.index)}
         {@const W = project.material.sheet.width}
@@ -255,11 +276,11 @@
             <rect x={project.material.trim} y={project.material.trim} width={W - 2 * project.material.trim} height={H - 2 * project.material.trim} class="trim" />
             {#each sheet.items as item, i (i)}
               {#if item.kind === 'base'}
-                <rect x={item.x} y={item.y} width={item.w} height={item.h} class="base" />
+                <rect x={item.x} y={item.y} width={item.w} height={item.h} class="base" class:secondary={sheet.material === 'secondary'} />
                 <text x={item.x + item.w / 2} y={item.y + item.h / 2} class="label big">#{item.group?.number}</text>
               {:else}
                 {#each segments(item) as seg, j (j)}
-                  <rect x={seg.x} y={seg.y} width={seg.w} height={seg.h} class="seg" />
+                  <rect x={seg.x} y={seg.y} width={seg.w} height={seg.h} class="seg" class:secondary={sheet.material === 'secondary'} />
                   {#if Math.max(seg.w, seg.h) > 14}
                     <text x={seg.x + seg.w / 2} y={seg.y + seg.h / 2} class="label" font-size={Math.min(9, Math.min(seg.w, seg.h) * 0.55)}>#{seg.group}</text>
                   {/if}
@@ -268,14 +289,16 @@
             {/each}
           </svg>
           <div class="sheet-text">
-            <h3>Sheet {sheet.index + 1} of {plan.sheets.length}{ownBase ? ` · ${materialName(sheet.thickness)}` : ''}</h3>
+            <h3>Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</span></h3>
             <ol>
               {#each sheet.items as item, i (i)}
                 <li>
                   {#if item.kind === 'base'}
-                    {item.group && panelUse(item.group) === 'pad' ? 'Pad' : 'Base'} #{item.group?.number}: {mm(item.group?.length ?? 0)} × {mm(item.group?.height ?? 0)} mm
+                    {item.group ? panelUse(item.group) : 'Panel'} #{item.group?.number}: {mm(item.group?.length ?? 0)} × {mm(item.group?.height ?? 0)} mm
+                    · <b class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</b>
                   {:else}
                     {stripText(item)}
+                    · <b class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</b>
                   {/if}
                 </li>
               {/each}
@@ -285,23 +308,39 @@
       {/each}
     </section>
 
+    {#if notchGroups.length}
+      <section class="notch-cutting" aria-label="Finger notch cutting">
+        <h2>Finger notch cutting</h2>
+        <p>Cut these notches while the numbered pieces are still flat, before gluing. Mark the two points on the opening edge and the two points inside the piece, then join them with straight cuts. All distances below are in millimetres.</p>
+        {#each notchGroups as group (group.key)}<PieceCutting {group} />{/each}
+      </section>
+    {/if}
+    {#if loweredGroups.length}
+      <section class="lowered-cutting" aria-label="Lowered edge cutting">
+        <h2>Lowered edge cutting</h2>
+        <p>Cut these lowered stretches before gluing, using the same four-point marking method. A line on an existing outer edge needs no additional cut.</p>
+        {#each loweredGroups as group (group.key)}<PieceCutting {group} kind="lowered" />{/each}
+      </section>
+    {/if}
+
     <section>
       <h2>Assembly</h2>
-      {#if ownBase}
+      <p class="muted small">Use the finished pieces. Match their numbered positions and orientations to each diagram, keeping notched wall and divider edges facing up.</p>
+      {#if hasSecondary}
         <p class="material-note">
-          The layer bases ({baseRefs}) are {mm(project.material.baseThickness ?? T)} mm, cut from their own sheets. Everything else, including removable box floors and raised
-          floors, is {mm(T)} mm.
+          Pieces {secondaryRefs} use <b>{materialLabel('secondary', project.material.secondaryThickness ?? T)}</b>, cut from separate sheets.
+          All remaining pieces use {materialLabel('primary', T)}.
         </p>
       {/if}
-      {#each solved.trays.filter((t) => !t.copyOf) as t (t.id)}
-        {@const pieces = solved.pieces.filter((p) => p.trayId === t.id)}
+      {#each assemblyTrays as t (t.id)}
+        {@const pieces = solved.pieces.filter((p) => p.trayId === t.id && !p.sharedLidFor)}
         {@const comps = solved.compartments.filter((c) => c.trayId === t.id)}
         <div class="tray">
           <h3>
             Tray {t.number}{t.stacked ? ' (make 2)' : ''} · {layerName.get(t.layerId)}{t.depth === 1
               ? ` · ${t.stacked ? 'two boxes stacked' : t.emptyAbove ? 'half-height box, empty above,' : 'box standing'} in ${wellLabel(t.wellId)} of tray ${parentNumber(t.parentTrayId)}`
               : ''} ·
-            {mm(t.outer.w)} × {mm(t.outer.h)} × {mm(t.height)} mm · compartments {t.compartments.join(', ')}
+            {mm(t.outer.w)} × {mm(t.outer.h)} × {mm(t.height)} mm{t.lid ? ` including ${mm(t.lid)} mm lid` : ''} · compartments {t.compartments.join(', ')}
           </h3>
           <div class="tray-body">
             <svg viewBox={trayView(t)} class="tray-svg" role="img" aria-label="Tray {t.number} top view">
@@ -347,13 +386,24 @@
                   <text class="tag-text">{cut.groupOf.get(p.id)?.number}</text>
                 </g>
               {/each}
+              {#each pieces.filter((p) => p.kind === 'lid') as lid (lid.id)}
+                <path d={polygonPath(lidOutline(lid.length, lid.height, lid.lidNotches), lid.footprint.x, lid.footprint.y)} class="tray-lid" />
+                {#each lid.lidNotches ?? [] as notch (notch.side)}
+                  <path d={polygonPath(lidNotchPoints(lid.length, lid.height, notch), lid.footprint.x, lid.footprint.y)} class="tray-lid-notch" />
+                {/each}
+                <text x={t.outer.x + t.outer.w / 2} y={t.outer.y - 5} class="front">LID #{cut.groupOf.get(lid.id)?.number}</text>
+              {/each}
               <text x={t.outer.x + t.outer.w / 2} y={t.outer.y + t.outer.h + 8} class="front">FRONT</text>
             </svg>
             <ol class="steps">
               {#each trayInstructions(project, solved, cut, t) as step, i (i)}
                 <li>
                   {#if step.strong}<b class="strong">{step.strong}</b>{/if}
-                  {step.text}
+                  {#if i === 0 || step.material === 'secondary'}
+                    <b class:secondary-material={step.material === 'secondary'}>{step.text}</b>
+                  {:else}
+                    {step.text}
+                  {/if}
                   {#each step.notes as n, j (j)}
                     <span class="step-note {n.kind}"><b>{n.label}:</b> {n.text}</span>
                   {/each}
@@ -362,6 +412,43 @@
             </ol>
           </div>
         </div>
+        {@const sharedLid = sharedLidAfter(t)}
+        {#if sharedLid}
+          {@const well = solved.compartments.find((c) => c.id === sharedLid.sharedLidFor)!}
+          {@const boxes = assemblyTrays.filter((box) => box.wellId === well.id)}
+          {@const fp = sharedLid.footprint}
+          <div class="tray shared-lid-assembly">
+            <h3>Shared lid · {layerName.get(t.layerId)} · over all separate boxes in {well.label} · {mm(sharedLid.length)} × {mm(sharedLid.height)} × {mm(sharedLid.thickness)} mm</h3>
+            <div class="tray-body">
+              <svg viewBox="{fp.x - 12} {fp.y - 12} {fp.w + 24} {fp.h + 30}" class="tray-svg" role="img" aria-label="Shared lid over all separate boxes in {well.label}">
+                {#each boxes as box (box.id)}
+                  <rect x={box.outer.x} y={box.outer.y} width={box.outer.w} height={box.outer.h} class="tray-base" />
+                {/each}
+                {#each solved.compartments.filter((c) => c.wellId === well.id) as c (c.id)}
+                  {@const size = Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3))}
+                  <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.index, 90)} />
+                  <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{c.label}{c.stacked ? '²' : ''}</text>
+                {/each}
+                <path d={polygonPath(lidOutline(sharedLid.length, sharedLid.height, sharedLid.lidNotches), fp.x, fp.y)} class="tray-lid" />
+                {#each sharedLid.lidNotches ?? [] as notch (notch.side)}
+                  <path d={polygonPath(lidNotchPoints(sharedLid.length, sharedLid.height, notch), fp.x, fp.y)} class="tray-lid-notch" />
+                {/each}
+                <text x={fp.x + fp.w / 2} y={fp.y - 5} class="front">SHARED LID #{cut.groupOf.get(sharedLid.id)?.number}</text>
+                <text x={fp.x + fp.w / 2} y={fp.y + fp.h + 8} class="front">FRONT</text>
+              </svg>
+              <ol class="steps">
+                {#each sharedLidInstructions(project, solved, cut, sharedLid) as step, i (i)}
+                  <li>
+                    {#if step.material}<b class:secondary-material={step.material === 'secondary'}>{step.text}</b>{:else}{step.text}{/if}
+                    {#each step.notes as n, j (j)}
+                      <span class="step-note {n.kind}"><b>{n.label}:</b> {n.text}</span>
+                    {/each}
+                  </li>
+                {/each}
+              </ol>
+            </div>
+          </div>
+        {/if}
       {/each}
     </section>
 
@@ -394,6 +481,15 @@
     --sec-a: 0%;
     --sec-b: 1;
     --sec-ink: 30%;
+    --canvas-box: #fbfaf7;
+    --canvas-edge: #8a8378;
+    --canvas-base: #cfc8bb;
+    --canvas-base-inner: #e2dccf;
+    --piece: #3f3b35;
+    --piece-inner: #6a6258;
+    --notch: #f2b233;
+    --notch-custom: #1aa6b7;
+    --lowered: #9b7fd4;
     color: var(--text);
     background: #fff;
     max-width: 820px;
@@ -491,6 +587,17 @@
     stroke: #22201c;
     stroke-width: 0.8;
   }
+  .base.secondary {
+    fill: #dfd6f1;
+    stroke: #60418a;
+  }
+  .seg.secondary {
+    fill: #dfd6f1;
+    stroke: #60418a;
+  }
+  .secondary-material {
+    color: #60418a;
+  }
   .seg {
     fill: #ece6da;
     stroke: #22201c;
@@ -530,6 +637,18 @@
   }
   .tray-base {
     fill: #cfc8bb;
+  }
+  .tray-lid {
+    fill: none;
+    stroke: #6f6a61;
+    stroke-width: 0.6;
+    stroke-dasharray: 3 2;
+  }
+  .tray-lid-notch {
+    fill: #f2b233;
+    fill-opacity: 0.5;
+    stroke: #a26400;
+    stroke-width: 0.4;
   }
   .tray-piece {
     fill: #3f3b35;
@@ -574,12 +693,6 @@
     margin: 2px 0 1px;
     padding: 1px 0 1px 7px;
     border-left: 3px solid;
-  }
-  .step-note.notch {
-    border-color: #f2b233;
-  }
-  .step-note.notch b {
-    color: #a26400;
   }
   .step-note.lowered {
     border-color: #9b7fd4;
