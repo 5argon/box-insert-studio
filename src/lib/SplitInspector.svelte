@@ -1,17 +1,18 @@
 <script lang="ts">
-  import { canUseTrays, distributeEqually, insertHost, lockChild, offStep, roundParts, sectionIds, setJoin } from '../core/edit';
-  import { baseThickness, type SolvedLayer, type SolvedSplit } from '../core/layout';
+  import { canUseTrays, distributeEqually, insertHost, lockChild, offStep, roundParts, sectionIds, setDividerSecondary, setJoin } from '../core/edit';
+  import { baseThickness, dividerMaterial, dividerThickness, insertBaseThickness, insertLidAllowance, type SolvedLayer, type SolvedSplit } from '../core/layout';
+  import { materialLabel } from '../core/pieces';
   import type { Layer, Project } from '../core/types';
   import LockButton from './LockButton.svelte';
   import NumberField from './NumberField.svelte';
 
-  let { project, layer, solvedLayer, split }: { project: Project; layer: Layer; solvedLayer: SolvedLayer; split: SolvedSplit } = $props();
+  let { project, layer, solvedLayer, split, dividerIndex }: { project: Project; layer: Layer; solvedLayer: SolvedLayer; split: SolvedSplit; dividerIndex?: number } = $props();
 
   const node = $derived(split.node);
   const labelOf = $derived(new Map(solvedLayer.compartments.map((c) => [c.id, c.label])));
   const trays = $derived(node.join === 'trays');
   const traysAllowed = $derived(canUseTrays(layer.root, node.id));
-  /** Inside a removable box, "trays" are separate boxes and the height is one thickness less. */
+  /** Inside a removable box, "trays" are separate boxes within the host compartment. */
   const host = $derived(insertHost(layer.root, node.id));
   const hostLabel = $derived(host ? solvedLayer.compartments.find((c) => c.id === host.id)?.label : undefined);
   const unit = $derived(host ? 'box' : 'tray');
@@ -26,7 +27,10 @@
   const mm2 = (v: number) => String(Number(v.toFixed(2)));
   const off = $derived(split.childSizes.flatMap((v, i) => (offStep(v, step) ? [i] : [])));
   const offSizes = $derived([...new Set(off.map((i) => mm2(split.childSizes[i])))]);
-  const maxLower = $derived(layer.height - baseThickness(project) - (host ? project.material.thickness : 0) - 5);
+  const well = $derived(host ? solvedLayer.compartments.find((c) => c.id === host.id) : undefined);
+  const maxLower = $derived(host
+    ? (well?.height ?? layer.height - baseThickness(project)) / (host.insert?.stacked ? 2 : 1) - insertBaseThickness(project, host) - insertLidAllowance(project, host) - 5
+    : layer.height - baseThickness(project) - 5);
 </script>
 
 <div class="panel-section">
@@ -65,6 +69,32 @@
   <button onclick={() => distributeEqually(node)}>Distribute equally</button>
 </div>
 
+{#if !trays}
+  <div class="panel-section">
+    <h2>Divider materials</h2>
+    {#if project.material.secondaryThickness !== undefined}
+      {#each node.children.slice(0, -1) as child, i (child.node.id)}
+        <div class="divider-material" class:current={dividerIndex === i}>
+          <div class="divider-name">Between {partLabel(i)} and {partLabel(i + 1)}{dividerIndex === i ? ' · selected' : ''}</div>
+          <label class="check">
+            <input
+              type="checkbox"
+              checked={!!child.secondaryDivider}
+              aria-label="Use secondary material for divider between {partLabel(i)} and {partLabel(i + 1)}"
+              onchange={(e) => setDividerSecondary(node, i, e.currentTarget.checked)}
+            />
+            Use secondary material
+          </label>
+          <p class="hint">{materialLabel(dividerMaterial(project, node, i), dividerThickness(project, node, i))}</p>
+        </div>
+      {/each}
+      <p class="hint">Each divider uses its selected thickness. Flexible compartments share the space left; locked sizes stay fixed.</p>
+    {:else}
+      <p class="hint">Enable Secondary Material in Material to choose it for individual dividers.</p>
+    {/if}
+  </div>
+{/if}
+
 <div class="panel-section">
   <h2>Parts</h2>
   {#each node.children as child, i (child.node.id)}
@@ -102,6 +132,24 @@
   }
   .join {
     margin-bottom: 4px;
+  }
+  .divider-material {
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    border-left: 3px solid var(--line);
+  }
+  .divider-material.current {
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .divider-name {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .part {
     display: grid;

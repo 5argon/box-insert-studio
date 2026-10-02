@@ -1,6 +1,7 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
-import type { CutLayout, Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, SplitNode } from './types';
+import { baseThickness } from './layout';
+import type { CutLayout, Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, Side, SplitNode } from './types';
 
 export const MIN_REGION = 5;
 
@@ -131,6 +132,23 @@ export function setPad(section: SectionNode, layers: number) {
   else delete section.pad;
 }
 
+/** Choose which of this compartment's notched sides use its own size and shape. */
+export function setNotchOverrideSide(section: SectionNode, side: Side, override: boolean) {
+  const size = section.notchSize;
+  if (!size || !section.notches.includes(side)) return;
+  // Saved overrides without a selection applied to every notch. Keep the other notched sides
+  // selected when the user changes one of them for the first time.
+  const sides = size.sides ?? section.notches;
+  size.sides = override ? [...new Set([...sides, side])] : sides.filter((s) => s !== side);
+}
+
+/** Choose the material of one divider, rather than all the dividers in its split. */
+export function setDividerSecondary(split: SplitNode, index: number, secondary: boolean) {
+  if (split.join !== 'divider' || !Number.isInteger(index) || index < 0 || index >= split.children.length - 1) return;
+  if (secondary) split.children[index]!.secondaryDivider = true;
+  else delete split.children[index]!.secondaryDivider;
+}
+
 /** Stack two identical half-height boxes in the compartment, or go back to one full-height box. */
 export function setStacked(section: SectionNode, stacked: boolean) {
   if (!section.insert) return;
@@ -192,9 +210,12 @@ export function addSibling(layer: Layer, sectionId: string, gap: Mm): string | u
   if (!parent) return undefined;
   const fresh = newSection();
   const child = parent.split.children[parent.index];
+  // The old divider stays at the far side of the inserted compartment; the new one is primary.
+  const secondaryDivider = child.secondaryDivider;
+  delete child.secondaryDivider;
   const size = child.size.mode === 'flex' ? { mode: 'flex' as const, weight: child.size.weight / 2 } : { mode: 'fixed' as const, mm: Math.max(MIN_REGION, (child.size.mm - gap) / 2) };
   child.size = { ...size };
-  parent.split.children.splice(parent.index + 1, 0, { size: { ...size }, node: fresh });
+  parent.split.children.splice(parent.index + 1, 0, { size: { ...size }, node: fresh, ...(secondaryDivider ? { secondaryDivider: true } : {}) });
   return fresh.id;
 }
 
@@ -211,6 +232,12 @@ export function removeSection(layer: Layer, sectionId: string): string | undefin
     return undefined;
   }
   const { split, index } = parent;
+  // Removing a middle compartment removes the divider before it and keeps the one after it.
+  if (index > 0) {
+    const previous = split.children[index - 1]!;
+    if (index < split.children.length - 1 && split.children[index]!.secondaryDivider) previous.secondaryDivider = true;
+    else delete previous.secondaryDivider;
+  }
   split.children.splice(index, 1);
   if (!split.children.some((c) => c.size.mode === 'flex')) split.children[split.children.length - 1].size = { mode: 'flex', weight: 1 };
   const neighbour = split.children[Math.min(index, split.children.length - 1)].node;
@@ -281,22 +308,68 @@ export function splitJoin(project: Project, layer: Layer, sectionId: string): Jo
   return findPath(layer.root, sectionId)?.every((p) => p.split.join === 'trays') ? 'trays' : 'divider';
 }
 
-/**
- * Give each layer's base its own thickness, or `undefined` for the material's. Layer heights move
- * by the difference so every compartment keeps its depth: a thinner base gives the space back as
- * headroom.
- */
-export function setBaseThickness(project: Project, next: Mm | undefined) {
-  const before = project.material.baseThickness ?? project.material.thickness;
-  if (next === undefined) delete project.material.baseThickness;
-  else project.material.baseThickness = next;
-  const delta = (next ?? project.material.thickness) - before;
+/** Keep compartment depths when the material used for layer bases changes. */
+function adjustLayerBases(project: Project, before: Mm) {
+  const delta = baseThickness(project) - before;
   if (delta) for (const layer of project.layers) layer.height = Math.max(5, Math.round((layer.height + delta) * 100) / 100);
+}
+
+/** Configure the secondary thickness; removable-box heights continue to fit their wells. */
+export function setSecondaryThickness(project: Project, next: Mm | undefined) {
+  const before = baseThickness(project);
+  if (next === undefined) delete project.material.secondaryThickness;
+  else project.material.secondaryThickness = next;
+  adjustLayerBases(project, before);
+}
+
+/** Choose the material for all layer bases, preserving their compartment depths. */
+export function setLayerBaseSecondary(project: Project, secondary: boolean) {
+  const before = baseThickness(project);
+  if (secondary) project.secondaryBase = true;
+  else delete project.secondaryBase;
+  adjustLayerBases(project, before);
+}
+
+/** Choose the base material for a removable box, including both boxes of a stacked pair. */
+export function setInsertBaseSecondary(section: SectionNode, secondary: boolean) {
+  if (!section.insert) return;
+  if (secondary) section.insert.secondaryBase = true;
+  else delete section.insert.secondaryBase;
+}
+
+/** Give every removable box a loose lid without changing its allocated height. */
+export function setInsertLid(section: SectionNode, on: boolean) {
+  if (!section.insert) return;
+  if (on) section.insert.lid = true;
+  else delete section.insert.lid;
+}
+
+/** Choose the lid material for a removable box, including both boxes of a stacked pair. */
+export function setInsertLidSecondary(section: SectionNode, secondary: boolean) {
+  if (!section.insert) return;
+  if (secondary) section.insert.secondaryLid = true;
+  else delete section.insert.secondaryLid;
+}
+
+/** Choose one lid over the group; remember the choice if the box layout temporarily changes. */
+export function setInsertSharedLid(section: SectionNode, shared: boolean) {
+  if (!section.insert) return;
+  if (shared) section.insert.sharedLid = true;
+  else delete section.insert.sharedLid;
+}
+
+/** Toggle one lid edge without changing any wall notches or the lid's local shape. */
+export function setLidNotchSide(section: SectionNode, side: Side, on: boolean) {
+  if (!section.insert) return;
+  const sides = section.insert.lidNotches ?? [];
+  const next = on ? [...new Set([...sides, side])] : sides.filter((s) => s !== side);
+  if (next.length) section.insert.lidNotches = next;
+  else delete section.insert.lidNotches;
 }
 
 /** Choose how pieces are laid out on the sheets; the default layout is stored as unset. */
 export function setCutLayout(project: Project, layout: CutLayout) {
-  if (layout === 'fewest') delete project.material.layout;
+  if (layout === 'strips') delete project.material.layout;
   else project.material.layout = layout;
 }
 

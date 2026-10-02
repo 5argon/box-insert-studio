@@ -12,6 +12,8 @@ https://5argon.github.io/box-insert-studio/
 
 Currently there is no detailed manual yet, please figure out on your own by messing with it. Progress is automatically saved in the browser and it survives refreshing without saving. In addition, you can use Save / Load to download / upload `.json` file in your computer of your box design.
 
+There is a sample design to download in the `examples` folder: [Arkham Horror LCG Core Set 2026 insert (no player cards, with stand storage)](examples/ahlcg-core-set-2026-no-player-card-with-stand-storage.json). Download the JSON file, then choose **Open** in the app to load it.
+
 ## Motivations
 
 - Trial and Error : It is hard to estimate whether everything fits or not until everything is in place. I want a playable UI that allow quick experimenting and discovery of new ideas / pivots of design.

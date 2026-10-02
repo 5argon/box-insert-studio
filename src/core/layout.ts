@@ -6,11 +6,14 @@
  */
 import { labelFor } from './defaults';
 import { inset, roundTo, type Rect } from './geom';
-import type { ChildSize, Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, Side, SplitNode } from './types';
+import { solveLidNotches, type LidNotch } from './lidNotches';
+import type { ChildSize, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, NotchSize, Project, SectionNode, Side, SplitNode } from './types';
 
 export interface Issue {
   level: 'error' | 'warn';
   message: string;
+  /** The tray affected by a piece-specific warning, when known. */
+  trayId?: string;
 }
 
 /** A lowered stretch of a wall or divider's top edge, from its start (left or back end). */
@@ -39,7 +42,7 @@ export interface Notch {
   custom?: boolean;
 }
 
-export type PieceKind = 'base' | 'wall' | 'divider' | 'pad';
+export type PieceKind = 'base' | 'lid' | 'wall' | 'divider' | 'pad';
 
 export interface PieceInst {
   id: string;
@@ -50,11 +53,12 @@ export interface PieceInst {
   depth: 0 | 1;
   layerId: string;
   trayId: string;
-  /** Cut size. Base: width × depth. Walls and dividers: length × height. */
+  /** Cut size. Flat panels: width × depth. Walls and dividers: length × height. */
   length: Mm;
   height: Mm;
   /** Sheet thickness it is cut from. */
   thickness: Mm;
+  material: MaterialKind;
   /** Top-view footprint, for drawing. */
   footprint: Rect;
   /** Direction the length runs in the box. */
@@ -62,6 +66,10 @@ export interface PieceInst {
   /** Box coordinate where the piece starts along its axis. */
   start: Mm;
   notches: Notch[];
+  /** Finger cutouts through the flat lid, measured in its own x/y plane. */
+  lidNotches?: LidNotch[];
+  /** A shared lid covering every separate box in this host compartment. */
+  sharedLidFor?: string;
   /** Which compartment side asked for each notch, and the stretch of the piece it covers. */
   notchFrom: { compartmentId: string; side: Side; from: Mm; to: Mm }[];
   /** Lowered stretches of the top edge. Empty when the whole piece is lowered: see `cut`. */
@@ -72,7 +80,7 @@ export interface PieceInst {
   cut?: Mm;
   /** Glue order inside its tray. */
   order: number;
-  role: 'base' | 'back wall' | 'front wall' | 'left wall' | 'right wall' | 'divider' | 'pad';
+  role: 'base' | 'lid' | 'back wall' | 'front wall' | 'left wall' | 'right wall' | 'divider' | 'pad';
   /** Pads: the compartment raised, and this layer's place in the stack (0 at the bottom). */
   padFor?: string;
   padLevel?: number;
@@ -91,11 +99,13 @@ export interface Tray {
   inner: Rect;
   compartments: string[];
   depth: 0 | 1;
-  /** Total height including the base. */
+  /** Total height including the base and any lid. */
   height: Mm;
   wallHeight: Mm;
   /** Thickness of its base. */
   base: Mm;
+  /** Thickness of its own lid, or zero for an open box or a box beneath a shared lid. */
+  lid: Mm;
   /** For a box inside a compartment: that compartment's id and the tray it sits in. */
   wellId?: string;
   parentTrayId?: string;
@@ -177,21 +187,59 @@ export interface Solved {
 
 export const SIDES: Side[] = ['back', 'front', 'left', 'right'];
 
+/** Whether this side uses the compartment's own notch settings. */
+export function usesNotchOverride(section: SectionNode, side: Side): boolean {
+  return !!section.notchSize && (section.notchSize.sides === undefined || section.notchSize.sides.includes(side));
+}
+
 /** A removable box needs at least this much height inside it. */
 export const MIN_BOX_INSIDE = 5;
 
-/**
- * Most raised-floor layers a compartment can take: something must be left above them, and a
- * removable box standing on them (`boxes` high) must keep MIN_BOX_INSIDE inside each box.
- */
 /** Thickness of the base under each layer's trays. */
 export function baseThickness(project: Project): Mm {
-  return project.material.baseThickness ?? project.material.thickness;
+  return materialThickness(project, project.secondaryBase);
 }
 
-export function maxPad(fullHeight: Mm, thickness: Mm, boxes = 0): number {
+/** Thickness for a part that can opt into the secondary material. */
+export function materialThickness(project: Project, secondary = false): Mm {
+  return secondary ? (project.material.secondaryThickness ?? project.material.thickness) : project.material.thickness;
+}
+
+/** Material selected for one divider, with primary material as the fallback. */
+export function dividerMaterial(project: Project, split: SplitNode, index: number): MaterialKind {
+  return split.children[index]?.secondaryDivider && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary';
+}
+
+export function dividerThickness(project: Project, split: SplitNode, index: number): Mm {
+  return materialThickness(project, dividerMaterial(project, split, index) === 'secondary');
+}
+
+/** Thickness of a removable box's base, falling back when the second material is off. */
+export function insertBaseThickness(project: Project, section: SectionNode): Mm {
+  return materialThickness(project, section.insert?.secondaryBase);
+}
+
+/** Thickness reserved for a removable box's lid, or zero when it has none. */
+export function insertLidThickness(project: Project, section: SectionNode): Mm {
+  return section.insert?.lid ? materialThickness(project, section.insert.secondaryLid) : 0;
+}
+
+/** A shared cover applies only while this insert makes separate boxes with a lid enabled. */
+export function usesSharedLid(section: SectionNode): boolean {
+  const insert = section.insert;
+  return !!(insert?.lid && insert.sharedLid && insert.root.kind === 'split' && insert.root.join === 'trays');
+}
+
+/** Lid allowance per box: a stacked group shares one cover across both equal-height bodies. */
+export function insertLidAllowance(project: Project, section: SectionNode): Mm {
+  const lid = insertLidThickness(project, section);
+  return usesSharedLid(section) && section.insert?.stacked && !section.insert.emptyAbove ? lid / 2 : lid;
+}
+
+/** Most raised-floor layers that leave usable height, including bases and lids of boxes above. */
+export function maxPad(fullHeight: Mm, thickness: Mm, boxes = 0, boxBase = thickness, boxLid = 0): number {
   if (thickness <= 0) return 0;
-  if (boxes) return Math.max(0, Math.floor((fullHeight - boxes * (thickness + MIN_BOX_INSIDE)) / thickness + 1e-9));
+  if (boxes) return Math.max(0, Math.floor((fullHeight - boxes * (boxBase + boxLid + MIN_BOX_INSIDE)) / thickness + 1e-9));
   return Math.max(0, Math.ceil(fullHeight / thickness - 1e-9) - 1);
 }
 
@@ -225,8 +273,13 @@ interface RawCompartment {
 /** Where a tray is being built: its total height, and whether it is a box inside a compartment. */
 interface TrayCtx {
   height: Mm;
-  /** Thickness of the tray's base: the layer's base thickness, or the material for a box. */
+  /** Thickness selected for this tray's base. */
   base: Mm;
+  secondaryBase?: boolean;
+  lid?: Mm;
+  secondaryLid?: boolean;
+  lidNotches?: Side[];
+  lidNotchSize?: NotchSize;
   depth: 0 | 1;
   wellId?: string;
   parentTrayId?: string;
@@ -239,6 +292,8 @@ interface TrayCtx {
    */
   copy?: boolean;
 }
+
+type PieceInput = Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'material' | 'notches' | 'notchFrom' | 'lows' | 'lowFrom' | 'depth' | 'copy'> & { material?: MaterialKind };
 
 function solveLayer(project: Project, layer: Layer): SolvedLayer {
   const T = project.material.thickness;
@@ -288,7 +343,9 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
   function makeTray(node: LayoutNode, cell: Rect, ctx: TrayCtx) {
     const outer = inset(cell, c / 2);
     const inner = inset(outer, T);
-    const trayWall = project.base === 'under' ? ctx.height - ctx.base : ctx.height;
+    const lid = ctx.lid ?? 0;
+    const bodyHeight = ctx.height - lid;
+    const trayWall = project.base === 'under' ? bodyHeight - ctx.base : bodyHeight;
     const tray: Tray = {
       id: `${layer.id}/t${trays.length}`,
       number: 0,
@@ -300,6 +357,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       height: ctx.height,
       wallHeight: trayWall,
       base: ctx.base,
+      lid,
       wellId: ctx.wellId,
       parentTrayId: ctx.parentTrayId,
       nodeId: node.id,
@@ -309,9 +367,10 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     trays.push(tray);
     if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
     let order = 0;
-    const add = (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'lows' | 'lowFrom' | 'depth' | 'copy'>): PieceInst => {
-      const thickness = p.kind === 'base' ? ctx.base : T;
-      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, thickness, notches: [], notchFrom: [], lows: [], lowFrom: [], depth: ctx.depth, copy: !!ctx.copy };
+    const add = (p: PieceInput): PieceInst => {
+      const material = p.material ?? (p.kind === 'base' && ctx.secondaryBase && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary');
+      const thickness = p.kind === 'base' ? ctx.base : materialThickness(project, material === 'secondary');
+      const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, thickness, material, notches: [], notchFrom: [], lows: [], lowFrom: [], depth: ctx.depth, copy: !!ctx.copy };
       order += 1;
       pieces.push(piece);
       return piece;
@@ -343,6 +402,15 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       }).id;
     }
     inside(node, inner, bounds, tray, add, ctx);
+    if (lid) {
+      const cutouts = solveLidNotches(outer.w, outer.h, ctx.lidNotches ?? [], ctx.lidNotchSize);
+      if (!ctx.copy) issues.push(...cutouts.warnings.map((message) => ({ level: 'warn' as const, message, trayId: tray.id })));
+      add({
+        kind: 'lid', role: 'lid', length: outer.w, height: outer.h, footprint: outer, axis: 'x', start: outer.x,
+        material: ctx.secondaryLid && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary',
+        ...(cutouts.notches.length ? { lidNotches: cutouts.notches } : {}),
+      });
+    }
   }
 
   function inside(
@@ -350,7 +418,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     rect: Rect,
     bounds: Record<Side, string>,
     tray: Tray,
-    add: (p: Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thickness' | 'notches' | 'notchFrom' | 'lows' | 'lowFrom' | 'depth' | 'copy'>) => PieceInst,
+    add: (p: PieceInput) => PieceInst,
     ctx: TrayCtx,
   ) {
     if (node.kind === 'section') {
@@ -362,7 +430,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
         add({ kind: 'pad', role: 'pad', length: fp.w, height: fp.h, footprint: fp, axis: 'x', start: fp.x, padFor: node.id, padLevel: i });
       }
       if (ctx.copy) return;
-      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - ctx.base, stacked: !!ctx.stacked });
+      raw.push({ node, rect, bounds, trayId: tray.id, depth: ctx.depth, wellId: ctx.wellId, height: ctx.height - (ctx.lid ?? 0) - ctx.base, stacked: !!ctx.stacked });
       if (!node.insert) return;
       if (ctx.depth === 1) {
         issues.push({ level: 'warn', message: 'A box inside a box is not supported; the inner one is ignored.' });
@@ -374,16 +442,38 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       const half = !!node.insert.stacked;
       const emptyAbove = half && !!node.insert.emptyAbove;
       const stacked = half && !emptyAbove;
-      const height = (ctx.height - ctx.base - pad * T) / (half ? 2 : 1);
+      const boxBase = insertBaseThickness(project, node);
+      const boxLid = insertLidThickness(project, node);
+      const shared = usesSharedLid(node);
+      const allowance = insertLidAllowance(project, node);
+      // A shared cover sits above the whole group; both stacked bodies share the space beneath it.
+      const envelope = (ctx.height - ctx.base - pad * T) / (half ? 2 : 1);
+      const height = envelope - (shared ? allowance : 0);
       // Too shallow: the compartment reports it (see solveProject) and no box is built.
-      if (height - T < MIN_BOX_INSIDE) return;
-      const box = { height, base: T, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked, emptyAbove };
+      if (height - boxBase - (shared ? 0 : boxLid) < MIN_BOX_INSIDE) return;
+      const box = { height, base: boxBase, secondaryBase: node.insert.secondaryBase, lid: shared ? 0 : boxLid, secondaryLid: node.insert.secondaryLid, lidNotches: node.insert.lidNotches, lidNotchSize: node.insert.lidNotchSize, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked, emptyAbove };
       const first = trays.length;
       cellLevel(node.insert.root, rect, box);
+      let anchor = trays[first]!;
       if (stacked) {
         const upper = trays.length;
         cellLevel(node.insert.root, rect, { ...box, copy: true });
         for (let i = upper; i < trays.length; i++) trays[i].copyOf = trays[first + i - upper].id;
+        anchor = trays[upper]!;
+      }
+      if (shared) {
+        const footprint = inset(rect, c / 2);
+        const cutouts = solveLidNotches(footprint.w, footprint.h, node.insert.lidNotches ?? [], node.insert.lidNotchSize);
+        issues.push(...cutouts.warnings.map((message) => ({ level: 'warn' as const, message, trayId: anchor.id })));
+        const order = pieces.filter((p) => p.trayId === anchor.id).reduce((n, p) => Math.max(n, p.order + 1), 0);
+        pieces.push({
+          id: `${anchor.id}/${order}`, kind: 'lid', role: 'lid', sharedLidFor: node.id,
+          copy: false, depth: 1, layerId: layer.id, trayId: anchor.id, order,
+          length: footprint.w, height: footprint.h, thickness: boxLid,
+          material: node.insert.secondaryLid && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary',
+          footprint, axis: 'x', start: footprint.x, notches: [], notchFrom: [], lows: [], lowFrom: [],
+          ...(cutouts.notches.length ? { lidNotches: cutouts.notches } : {}),
+        });
       }
       return;
     }
@@ -392,12 +482,13 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     }
     const horizontal = node.dir === 'row';
     const n = node.children.length;
-    const { sizes, issue } = allocate((horizontal ? rect.w : rect.h) - (n - 1) * T, node.children.map((ch) => ch.size));
+    const gaps = node.children.slice(0, -1).map((_, i) => dividerThickness(project, node, i));
+    const { sizes, issue } = allocate((horizontal ? rect.w : rect.h) - gaps.reduce((sum, gap) => sum + gap, 0), node.children.map((ch) => ch.size));
     if (!ctx.copy) {
       if (issue) issues.push({ level: 'error', message: issue });
       splits.push({ id: node.id, node, rect, childSizes: sizes });
     }
-    const dividerHeight = ctx.height - ctx.base - node.lower;
+    const dividerHeight = ctx.height - (ctx.lid ?? 0) - ctx.base - node.lower;
     if (dividerHeight < 5 && !ctx.copy) issues.push({ level: 'error', message: `Lowered dividers would be only ${dividerHeight.toFixed(1)} mm tall.` });
     const childRects: Rect[] = [];
     const dividers: PieceInst[] = [];
@@ -406,10 +497,12 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       childRects.push(horizontal ? { x: cursor, y: rect.y, w: sizes[i], h: rect.h } : { x: rect.x, y: cursor, w: rect.w, h: sizes[i] });
       cursor += sizes[i];
       if (i < n - 1) {
-        const fp: Rect = horizontal ? { x: cursor, y: rect.y, w: T, h: rect.h } : { x: rect.x, y: cursor, w: rect.w, h: T };
+        const gap = gaps[i]!;
+        const fp: Rect = horizontal ? { x: cursor, y: rect.y, w: gap, h: rect.h } : { x: rect.x, y: cursor, w: rect.w, h: gap };
         dividers.push(
           add({
             kind: 'divider',
+            material: dividerMaterial(project, node, i),
             role: 'divider',
             length: horizontal ? rect.h : rect.w,
             height: dividerHeight,
@@ -426,12 +519,12 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
           index: i,
           dir: node.dir,
           join: 'divider',
-          pos: cursor + T / 2,
-          thickness: T,
+          pos: cursor + gap / 2,
+          thickness: gap,
           from: horizontal ? rect.y : rect.x,
           to: horizontal ? rect.y + rect.h : rect.x + rect.w,
         });
-        cursor += T;
+        cursor += gap;
       }
     }
     node.children.forEach((ch, i) => {
@@ -447,7 +540,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     });
   }
 
-  cellLevel(layer.root, { x: 0, y: 0, w: project.box.width, h: project.box.depth }, { height: layer.height, base: B, depth: 0 });
+  cellLevel(layer.root, { x: 0, y: 0, w: project.box.width, h: project.box.depth }, { height: layer.height, base: B, secondaryBase: project.secondaryBase, depth: 0 });
 
   const compartments: Compartment[] = raw.map((r) => ({
     id: r.node.id,
@@ -599,16 +692,18 @@ export function solveProject(project: Project): Solved {
       c.height = c.fullHeight - c.padHeight;
       // Height is shared as if two boxes stood here even when the top one is left out.
       const boxes = c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0;
+      const boxBase = insertBaseThickness(project, c.node);
+      const boxLid = insertLidAllowance(project, c.node);
       const pair = boxes === 2 && !c.node.insert?.emptyAbove;
-      if (boxes && !c.pad && maxPad(c.fullHeight, T, boxes) === 0 && (c.fullHeight / boxes - T) < MIN_BOX_INSIDE) {
-        // A box needs its floor plus MIN_BOX_INSIDE; stacked boxes need that twice.
-        const need = boxes * (T + MIN_BOX_INSIDE) + baseThickness(project);
+      if (boxes && (c.fullHeight / boxes - boxBase - boxLid) < MIN_BOX_INSIDE) {
+        // Each box needs its floor, any lid and MIN_BOX_INSIDE; stacked boxes need that twice.
+        const need = boxes * (boxBase + boxLid + MIN_BOX_INSIDE) + baseThickness(project);
         c.issues.push({
           level: 'error',
           message: `Too shallow for ${pair ? 'two stacked boxes' : boxes === 2 ? 'a half-height box' : 'a box'}: the layer needs to be at least ${need} mm tall${boxes === 2 ? ', or use one full-height box' : ''}.`,
         });
-      } else if (c.pad && boxes && c.pad > maxPad(c.fullHeight, T, boxes)) {
-        const remove = c.pad - maxPad(c.fullHeight, T, boxes);
+      } else if (c.pad && boxes && c.pad > maxPad(c.fullHeight, T, boxes, boxBase, boxLid)) {
+        const remove = c.pad - maxPad(c.fullHeight, T, boxes, boxBase, boxLid);
         c.issues.push({
           level: 'error',
           message: `Raised floor of ${c.pad} × ${T} mm = ${c.padHeight} mm leaves too little height for the ${pair ? 'stacked boxes' : 'box'} on it. Remove ${remove} layer${remove === 1 ? '' : 's'}.`,
@@ -632,9 +727,10 @@ export function solveProject(project: Project): Solved {
         }
         if (!c.node.notches.includes(side)) continue;
         const span = p.axis === 'x' ? w : h;
-        const size = c.node.notchSize ?? project.notch;
+        const custom = usesNotchOverride(c.node, side);
+        const size = custom ? c.node.notchSize! : project.notch;
         const width = Math.min(size.width, span - 4);
-        const depth = Math.min(size.depth, p.height - T);
+        const depth = Math.min(size.depth, p.height - p.thickness);
         if (width < 5 || depth < 2) {
           c.issues.push({ level: 'warn', message: `No room for a finger notch on the ${side}.` });
           continue;
@@ -646,7 +742,7 @@ export function solveProject(project: Project): Solved {
         }
         // The bottom keeps its share of the opening, so a notch narrowed to fit keeps its shape.
         const bottom = (width * (size.bottom ?? NOTCH_BOTTOM_DEFAULT)) / 100;
-        p.notches.push(c.node.notchSize ? { center, width, depth, bottom, custom: true } : { center, width, depth, bottom });
+        p.notches.push(custom ? { center, width, depth, bottom, custom: true } : { center, width, depth, bottom });
         p.notchFrom.push({ compartmentId: c.id, side, from: center - width / 2, to: center + width / 2 });
       }
     }

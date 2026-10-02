@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { notchCorners } from '../../core/notches';
+import { lidOutline } from '../../core/lidNotches';
 import type { Block, Box3, SceneItems, SceneModel, SceneTray } from '../../core/scene';
 
 export type TrayStyle = 'wire' | 'glass' | 'solid' | 'hidden';
@@ -73,6 +74,15 @@ function profile(length: number, height: number, notches: Block['notches'], lows
 
 /** Geometry already placed in world coordinates. */
 function pieceGeometry(b: Block): THREE.BufferGeometry {
+  if (b.kind === 'lid' && b.lidNotches?.length) {
+    // Extrude the top-view perimeter through the sheet, then lay it flat in world X/Z.
+    const shape = new THREE.Shape(lidOutline(b.w, b.d, b.lidNotches).map(([x, y]) => new THREE.Vector2(x, y)));
+    shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: b.h, bevelEnabled: false, curveSegments: 1 });
+    g.rotateX(Math.PI / 2);
+    g.translate(b.x, b.z + b.h, b.y);
+    return g;
+  }
   if (b.kind === 'base' || (!b.notches.length && !b.lows.length)) {
     const g = new THREE.BoxGeometry(b.w, b.h, b.d);
     g.translate(b.x + b.w / 2, b.z + b.h / 2, b.y + b.d / 2);

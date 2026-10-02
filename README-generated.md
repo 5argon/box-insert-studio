@@ -25,7 +25,8 @@ The tests use a reference design modelled on a published 5 mm foam insert for DO
    material stacked on the floor, marked with * on the letter), and optionally a removable box
    standing inside it (one box with dividers, or separate boxes; compartments inside are labelled
    G1, G2, …). Per divider split: glued dividers or separate lift-out trays, and how much lower
-   the dividers stand. A small 3D preview in the corner shows the whole insert; click it for
+   the dividers stand. Each divider can use primary or secondary material, including dividers
+   inside removable boxes; select one in the canvas to choose its material. A small 3D preview in the corner shows the whole insert; click it for
    the 3D view.
 2. **3D view**: the whole insert in 3D, view only. Drag to orbit around the box's centre (from
    straight down to level with the box, never underneath), scroll or pinch to zoom, or pick a
@@ -33,9 +34,13 @@ The tests use a reference design modelled on a published 5 mm foam insert for DO
    outline; draw trays as wireframe, see-through or solid; highlight trays to draw them solid
    while the rest stay wireframe in their colours; hide trays or whole layers. **Hide tools**
    shows the model on its own.
-3. **Cut list & assembly**: grouped cut list, a cutting plan per sheet (bases, then strips of
-   one height chopped into lengths), per-tray assembly steps with a numbered diagram, and a
-   true-size notch template. Print or save as PDF; export the cut list as CSV.
+3. **Cut list & assembly**: overhead plans for every layer and a fixed 3D view appear above
+   Notes, including when no notes are present. These reference views also print. A grouped cut
+   list, a cutting plan per sheet (bases, then strips of
+   one height chopped into lengths), finger-notch and lowered-edge cutting instructions, then
+   per-tray assembly steps with a numbered diagram. Each notch has a diagram with four marking
+   points and distances from two edges; join the marks with straight cuts without measuring an
+   angle. Print or save as PDF; export the cut list as CSV.
 
 Each project can have a **readme** in Markdown (Project → Add readme), printed as a Notes section
 at the top of the export. Raw HTML in it is shown as text and unsafe links are dropped, so a
@@ -61,18 +66,44 @@ pick one in the header; the printable report is always a white page.
 
 ## Construction model
 
-With board thickness T and tray height H (including the base):
+Finger notch overrides apply only to the sides selected in the compartment's override controls;
+other notched sides keep the project's width, depth and flat-bottom shape. A shared divider notch
+is edited from the compartment that requested it and remains visible from both sides.
+Lid finger notches have their own four edge controls and local width, depth and flat-bottom
+shape. Width runs along the selected lid edge; depth runs inward across the lid, perpendicular
+to that edge. They cut through the sheet and never use the project's wall notch shape. The
+dedicated finger-notch cutting section and 3D/OBJ model include these cutouts. The cutting plan
+first produces numbered rectangular blanks. Complete all notch and lowered-edge cuts while
+the pieces are flat, then follow the fitting and gluing instructions in Assembly.
 
-- Walls on base: base = tray outside; walls are H − T tall. Base inside walls: base = tray outside
+With primary material thickness T, tray base thickness B and tray height H (including the base):
+
+- Walls on base: base = tray outside; walls are H − B tall. Base inside walls: base = tray outside
   − 2T; walls are H tall.
 - One pair of outer walls runs the full length; the other pair is 2T shorter and fits between.
-- Dividers stand on the base (H − T, minus any lowering) and butt against walls or the dividers
+- Dividers stand on the base (H − B, minus any lowering) and butt against walls or the dividers
   placed before them, so each divider's length is the space between those.
 - Separate trays each get their own base and walls, with the clearance between them.
 - A removable box stands on its tray's base inside a compartment, with the clearance around it.
-  It is H − T tall, so its top sits flush with the walls around it; its walls and dividers are
+  It is H − B tall, so its top sits flush with the walls around it; its walls and dividers are
   shortened to match. Boxes go one level deep. Stacking splits that height exactly in half: two
-  identical boxes, each (H − T) / 2 tall with its own floor, so each holds (H − T) / 2 − T.
+  identical boxes, each (H − B) / 2 tall with its own floor. Subtract the box's selected base
+  thickness from that height for the space inside. A loose lid covers the box's outside footprint;
+  its thickness also comes out of each box's height. Adding or removing the lid keeps the closed
+  top flush, including both lids in a stacked pair. In half-height mode the space above stays empty.
+  With **Separate boxes**, choose a lid for each box or **One lid over all boxes**. A shared lid
+  spans the whole group, including its gaps. With stacked boxes it covers the entire stack;
+  both identical box bodies divide the height beneath the one lid equally. Its assembly block
+  follows all the group's box instructions: position every box first, then fit the shared cover.
+- Enable **Secondary Material** under Material to specify another thickness. Layer bases and
+  each removable box's bases, lids and individual dividers can opt into it independently. A thinner
+  divider gives flexible compartments more space while locked compartment sizes remain fixed.
+  Changing layer base thickness
+  preserves compartment depth by adjusting layer heights; thinner removable-box bases increase
+  space inside while keeping the box height, including each box of a stack. Cut lists, cutting
+  sheets, CSV exports and assembly steps identify primary or secondary material.
+- **Strips across the sheet** is the default cutting layout. Fewest sheets and Edge-to-edge cuts
+  remain available; each material is planned on separate sheets.
 - A raised floor of n layers stacks n pieces cut to the compartment's inside size (less the
   clearance), taking n·T from its height. Under a removable box it lifts the box, which gets
   n·T shorter so its top stays flush. A floor that no longer fits (say after switching to a
@@ -107,7 +138,7 @@ you may use, adapt and share it, including commercially, as long as you give cre
 
 ## Not done yet
 
-- Per-compartment notch sizes; slide-in or angled card dividers, curved token scoops, lids.
+- Slide-in or angled card dividers, curved token scoops.
 - Mixed tray heights within one layer.
 - 3D view extras: exploding layers apart, names on hover, coloured compartment floors, PNG export.
 - Cutting plan packs strips greedily; it does not yet try mixing strip heights to save a sheet.

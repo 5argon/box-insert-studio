@@ -5,16 +5,7 @@ import type { Side } from './types';
  * Corners of a slanted finger notch as [along the piece, down from the top edge]: top-left,
  * bottom-left, bottom-right, top-right. Three straight cuts: two slants and the flat bottom.
  */
-export function notchCorners(center: number, width: number, depth: number, bottom: number): [number, number][] {
-  const top = width / 2;
-  const flat = Math.min(bottom, width) / 2;
-  return [
-    [center - top, 0],
-    [center - flat, depth],
-    [center + flat, depth],
-    [center + top, 0],
-  ];
-}
+export { notchCorners } from './geom';
 
 /** The slants' angle from level, in degrees: what to set a square or protractor to. 90 is straight down. */
 export function notchSlant(width: number, depth: number, bottom: number): number {

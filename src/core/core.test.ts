@@ -378,7 +378,7 @@ describe('new project', () => {
     // The original is untouched.
     expect(from.layers).toHaveLength(2);
     // One base and four walls fit one A2 sheet once strips may be shorter than the sheet.
-    expect(planCuts(p, buildCutList(s, p.precision)).sheets).toHaveLength(1);
+    expect(planCuts({ ...p, material: { ...p.material, layout: 'fewest' } }, buildCutList(s, p.precision)).sheets).toHaveLength(1);
   });
 });
 
@@ -762,11 +762,105 @@ describe('notch size override', () => {
     const back = s.pieces.find((x) => x.id === A.bounds.back)!;
     const mine = back.notches.find((n) => Math.abs(n.center - (A.rect.x + A.rect.w / 2 - back.start)) < 1e-6)!;
     expect(mine).toMatchObject({ width: 20, depth: 10, custom: true });
+    const front = s.pieces.find((piece) => piece.id === A.bounds.front)!;
+    expect(front.notches.some((notch) => notch.width === 20 && notch.depth === 10 && notch.custom)).toBe(true);
     // B's notch on the same wall keeps the project size.
     const others = back.notches.filter((n) => n !== mine);
     expect(others.every((n) => n.width === p.notch.width && !n.custom)).toBe(true);
     const before = buildCutList(solveProject(doomExample()), p.precision).groups.length;
     expect(buildCutList(s, p.precision).groups.length).toBeGreaterThanOrEqual(before);
+  });
+
+  it('uses the custom size and shape only on the selected notched sides', () => {
+    const p = blankProject();
+    const section = solveProject(p).compartments[0]!.node;
+    section.notches = ['back', 'front', 'left', 'right'];
+    section.notchSize = { width: 20, depth: 8, bottom: 25, sides: ['back', 'right'] };
+    const saved = migrateProject(JSON.parse(JSON.stringify(p)))!;
+    const s = solveProject(saved);
+    const c = s.compartments[0]!;
+    for (const side of section.notches) {
+      const piece = s.pieces.find((piece) => piece.id === c.bounds[side])!;
+      expect(piece.notches).toHaveLength(1);
+      const notch = piece.notches[0]!;
+      if (side === 'back' || side === 'right') expect(notch).toMatchObject({ width: 20, depth: 8, bottom: 5, custom: true });
+      else {
+        expect(notch).toMatchObject({ width: p.notch.width, depth: p.notch.depth, bottom: p.notch.width / 2 });
+        expect(notch.custom).toBeUndefined();
+      }
+    }
+    // A front/back pair no longer shares a cut group when only one side is overridden.
+    const cut = buildCutList(s, p.precision);
+    expect(cut.groupOf.get(c.bounds.back)).not.toBe(cut.groupOf.get(c.bounds.front));
+  });
+
+  it('switches individual sides back to the default, including older overrides with no side selection', async () => {
+    const { setNotchOverrideSide } = await import('./edit');
+    const p = blankProject();
+    const section = solveProject(p).compartments[0]!.node;
+    section.notches = ['back', 'front'];
+    section.notchSize = { width: 20, depth: 8, bottom: 25 };
+    setNotchOverrideSide(section, 'front', false);
+    expect(section.notchSize.sides).toEqual(['back']);
+    let s = solveProject(p);
+    let c = s.compartments[0]!;
+    expect(s.pieces.find((piece) => piece.id === c.bounds.back)!.notches[0]!.custom).toBe(true);
+    expect(s.pieces.find((piece) => piece.id === c.bounds.front)!.notches[0]!.custom).toBeUndefined();
+    setNotchOverrideSide(section, 'back', false);
+    expect(section.notchSize.sides).toEqual([]);
+    s = solveProject(p);
+    expect(s.pieces.flatMap((piece) => piece.notches).every((notch) => notch.width === p.notch.width && !notch.custom)).toBe(true);
+    // An added notch uses the project settings until its side is selected explicitly.
+    section.notches.push('left');
+    setNotchOverrideSide(section, 'front', true);
+    setNotchOverrideSide(section, 'front', true);
+    expect(section.notchSize.sides).toEqual(['front']);
+    s = solveProject(p);
+    c = s.compartments[0]!;
+    expect(s.pieces.find((piece) => piece.id === c.bounds.front)!.notches[0]!.custom).toBe(true);
+    expect(s.pieces.find((piece) => piece.id === c.bounds.left)!.notches[0]!.custom).toBeUndefined();
+  });
+
+  it('keeps selected divider overrides shared with the neighbouring compartment', async () => {
+    const { hasNotch, notchSharedWith, toggleNotch } = await import('./notches');
+    const p = blankProject();
+    const layer = p.layers[0]!;
+    splitSection(layer, layer.root.id, 'row', 5);
+    let s = solveProject(p);
+    const left = s.compartments[0]!;
+    left.node.notches = ['right', 'back'];
+    left.node.notchSize = { width: 20, depth: 8, sides: ['right'] };
+    s = solveProject(p);
+    const right = s.compartments[1]!;
+    expect(hasNotch(s, right, 'left')).toBe(true);
+    expect(notchSharedWith(s, right, 'left')).toEqual([left.label]);
+    const divider = s.pieces.find((piece) => piece.id === right.bounds.left)!;
+    expect(divider.notches[0]).toMatchObject({ width: 20, depth: 8, custom: true });
+    const back = s.pieces.find((piece) => piece.id === left.bounds.back)!;
+    expect(back.notches[0]!.custom).toBeUndefined();
+    toggleNotch(s, right, 'left');
+    expect(hasNotch(solveProject(p), solveProject(p).compartments[1]!, 'left')).toBe(false);
+  });
+
+  it('copies only the selected custom notches to the upper box of a stack', () => {
+    const p = doomExample();
+    const host = solveProject(p).compartments.find((c) => c.node.insert)!;
+    setStacked(host.node, true);
+    const inner = solveProject(p).compartments.find((c) => c.wellId === host.id)!;
+    inner.node.notches = ['back', 'front'];
+    inner.node.notchSize = { width: 18, depth: 7, bottom: 0, sides: ['front'] };
+    const s = solveProject(p);
+    const c = s.compartments.find((c) => c.id === inner.id)!;
+    const lower = s.trays.find((tray) => tray.id === c.trayId)!;
+    const upper = s.trays.find((tray) => tray.copyOf === lower.id)!;
+    const cut = buildCutList(s, p.precision);
+    for (const side of inner.node.notches) {
+      const piece = s.pieces.find((piece) => piece.id === c.bounds[side])!;
+      const twin = s.pieces.find((twin) => twin.trayId === upper.id && twin.order === piece.order)!;
+      expect(twin.notches).toEqual(piece.notches);
+      expect(cut.groupOf.get(twin.id)).toBe(cut.groupOf.get(piece.id));
+      expect(piece.notches[0]!.custom).toBe(side === 'front' ? true : undefined);
+    }
   });
 });
 
@@ -933,18 +1027,167 @@ describe('separate construction', () => {
   });
 });
 
-describe('base thickness', () => {
+describe('secondary material', () => {
   async function thinBase() {
-    const { setBaseThickness } = await import('./edit');
+    const { setLayerBaseSecondary, setSecondaryThickness } = await import('./edit');
     const p = doomExample();
     const before = solveProject(p);
     const heights = p.layers.map((l) => l.height);
-    setBaseThickness(p, 3);
-    return { p, before, heights, s: solveProject(p), setBaseThickness };
+    setSecondaryThickness(p, 3);
+    setLayerBaseSecondary(p, true);
+    return { p, before, heights, s: solveProject(p), setLayerBaseSecondary, setSecondaryThickness };
   }
 
+  it('migrates saved base thickness without changing heights or removable boxes', () => {
+    const old = JSON.parse(JSON.stringify(doomExample()));
+    old.material.baseThickness = 3;
+    old.layers.forEach((layer: { height: number }) => layer.height -= 2);
+    const heights = old.layers.map((layer: { height: number }) => layer.height);
+    const p = migrateProject(old)!;
+    expect(p.material.secondaryThickness).toBe(3);
+    expect(p.secondaryBase).toBe(true);
+    expect('baseThickness' in p.material).toBe(false);
+    expect(p.layers.map((l) => l.height)).toEqual(heights);
+    const s = solveProject(p);
+    expect(s.trays.filter((t) => t.depth === 0).every((t) => t.base === 3)).toBe(true);
+    expect(s.trays.filter((t) => t.depth === 1).every((t) => t.base === 5)).toBe(true);
+    expect(migrateProject(JSON.parse(JSON.stringify(p)))).toEqual(p);
+  });
+
+  it('makes material available without applying it and falls back when it is disabled', async () => {
+    const { setSecondaryThickness, setLayerBaseSecondary, setInsertBaseSecondary } = await import('./edit');
+    const p = doomExample();
+    const original = solveProject(p);
+    const heights = p.layers.map((l) => l.height);
+    setSecondaryThickness(p, 3);
+    expect(solveProject(p)).toEqual(original);
+    const host = original.compartments.find((c) => c.node.insert)!;
+    setLayerBaseSecondary(p, true);
+    setInsertBaseSecondary(host.node, true);
+    const before = solveProject(p);
+    setSecondaryThickness(p, 2);
+    expect(p.layers.map((l) => l.height)).toEqual(heights.map((h) => h - 3));
+    const after = solveProject(p);
+    for (const c of after.compartments) {
+      const previous = before.compartments.find((x) => x.id === c.id)!;
+      expect(c.height).toBeCloseTo(previous.height + (c.depth === 1 ? 1 : 0), 6);
+    }
+    setSecondaryThickness(p, undefined);
+    const restored = solveProject(p);
+    expect(p.layers.map((l) => l.height)).toEqual(heights);
+    expect(restored.pieces.every((piece) => piece.material === 'primary' && piece.thickness === 5)).toBe(true);
+    for (const c of restored.compartments) expect(c.height).toBe(original.compartments.find((x) => x.id === c.id)!.height);
+    // Material choices remain available when the secondary material is enabled again.
+    setSecondaryThickness(p, 3);
+    expect(solveProject(p).pieces.some((piece) => piece.depth === 1 && piece.material === 'secondary')).toBe(true);
+  });
+
+  it('gives full-height, stacked and half-height boxes more space while keeping their total heights and 3D placement', async () => {
+    const { setSecondaryThickness, setInsertBaseSecondary, setEmptyAbove, setPad, setConstruction } = await import('./edit');
+    const { buildScene, overlap } = await import('./scene');
+    for (const construction of ['glued', 'separate'] as const) {
+      for (const base of ['under', 'inside'] as const) {
+        for (const mode of ['single', 'multiple'] as const) {
+          for (const stack of ['full', 'pair', 'empty'] as const) {
+            const p = doomExample();
+            p.base = base;
+            setConstruction(p, construction);
+            setSecondaryThickness(p, 3);
+            const host = solveProject(p).compartments.find((c) => c.node.insert)!;
+            setPad(host.node, 1);
+            setStacked(host.node, stack !== 'full');
+            setEmptyAbove(host.node, stack === 'empty');
+            const root = host.node.insert!.root;
+            if (root.kind !== 'split') throw new Error('Expected divided removable box');
+            setJoin(p.layers[0], root, mode === 'multiple' ? 'trays' : 'divider', 5);
+            const before = solveProject(p);
+            setInsertBaseSecondary(host.node, true);
+            const s = solveProject(p);
+            expect(s.headroom).toBe(before.headroom);
+            expect(s.compartments.flatMap((c) => c.issues).filter((i) => i.level === 'error')).toEqual([]);
+            const boxes = s.trays.filter((t) => t.depth === 1);
+            expect(boxes).toHaveLength((mode === 'multiple' ? 2 : 1) * (stack === 'pair' ? 2 : 1));
+            for (const box of boxes) {
+              const previous = before.trays.find((t) => t.id === box.id)!;
+              expect(box.height).toBe(previous.height);
+              expect(box.base).toBe(3);
+              expect(box.wallHeight).toBe(previous.wallHeight + (base === 'under' ? 2 : 0));
+            }
+            for (const c of s.compartments.filter((c) => c.depth === 1)) expect(c.height).toBe(before.compartments.find((x) => x.id === c.id)!.height + 2);
+            expect(s.pieces.filter((piece) => piece.material === 'secondary').every((piece) => piece.kind === 'base' && piece.depth === 1 && piece.thickness === 3)).toBe(true);
+            expect(s.pieces.filter((piece) => piece.kind !== 'base').every((piece) => piece.material === 'primary' && piece.thickness === 5)).toBe(true);
+            const scene = buildScene(p, s);
+            const blocks = scene.trays.flatMap((t) => t.blocks);
+            for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBeLessThan(1e-6);
+            const boxTop = Math.max(...scene.trays.filter((t) => t.depth === 1).flatMap((t) => t.blocks.map((b) => b.z + b.h)));
+            const well = s.compartments.find((c) => c.id === host.id)!;
+            expect(boxTop).toBeCloseTo(p.layers[0].height - (stack === 'empty' ? well.height / 2 : 0), 6);
+            const cut = buildCutList(s, p.precision);
+            expect(trayInstructions(p, s, cut, boxes[0]!)[0]!.text).toContain('secondary material (3 mm)');
+          }
+        }
+      }
+    }
+  });
+
+  it('uses thinner box bases for minimum height and raised-floor limits', async () => {
+    const { setSecondaryThickness, setInsertBaseSecondary, setPad } = await import('./edit');
+    const { maxPad } = await import('./layout');
+    const p = blankProject();
+    const layer = p.layers[0];
+    layer.height = 21;
+    setInsert(layer, layer.root.id, true);
+    const host = solveProject(p).compartments[0]!.node;
+    setStacked(host, true);
+    setSecondaryThickness(p, 3);
+    setInsertBaseSecondary(host, true);
+    let s = solveProject(p);
+    expect(s.trays.filter((t) => t.depth === 1)).toHaveLength(2);
+    expect(s.compartments.filter((c) => c.depth === 1).every((c) => c.height === 5)).toBe(true);
+    setInsertBaseSecondary(host, false);
+    s = solveProject(p);
+    expect(s.trays.filter((t) => t.depth === 1)).toHaveLength(0);
+    expect(s.compartments[0]!.issues[0]!.message).toContain('at least 25 mm tall');
+    setInsertBaseSecondary(host, true);
+    layer.height = 26;
+    setPad(host, 1);
+    s = solveProject(p);
+    expect(maxPad(s.compartments[0]!.fullHeight, 5, 2, 3)).toBe(1);
+    expect(s.trays.filter((t) => t.depth === 1)).toHaveLength(2);
+    expect(s.compartments.flatMap((c) => c.issues).filter((i) => i.level === 'error')).toEqual([]);
+    setPad(host, 2);
+    s = solveProject(p);
+    expect(s.trays.filter((t) => t.depth === 1)).toHaveLength(0);
+    expect(s.compartments[0]!.issues[0]!.message).toContain('Remove 1 layer');
+  });
+
+  it('keeps primary and secondary pieces and cutting sheets distinct even at the same thickness', async () => {
+    const { setSecondaryThickness, setInsertBaseSecondary } = await import('./edit');
+    const p = blankProject();
+    const layer = p.layers[0];
+    splitSection(layer, layer.root.id, 'row', 5);
+    const hosts = solveProject(p).compartments;
+    hosts.forEach((host) => setInsert(layer, host.id, true));
+    setSecondaryThickness(p, 5);
+    setInsertBaseSecondary(hosts[0]!.node, true);
+    const s = solveProject(p);
+    const bases = s.pieces.filter((piece) => piece.depth === 1 && piece.kind === 'base');
+    expect(bases).toHaveLength(2);
+    expect(bases[0]!.length).toBe(bases[1]!.length);
+    const cut = buildCutList(s, p.precision);
+    expect(cut.groupOf.get(bases[0]!.id)).not.toBe(cut.groupOf.get(bases[1]!.id));
+    for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
+      const plan = planCuts({ ...p, material: { ...p.material, layout } }, cut);
+      expect(plan.counts.map((c) => c.material)).toEqual(['secondary', 'primary']);
+      for (const sheet of plan.sheets) for (const item of sheet.items) {
+        const groups = item.group ? [item.group] : item.strip!.cuts.map((part) => cut.groups.find((g) => g.number === part.group)!);
+        expect(groups.every((g) => g.material === sheet.material && g.thickness === sheet.thickness)).toBe(true);
+      }
+    }
+  });
+
   it('cuts only the layer bases from the other thickness, and moves layer heights so compartments keep their depth', async () => {
-    const { p, before, heights, s, setBaseThickness } = await thinBase();
+    const { p, before, heights, s, setLayerBaseSecondary } = await thinBase();
     const T = p.material.thickness;
     expect(p.layers.map((l) => l.height)).toEqual(heights.map((h) => h - 2));
     expect(s.headroom).toBeCloseTo(before.headroom + 2 * p.layers.length, 6);
@@ -959,8 +1202,9 @@ describe('base thickness', () => {
       expect(t.base).toBe(3);
       expect(t.wallHeight).toBeCloseTo(layer.height - 3, 6);
     }
-    setBaseThickness(p, undefined);
-    expect(p.material.baseThickness).toBeUndefined();
+    setLayerBaseSecondary(p, false);
+    expect(p.secondaryBase).toBeUndefined();
+    expect(p.material.secondaryThickness).toBe(3);
     expect(p.layers.map((l) => l.height)).toEqual(heights);
   });
 
@@ -981,11 +1225,11 @@ describe('base thickness', () => {
         expect(t).toBe(sheet.thickness);
       }
     }
-    expect(sheetSummary(p, plan)).toMatch(/^\d+ × 3 mm \+ \d+ × 5 mm A2 sheets$/);
+    expect(sheetSummary(p, plan)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets$/);
     const tray = s.trays.find((t) => t.depth === 0)!;
-    expect(trayInstructions(p, s, cut, tray)[0].text).toContain('cut from the 3 mm base sheet (not the 5 mm used for the walls)');
+    expect(trayInstructions(p, s, cut, tray)[0].text).toContain('cut from secondary material (3 mm)');
     const box = s.trays.find((t) => t.depth === 1)!;
-    expect(trayInstructions(p, s, cut, box)[0].text).toBe(`Start with base #${cut.groupOf.get(s.pieces.find((x) => x.trayId === box.id && x.kind === 'base')!.id)!.number}.`);
+    expect(trayInstructions(p, s, cut, box)[0].text).toBe(`Start with base #${cut.groupOf.get(s.pieces.find((x) => x.trayId === box.id && x.kind === 'base')!.id)!.number}, cut from primary material (5 mm).`);
   });
 
   it('stacks everything in 3D without overlaps, walls standing on the thinner base', async () => {
@@ -1069,10 +1313,12 @@ describe('lowered sides', () => {
     // Front walls stay plain and full height.
     expect(s.pieces.filter((x) => x.role === 'front wall').every((x) => !x.lows.length && x.height === 29)).toBe(true);
     const tray = s.trays.find((t) => t.layerId === p.layers[0].id)!;
-    const backNote = trayInstructions(p, s, cut, tray)[1].notes[0];
-    expect(backNote.kind).toBe('lowered');
-    expect(backNote.label).toBe('Lowered');
-    expect(backNote.text).toMatch(/^Back wall #\d+: top edge cut 7 mm lower from [\d.]+ to [\d.]+ mm from the left end\.$/);
+    // Edge cutting is completed before the walls are glued.
+    expect(trayInstructions(p, s, cut, tray)[1].notes).toEqual([]);
+    const { groupCutPatterns } = await import('./cutting');
+    const marking = groupCutPatterns(g, 'lowered')[0]!;
+    expect(marking.points[1]!.inward).toBe(7);
+    expect(marking.points[2]!.inward).toBe(7);
   });
 
   it('never notches a lowered stretch', async () => {
@@ -1256,11 +1502,12 @@ describe('cutting layouts', () => {
   }
 
   async function plans() {
-    const { setBaseThickness, setConstruction } = await import('./edit');
+    const { setLayerBaseSecondary, setSecondaryThickness, setConstruction } = await import('./edit');
     const designs: Project[] = [];
     designs.push(doomExample());
     const thin = doomExample();
-    setBaseThickness(thin, 3);
+    setSecondaryThickness(thin, 3);
+    setLayerBaseSecondary(thin, true);
     designs.push(thin);
     const separate = doomExample();
     setConstruction(separate, 'separate');
@@ -1317,15 +1564,22 @@ describe('cutting layouts', () => {
     }
   });
 
-  it('keeps the current layout as the default', () => {
+  it('offers strips first and uses it as the default while keeping other layouts selectable', async () => {
+    const { CUT_LAYOUTS } = await import('./pieces');
+    const { setCutLayout } = await import('./edit');
     const p = doomExample();
     const cut = buildCutList(solveProject(p), p.precision);
-    expect(planCuts(p, cut)).toEqual(planCuts({ ...p, material: { ...p.material, layout: 'fewest' } }, cut));
+    expect(CUT_LAYOUTS[0]!.value).toBe('strips');
+    expect(planCuts(p, cut)).toEqual(planCuts({ ...p, material: { ...p.material, layout: 'strips' } }, cut));
+    setCutLayout(p, 'fewest');
+    expect(p.material.layout).toBe('fewest');
+    setCutLayout(p, 'strips');
+    expect(p.material.layout).toBeUndefined();
   });
 });
 
 describe('assembly step notes', () => {
-  it('calls out finger notches with a bold label, naming the wall when a step glues two', () => {
+  it('keeps finger notch cutting out of the gluing steps', () => {
     const p = doomExample();
     const s = solveProject(p);
     const cut = buildCutList(s, p.precision);
@@ -1333,27 +1587,24 @@ describe('assembly step notes', () => {
     const steps = trayInstructions(p, s, cut, tray);
     const walls = steps[1];
     expect(walls.text).not.toMatch(/notch/i);
-    expect(walls.notes.length).toBeGreaterThan(0);
-    for (const n of walls.notes) {
-      expect(n.kind).toBe('notch');
-      expect(n.label).toMatch(/^Finger notch(es)?$/);
-      expect(n.text).toMatch(/^(Back|Front) wall #\d+: centred [\d.]+( and [\d.]+)* mm from the left end, open side up\.$/);
-    }
+    expect(cut.groups.some((g) => g.notches.length)).toBe(true);
+    expect(steps.flatMap((s) => s.notes)).toEqual([]);
   });
 });
 
 describe('new design', () => {
   it('starts with one empty layer, 2 mm clearance, and notches a quarter of the layer height', async () => {
     const { newProject, STARTER_SPEC } = await import('./defaults');
-    const p = newProject({ ...STARTER_SPEC, box: { width: 239, depth: 277, height: 74 }, layerHeight: 66, baseThickness: 3 });
+    const p = newProject({ ...STARTER_SPEC, box: { width: 239, depth: 277, height: 74 }, layerHeight: 66, secondaryThickness: 3, secondaryBase: true });
     expect(p.box).toEqual({ width: 239, depth: 277, height: 74 });
     expect(p.clearance).toBe(2);
     expect(p.layers).toHaveLength(1);
     expect(p.layers[0].height).toBe(66);
     expect(p.layers[0].root.kind).toBe('section');
     expect(p.notch).toEqual({ width: 16.5, depth: 16.5, bottom: 50 });
-    expect(p.material.baseThickness).toBe(3);
-    expect(newProject(STARTER_SPEC).material.baseThickness).toBeUndefined();
+    expect(p.material.secondaryThickness).toBe(3);
+    expect(p.secondaryBase).toBe(true);
+    expect(newProject(STARTER_SPEC).material.secondaryThickness).toBeUndefined();
     const s = solveProject(p);
     expect(s.issues.filter((i) => i.level === 'error')).toEqual([]);
     expect(s.headroom).toBe(8);

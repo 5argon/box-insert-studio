@@ -7,6 +7,8 @@
  * stack stands on the lower one.
  */
 import { fitItems } from './items';
+import { mm } from './geom';
+import type { LidNotch } from './lidNotches';
 import type { Low, Notch, PieceKind, Solved, Tray } from './layout';
 import type { Mm, Project } from './types';
 
@@ -25,6 +27,8 @@ export interface Block {
   axis: 'x' | 'y';
   /** Centres measured from the piece's start (its left or back end). */
   notches: Notch[];
+  /** Cutouts through a flat lid, measured along its x/y edges. */
+  lidNotches?: LidNotch[];
   /** Lowered stretches of the top edge, from the same start. */
   lows: Low[];
 }
@@ -123,10 +127,10 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
   }
 
   const keyOf = (t: Tray) => `${t.layerId}:${t.nodeId}:${t.copyOf ? 1 : 0}`;
+  const sharedCovers = solved.pieces.filter((p) => p.sharedLidFor);
+  const coverKey = (p: (typeof sharedCovers)[number]) => `${p.layerId}:shared-lid:${p.sharedLidFor}`;
   const taken = new Set(
-    solved.trays
-      .filter((t) => t.depth === 1)
-      .map(keyOf)
+    [...solved.trays.filter((t) => t.depth === 1).map(keyOf), ...sharedCovers.map(coverKey)]
       .filter((k) => colors.has(k))
       .map((k) => colors.get(k)!),
   );
@@ -170,13 +174,13 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
   const trays: SceneTray[] = solved.trays.map((t) => {
     const bottom = floorZ(t);
     const blocks: Block[] = solved.pieces
-      .filter((p) => p.trayId === t.id)
+      .filter((p) => p.trayId === t.id && !p.sharedLidFor)
       .map((p) => {
         const onBase = p.kind === 'divider' || (p.kind === 'wall' && project.base === 'under');
         // Raised-floor layers stack on the base, one thickness each.
-        const pz = p.kind === 'base' ? bottom : p.kind === 'pad' ? bottom + t.base + (p.padLevel ?? 0) * T : bottom + (onBase ? t.base : 0);
-        const h = p.kind === 'base' || p.kind === 'pad' ? p.thickness : p.height;
-        return { id: p.id, kind: p.kind, x: p.footprint.x, y: p.footprint.y, z: pz, w: p.footprint.w, d: p.footprint.h, h, axis: p.axis, notches: p.notches, lows: p.lows };
+        const pz = p.kind === 'base' ? bottom : p.kind === 'lid' ? bottom + t.height - t.lid : p.kind === 'pad' ? bottom + t.base + (p.padLevel ?? 0) * T : bottom + (onBase ? t.base : 0);
+        const h = p.kind === 'base' || p.kind === 'lid' || p.kind === 'pad' ? p.thickness : p.height;
+        return { id: p.id, kind: p.kind, x: p.footprint.x, y: p.footprint.y, z: pz, w: p.footprint.w, d: p.footprint.h, h, axis: p.axis, notches: p.notches, lows: p.lows, ...(p.lidNotches ? { lidNotches: p.lidNotches } : {}) };
       });
     const lower = t.copyOf ? trayById.get(t.copyOf) : undefined;
     const level: 0 | 1 = lower ? 1 : 0;
@@ -204,6 +208,23 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       items: itemsIn(t, bottom),
     };
   });
+
+  // Shared covers are independent pieces: hiding one separate box leaves its group's lid visible.
+  for (const p of sharedCovers) {
+    const anchor = trayById.get(p.trayId)!;
+    const well = labelOf.get(p.sharedLidFor!) ?? '?';
+    const key = coverKey(p);
+    const block: Block = {
+      id: p.id, kind: 'lid', x: p.footprint.x, y: p.footprint.y, z: floorZ(anchor) + anchor.height,
+      w: p.footprint.w, d: p.footprint.h, h: p.thickness, axis: p.axis,
+      notches: [], lows: [], ...(p.lidNotches ? { lidNotches: p.lidNotches } : {}),
+    };
+    trays.push({
+      key, id: p.id, number: anchor.number, label: `Shared lid in ${well}`,
+      detail: `${mm(p.thickness)} mm`, layerId: p.layerId, depth: 1, level: anchor.copyOf ? 1 : 0,
+      color: trayColor(hueFor(key)), blocks: [block], items: [],
+    });
+  }
 
   return { box: { w: project.box.width, d: project.box.depth, h: project.box.height }, layers, trays };
 }

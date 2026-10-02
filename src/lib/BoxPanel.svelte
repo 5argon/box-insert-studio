@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
-  import { setBaseThickness, setConstruction, setCutLayout } from '../core/edit';
+  import { SECONDARY_THICKNESS_PRESETS, SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
+  import { setLayerBaseSecondary, setSecondaryThickness, setConstruction, setCutLayout } from '../core/edit';
   import { CUT_LAYOUTS } from '../core/pieces';
   import type { CutLayout } from '../core/types';
   import { mm } from '../core/geom';
-  import { LOWERED_DEFAULT, type Solved } from '../core/layout';
+  import { baseThickness, LOWERED_DEFAULT, type Solved } from '../core/layout';
   import type { Project } from '../core/types';
   import LayerIcon from './LayerIcon.svelte';
   import NotchFields from './NotchFields.svelte';
@@ -17,13 +17,10 @@
 
   const T = $derived(project.material.thickness);
   const separate = $derived(project.construction === 'separate');
-  /** Thickness of each layer's base: its own when set, else the material's. */
-  const B = $derived(project.material.baseThickness ?? T);
-  const ownBase = $derived(project.material.baseThickness !== undefined);
-  const BASE_PRESETS = [2, 3, 5];
+  const B = $derived(baseThickness(project));
+  const secondary = $derived(project.material.secondaryThickness !== undefined);
   /** Starting value: the thickest preset thinner than the walls. */
-  const thinner = $derived(BASE_PRESETS.filter((t) => t < T).pop() ?? T);
-  const baseTo = (next: number | undefined) => setBaseThickness(project, next);
+  const thinner = $derived(SECONDARY_THICKNESS_PRESETS.filter((t) => t < T).pop() ?? T);
   let readme: ReadmeDialog | undefined = $state();
   /** First line of the readme, without Markdown marks, as a reminder of what it says. */
   const readmeTitle = $derived(
@@ -97,6 +94,22 @@
       <span class="thick"><NumberInput value={project.material.thickness} min={1} max={20} label="Material thickness" onchange={(v) => (project.material.thickness = v)} /></span>
     </span>
   </div>
+  <label class="check" data-tip="Add another sheet thickness to use for bases, lids or individual dividers">
+    <input type="checkbox" checked={secondary} onchange={(e) => setSecondaryThickness(project, e.currentTarget.checked ? thinner : undefined)} />
+    Secondary Material
+  </label>
+  {#if secondary}
+    <div class="field">
+      <span>Secondary</span>
+      <span class="row">
+        {#each SECONDARY_THICKNESS_PRESETS as t (t)}
+          <button class="small" class:on={project.material.secondaryThickness === t} onclick={() => setSecondaryThickness(project, t)}>{t}</button>
+        {/each}
+        <span class="thick"><NumberInput value={project.material.secondaryThickness ?? T} min={0.5} max={20} label="Secondary material thickness" onchange={(v) => setSecondaryThickness(project, v)} /></span>
+      </span>
+    </div>
+    <p class="hint">Choose where to use it in Layers, Removable box or Divider materials. Each material gets its own cutting sheets.</p>
+  {/if}
   <label class="field">
     <span>Sheet</span>
     <select value={project.material.sheet.preset} onchange={chooseSheet}>
@@ -112,7 +125,7 @@
   {/if}
   <label class="field" data-tip="How pieces are laid out on the sheets. The cut list page shows every layout's sheet count side by side.">
     <span>Layout</span>
-    <select value={project.material.layout ?? 'fewest'} onchange={(e) => setCutLayout(project, e.currentTarget.value as CutLayout)}>
+    <select value={project.material.layout ?? 'strips'} onchange={(e) => setCutLayout(project, e.currentTarget.value as CutLayout)}>
       {#each CUT_LAYOUTS as l (l.value)}
         <option value={l.value}>{l.name}</option>
       {/each}
@@ -168,23 +181,14 @@
     {/each}
     <p class="hint">Heights include each layer's {mm(B)} mm base.</p>
   {/if}
-  <label class="check own-base" data-tip="Cut each layer's base from a different sheet than the walls, e.g. 3 mm under 5 mm walls">
-    <input type="checkbox" checked={ownBase} onchange={(e) => baseTo(e.currentTarget.checked ? thinner : undefined)} />
-    Own base thickness
-  </label>
-  {#if ownBase}
-    <div class="field">
-      <span>Base</span>
-      <span class="row">
-        {#each BASE_PRESETS as t (t)}
-          <button class="small" class:on={B === t} onclick={() => baseTo(t)}>{t}</button>
-        {/each}
-        <span class="thick"><NumberInput value={B} min={0.5} max={20} label="Base thickness" onchange={(v) => baseTo(v)} /></span>
-      </span>
-    </div>
+  {#if secondary}
+    <label class="check layer-base" data-tip="Cut every layer's base from the secondary material">
+      <input type="checkbox" checked={!!project.secondaryBase} onchange={(e) => setLayerBaseSecondary(project, e.currentTarget.checked)} />
+      Use secondary material for bases
+    </label>
     <p class="hint">
-      Only each layer's base is {mm(B)} mm, cut from its own sheets; walls, dividers, raised floors and removable boxes stay {mm(T)} mm. Changing it moves
-      every layer's height by the difference, so compartments keep their depth and the headroom changes instead.
+      Bases use {project.secondaryBase ? 'secondary' : 'primary'} material ({mm(B)} mm). Changing their thickness moves each layer's height by the difference,
+      so compartments keep their depth and the headroom changes instead.
     </p>
   {/if}
   <button class="small add" onclick={addLayer}>Add layer on top</button>
@@ -289,7 +293,7 @@
   .thick {
     width: 56px;
   }
-  .own-base {
+  .layer-base {
     display: flex;
     gap: 6px;
     align-items: center;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { BOX_PRESETS } from '../core/boxPresets';
-  import { NEW_CLEARANCE, newProject, SHEET_PRESETS, STARTER_SPEC, THICKNESS_PRESETS, type NewProjectSpec } from '../core/defaults';
+  import { NEW_CLEARANCE, newProject, SECONDARY_THICKNESS_PRESETS, SHEET_PRESETS, STARTER_SPEC, THICKNESS_PRESETS, type NewProjectSpec } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Project } from '../core/types';
   import NumberField from './NumberField.svelte';
@@ -15,12 +15,11 @@
   let dialog: HTMLDialogElement;
   // Filled from the current design each time the dialog opens.
   let spec = $state<NewProjectSpec>(structuredClone(STARTER_SPEC));
-  let ownBase = $state(false);
-  let baseThickness = $state(3);
+  let secondary = $state(false);
+  let secondaryThickness = $state(3);
+  let secondaryBase = $state(false);
   /** False on first run, when there is nothing to lose. */
   let replacing = $state(true);
-
-  const BASE_PRESETS = [2, 3, 5];
 
   /** Start from the current design's box and material, so a second insert for the same game is quick. */
   function fromProject(p: Project): NewProjectSpec {
@@ -34,8 +33,9 @@
 
   export function open(opts: { replacing?: boolean } = {}) {
     spec = fromProject(current);
-    ownBase = current.material.baseThickness !== undefined;
-    baseThickness = current.material.baseThickness ?? 3;
+    secondary = current.material.secondaryThickness !== undefined;
+    secondaryThickness = current.material.secondaryThickness ?? SECONDARY_THICKNESS_PRESETS.filter((t) => t < current.material.thickness).pop() ?? current.material.thickness;
+    secondaryBase = !!current.secondaryBase;
     replacing = opts.replacing ?? true;
     dialog.showModal();
   }
@@ -51,7 +51,7 @@
     spec.sheet = p ? { ...p } : { ...spec.sheet, preset: 'Custom' };
   }
 
-  const base = $derived(ownBase ? baseThickness : spec.thickness);
+  const base = $derived(secondary && secondaryBase ? secondaryThickness : spec.thickness);
   const headroom = $derived(spec.box.height - spec.layerHeight);
   const problem = $derived(
     headroom < 0
@@ -65,7 +65,7 @@
 
   function create() {
     if (problem) return;
-    oncreate(newProject({ ...$state.snapshot(spec), ...(ownBase ? { baseThickness } : {}) }));
+    oncreate(newProject({ ...$state.snapshot(spec), ...(secondary ? { secondaryThickness, secondaryBase } : {}) }));
     dialog.close();
   }
 </script>
@@ -119,6 +119,23 @@
           <span class="unit">mm</span>
         </span>
       </div>
+      <label class="check">
+        <input type="checkbox" bind:checked={secondary} />
+        Secondary Material
+      </label>
+      {#if secondary}
+        <div class="field">
+          <span>Secondary</span>
+          <span class="row">
+            {#each SECONDARY_THICKNESS_PRESETS as t (t)}
+              <button type="button" class="small" class:on={secondaryThickness === t} onclick={() => (secondaryThickness = t)}>{t}</button>
+            {/each}
+            <span class="thick"><NumberInput value={secondaryThickness} min={0.5} max={20} label="Secondary material thickness" onchange={(v) => (secondaryThickness = v)} /></span>
+            <span class="unit">mm</span>
+          </span>
+        </div>
+        <p class="hint">Available for bases, removable-box lids and individual dividers, including dividers inside removable boxes. Each material gets its own cutting sheets.</p>
+      {/if}
       <label class="field">
         <span>Sheet</span>
         <select value={spec.sheet.preset} onchange={(e) => chooseSheet(e.currentTarget.value)}>
@@ -144,22 +161,12 @@
         onchange={(v) => (spec.layerHeight = v)}
       />
       <p class="hint">Includes the {mm(base)} mm base. Finger notches start {mm(spec.layerHeight / 4)} mm wide and deep, a quarter of this height.</p>
-      <label class="check">
-        <input type="checkbox" bind:checked={ownBase} />
-        Own base thickness
-      </label>
-      {#if ownBase}
-        <div class="field">
-          <span>Base</span>
-          <span class="row">
-            {#each BASE_PRESETS as t (t)}
-              <button type="button" class="small" class:on={baseThickness === t} onclick={() => (baseThickness = t)}>{t}</button>
-            {/each}
-            <span class="thick"><NumberInput value={baseThickness} min={0.5} max={20} label="Base thickness" onchange={(v) => (baseThickness = v)} /></span>
-            <span class="unit">mm</span>
-          </span>
-        </div>
-        <p class="hint">Only the layer's base, cut from its own sheets; walls and dividers stay {mm(spec.thickness)} mm.</p>
+      {#if secondary}
+        <label class="check">
+          <input type="checkbox" bind:checked={secondaryBase} />
+          Use secondary material for base
+        </label>
+        <p class="hint">The base uses {secondaryBase ? 'secondary' : 'primary'} material ({mm(base)} mm); walls and dividers use primary material ({mm(spec.thickness)} mm).</p>
       {/if}
       <p class="headroom" class:bad={headroom < 0} data-tip="Space left above the layer, for the board and rulebook">
         Headroom: <b>{mm(headroom)} mm</b>

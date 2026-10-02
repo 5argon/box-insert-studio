@@ -1,5 +1,6 @@
 /** All lengths are millimetres. Top view: x → right, y → toward the front of the box. */
 export type Mm = number;
+export type MaterialKind = 'primary' | 'secondary';
 
 /** `row` lays children left→right (vertical bars), `column` back→front (horizontal bars). */
 export type Dir = 'row' | 'column';
@@ -17,6 +18,8 @@ export type Join = 'divider' | 'trays';
 export interface SplitChild {
   size: ChildSize;
   node: LayoutNode;
+  /** Use secondary material for the divider after this child. Ignored for trays and the last child. */
+  secondaryDivider?: boolean;
 }
 
 export interface SplitNode {
@@ -34,8 +37,11 @@ export interface SectionNode {
   id: string;
   /** Sides that get a finger notch cut into the wall or divider there. */
   notches: Side[];
-  /** This compartment's notch size, instead of the project's. */
-  notchSize?: NotchSize;
+  /** This compartment's own notch size on selected sides, instead of the project's. */
+  notchSize?: NotchSize & {
+    /** Sides using the override. Unset preserves older designs by applying it to every notch. */
+    sides?: Side[];
+  };
   /** Sides whose wall or divider is cut down beside this compartment. Never also notched. */
   lowered?: Side[];
   /** An arrow drawn beside the letter: which way the items in this slot face. */
@@ -51,10 +57,22 @@ export interface SectionNode {
   pad?: number;
   insert?: {
     root: LayoutNode;
-    /** Two identical boxes stacked, each half the height, each with its own floor. */
+    /** Two identical boxes divide the available height, each with its own floor. */
     stacked?: boolean;
     /** With `stacked`: build only the lower box and leave the half above it empty. */
     emptyAbove?: boolean;
+    /** Cut the box bases from the secondary material when it is configured. */
+    secondaryBase?: boolean;
+    /** A loose lid rests on the box walls, within the allocated height. */
+    lid?: boolean;
+    /** With separate boxes, one lid covers the entire group instead of one lid per box. */
+    sharedLid?: boolean;
+    /** Cut the lids from the secondary material when it is configured. */
+    secondaryLid?: boolean;
+    /** Edges with finger notches cut through each lid, centred along the edge. */
+    lidNotches?: Side[];
+    /** This lid's own shape; independent of the project's wall notch settings. */
+    lidNotchSize?: NotchSize;
   };
 }
 
@@ -110,20 +128,17 @@ export interface Project {
   /** Notes about the insert, in Markdown; printed at the top of the export. */
   readme?: string;
   box: { width: Mm; depth: Mm; height: Mm };
-  /** The sheet material everything is cut from: foam board, MDF, greyboard… */
+  /** Primary sheet material and an optional secondary thickness: foam board, MDF, greyboard… */
   material: {
     thickness: Mm;
-    /**
-     * The base of each layer's trays from thinner (or thicker) sheet, e.g. 3 mm under 5 mm walls.
-     * Unset: the same as `thickness`. Floors of removable boxes and raised floors stay `thickness`.
-     */
-    baseThickness?: Mm;
+    /** Optional second sheet thickness, available for bases, lids and individual dividers. */
+    secondaryThickness?: Mm;
     sheet: SheetSpec;
     /** Damaged edge trimmed off every side of a sheet before cutting. */
     trim: Mm;
     /** Material lost per cut. */
     kerf: Mm;
-    /** How pieces are laid out on the sheets; unset is `fewest`. */
+    /** How pieces are laid out on the sheets; unset is `strips`. */
     layout?: CutLayout;
   };
   /** Piece sizes are rounded to this step, so near-identical pieces become one cut size. */
@@ -132,6 +147,8 @@ export interface Project {
   clearance: Mm;
   /** `under`: walls stand on the base. `inside`: walls wrap around the base. */
   base: 'under' | 'inside';
+  /** Cut every layer's tray bases from the secondary material when it is configured. */
+  secondaryBase?: boolean;
   /** Which pair of outer walls runs the full length: `x` = back and front, `y` = left and right. */
   fullWalls: 'x' | 'y';
   /**

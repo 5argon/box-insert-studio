@@ -143,7 +143,7 @@
             <b>{layer.name}</b>
             <span class="hint">·</span>
           {/if}
-          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - baseThickness(studio.project)} mm tall</span>
+          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - baseThickness(studio.project)} mm tall{#if solvedLayer.pieces.some((p) => p.kind === 'lid')} · Diagonal stripes mark lids{/if}</span>
         </div>
         <div class="canvas-wrap">
           <!-- A fixed 3/4 preview of the whole insert; loads three.js after the editor is up. -->
@@ -180,7 +180,7 @@
             <SectionInspector project={studio.project} {layer} {solved} {solvedLayer} {cut} compartment={selectedCompartment} onselect={select} />
           {/key}
         {:else if selectedSplit}
-          <SplitInspector project={studio.project} {layer} {solvedLayer} split={selectedSplit} />
+          <SplitInspector project={studio.project} {layer} {solvedLayer} split={selectedSplit} dividerIndex={studio.selected?.kind === 'split' ? studio.selected.index : undefined} />
         {:else}
           <div class="panel-section">
             <h2 class="list-title">
