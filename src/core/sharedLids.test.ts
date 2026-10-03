@@ -76,7 +76,7 @@ describe('shared lids over separate boxes', () => {
             for (const c of solved.compartments.filter((c) => c.depth === 1)) {
               expect(c.height).toBe(bodyHeight - 3);
               const before = individual.compartments.find((old) => old.id === c.id)!;
-              expect(c.height - before.height).toBe(stack === 'pair' ? lidThickness / 2 : 0);
+              expect(c.height).toBe(before.height);
             }
             const model = noOverlap(project, solved);
             const cover = model.trays.find((t) => t.label === 'Shared lid in A')!;
@@ -96,10 +96,13 @@ describe('shared lids over separate boxes', () => {
     const { project, layer, host } = separateBoxes();
     setStacked(host, true);
     layer.height = 30;
-    expect(solveProject(project).trays.filter((t) => t.depth === 1)).toEqual([]);
+    const individual = solveProject(project);
+    expect(individual.trays.filter((t) => t.depth === 1)).toHaveLength(4);
+    expect(individual.pieces.filter((p) => p.kind === 'lid')).toHaveLength(2);
     setInsertSharedLid(host, true);
     let solved = solveProject(project);
     expect(solved.trays.filter((t) => t.depth === 1)).toHaveLength(4);
+    expect(solved.pieces.filter((p) => p.kind === 'lid')).toHaveLength(1);
     expect(solved.compartments.filter((c) => c.depth === 1).every((c) => c.height === 5)).toBe(true);
     expect(insertLidAllowance(project, host)).toBe(2.5);
     expect(maxPad(40, 5, 2, 5, insertLidAllowance(project, host))).toBe(3);
@@ -164,7 +167,7 @@ describe('shared lids over separate boxes', () => {
       expect(group.pieces).toHaveLength(1);
       expect(group.material).toBe('secondary');
       for (const layout of ['strips', 'fewest', 'guillotine'] as const) {
-        const plan = planCuts({ ...project, material: { ...project.material, layout } }, cut);
+        const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
         expect(plan.issues).toEqual([]);
         expect(plan.sheets.flatMap((s) => s.items).reduce((n, i) => n + (i.kind === 'base' ? 1 : i.strip!.cuts.length), 0)).toBe(solved.pieces.length);
         const sheet = plan.sheets.find((s) => s.items.some((i) => i.group === group))!;

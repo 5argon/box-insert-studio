@@ -123,7 +123,8 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
     const base = layerZ.get(t.layerId) ?? 0;
     if (t.depth === 0) return base;
     const parent = trayById.get(t.parentTrayId ?? '');
-    return base + (parent?.base ?? T) + (padUnder.get(t.wellId ?? '') ?? 0) + (t.copyOf ? t.height : 0);
+    const lowerHeight = t.copyOf ? trayById.get(t.copyOf)?.height ?? 0 : 0;
+    return base + (parent?.base ?? T) + (padUnder.get(t.wellId ?? '') ?? 0) + lowerHeight;
   }
 
   const keyOf = (t: Tray) => `${t.layerId}:${t.nodeId}:${t.copyOf ? 1 : 0}`;

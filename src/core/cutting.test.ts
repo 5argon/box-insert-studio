@@ -88,7 +88,7 @@ describe('notch cutting instructions', () => {
     cut = buildCutList(solved, lidProject.precision);
     const lids = cut.groups.filter((g) => g.lidNotches?.length);
     expect(lids).toHaveLength(1);
-    expect(lids[0]!.pieces).toHaveLength(4);
+    expect(lids[0]!.pieces).toHaveLength(2);
     expect(lids[0]!.material).toBe('secondary');
     const patterns = groupCutPatterns(lids[0]!);
     expect(patterns).toHaveLength(2);

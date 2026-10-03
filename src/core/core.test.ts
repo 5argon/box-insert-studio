@@ -498,8 +498,8 @@ describe('stacked boxes', () => {
     const cut = buildCutList(s, p.precision);
     const lower = s.trays.find((t) => t.wellId === g.id && !t.copyOf)!;
     const steps = trayInstructions(p, s, cut, lower);
-    expect(steps[steps.length - 1].strong).toBe('Make a second, identical box.');
-    expect(steps[steps.length - 1].text).toMatch(/^Stack both in compartment G/);
+    expect(steps[steps.length - 1].strong).toBe('Make a second, identical box body.');
+    expect(steps[steps.length - 1].text).toMatch(/^Stack the upper box directly on the lower box in compartment G/);
   });
 });
 
@@ -1177,7 +1177,7 @@ describe('secondary material', () => {
     const cut = buildCutList(s, p.precision);
     expect(cut.groupOf.get(bases[0]!.id)).not.toBe(cut.groupOf.get(bases[1]!.id));
     for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
-      const plan = planCuts({ ...p, material: { ...p.material, layout } }, cut);
+      const plan = planCuts({ ...p, material: { ...p.material, layout, secondaryLayout: layout } }, cut);
       expect(plan.counts.map((c) => c.material)).toEqual(['secondary', 'primary']);
       for (const sheet of plan.sheets) for (const item of sheet.items) {
         const groups = item.group ? [item.group] : item.strip!.cuts.map((part) => cut.groups.find((g) => g.number === part.group)!);
@@ -1521,7 +1521,7 @@ describe('cutting layouts', () => {
       const cut = buildCutList(s, base.precision);
       const pieces = cut.groups.reduce((n, g) => n + g.pieces.length, 0);
       for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
-        const p = { ...base, material: { ...base.material, layout } };
+        const p = { ...base, material: { ...base.material, layout, secondaryLayout: layout } };
         const plan = planCuts(p, cut);
         expect(plan.issues).toEqual([]);
         const placed = plan.sheets.flatMap((sh) => sh.items).reduce((n, it) => n + (it.kind === 'base' ? 1 : it.strip!.cuts.length), 0);
@@ -1549,7 +1549,7 @@ describe('cutting layouts', () => {
     for (const base of await plans()) {
       const cut = buildCutList(solveProject(base), base.precision);
       for (const layout of ['guillotine', 'strips'] as const) {
-        const plan = planCuts({ ...base, material: { ...base.material, layout } }, cut);
+        const plan = planCuts({ ...base, material: { ...base.material, layout, secondaryLayout: layout } }, cut);
         for (const sheet of plan.sheets) expect(guillotine(sheet.items)).toBe(true);
         if (layout !== 'strips') continue;
         // Bands run the sheet's long way: across it, any two pieces share a band start or don't overlap.

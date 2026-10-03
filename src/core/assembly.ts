@@ -32,6 +32,12 @@ function refs(pieces: PieceInst[], cut: CutList): string {
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 
+/** Pieces shown for one body build, plus the upper-only lid when this tray represents a pair. */
+export function trayAssemblyPieces(solved: Solved, tray: Tray): PieceInst[] {
+  const upper = solved.trays.find((t) => t.copyOf === tray.id);
+  return solved.pieces.filter((p) => !p.sharedLidFor && (p.trayId === tray.id || (p.trayId === upper?.id && p.kind === 'lid'))).sort((a, b) => a.order - b.order);
+}
+
 /**
  * Height reminders for already-cut walls and dividers. Cutting instructions appear before assembly.
  */
@@ -46,7 +52,7 @@ function pieceNotes(p: PieceInst, who = ''): StepNote[] {
 
 /** Glue order for one tray: base, full-length walls, short walls, then dividers from the outside in. */
 export function trayInstructions(project: Project, solved: Solved, cut: CutList, tray: Tray): Step[] {
-  const pieces = solved.pieces.filter((p) => p.trayId === tray.id && !p.sharedLidFor).sort((a, b) => a.order - b.order);
+  const pieces = trayAssemblyPieces(solved, tray);
   const num = (p: PieceInst) => cut.groupOf.get(p.id)!.number;
   const steps: Step[] = [];
 
@@ -95,7 +101,7 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
   }
   if (tray.depth === 1) {
     const lid = pieces.find((p) => p.kind === 'lid');
-    if (lid) steps.push({
+    if (lid && !tray.stacked) steps.push({
       text: `Place lid #${num(lid)}, cut from ${materialLabel(lid.material, lid.thickness).toLowerCase()}, loosely on top of the box walls. Keep it removable. The closed box is ${mm(tray.height)} mm tall.`,
       material: lid.material,
       groups: [num(lid)],
@@ -107,13 +113,19 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
       text: shared
         ? `Build ${tray.stacked ? 'both identical boxes' : 'this box'} separately and set ${tray.stacked ? 'them' : 'it'} aside for compartment ${well}. Position the complete group before fitting its shared lid.`
         : tray.stacked
-        ? `Stack both${lid ? ' with their lids on' : ''} in compartment ${well}; the top${lid ? ' lid' : ' one'} sits flush with the walls around it.`
+        ? `Stack the upper box directly on the lower box in compartment ${well}. Its base covers the lower box${lid ? '; only the upper box needs a lid' : ', and the stack sits flush with the walls around it'}.`
         : tray.emptyAbove
           ? `Drop the box into compartment ${well}. It is half as tall as the walls around it; the space above it stays empty.`
           : `Drop the box${lid ? ' with its lid on' : ''} into compartment ${well}; its top sits flush with the walls around it.`,
       groups: [],
       notes: [],
-      ...(tray.stacked ? { strong: 'Make a second, identical box.' } : {}),
+      ...(tray.stacked ? { strong: 'Make a second, identical box body.' } : {}),
+    });
+    if (lid && tray.stacked) steps.push({
+      text: `Place lid #${num(lid)}, cut from ${materialLabel(lid.material, lid.thickness).toLowerCase()}, loosely on the upper box only. Keep it removable. The closed stack is ${mm(2 * tray.height + lid.thickness)} mm tall; its top sits flush with the walls around it.`,
+      material: lid.material,
+      groups: [num(lid)],
+      notes: [],
     });
   }
   return steps;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SECONDARY_THICKNESS_PRESETS, SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
   import { setLayerBaseSecondary, setSecondaryThickness, setConstruction, setCutLayout } from '../core/edit';
-  import { CUT_LAYOUTS } from '../core/pieces';
+  import { cutPacking, CUT_LAYOUTS } from '../core/pieces';
   import type { CutLayout } from '../core/types';
   import { mm } from '../core/geom';
   import { baseThickness, LOWERED_DEFAULT, type Solved } from '../core/layout';
@@ -123,14 +123,24 @@
     <NumberField label="Sheet width" value={project.material.sheet.width} min={50} onchange={(v) => (project.material.sheet.width = v)} />
     <NumberField label="Sheet height" value={project.material.sheet.height} min={50} onchange={(v) => (project.material.sheet.height = v)} />
   {/if}
-  <label class="field" data-tip="How pieces are laid out on the sheets. The cut list page shows every layout's sheet count side by side.">
-    <span>Layout</span>
-    <select value={project.material.layout ?? 'strips'} onchange={(e) => setCutLayout(project, e.currentTarget.value as CutLayout)}>
+  <label class="field" data-tip="How primary material pieces are packed onto sheets. The cut list page compares each packing choice's sheet count.">
+    <span>Packing{#if secondary}<small class="packing-material">Primary</small>{/if}</span>
+    <select aria-label="Primary material packing" value={cutPacking(project, 'primary')} onchange={(e) => setCutLayout(project, e.currentTarget.value as CutLayout)}>
       {#each CUT_LAYOUTS as l (l.value)}
         <option value={l.value}>{l.name}</option>
       {/each}
     </select>
   </label>
+  {#if secondary}
+    <label class="field" data-tip="How secondary material pieces are packed onto their own sheets; independent of primary material packing.">
+      <span>Packing<small class="packing-material">Secondary</small></span>
+      <select aria-label="Secondary material packing" value={cutPacking(project, 'secondary')} onchange={(e) => setCutLayout(project, e.currentTarget.value as CutLayout, 'secondary')}>
+        {#each CUT_LAYOUTS as l (l.value)}
+          <option value={l.value}>{l.name}</option>
+        {/each}
+      </select>
+    </label>
+  {/if}
   <NumberField label="Edge trim" value={project.material.trim} min={0} hint="Unusable edge cut off each side of a sheet" onchange={(v) => (project.material.trim = v)} />
   <NumberField label="Kerf" value={project.material.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (project.material.kerf = v)} />
   <NumberField
@@ -292,6 +302,11 @@
   }
   .thick {
     width: 56px;
+  }
+  .packing-material {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
   }
   .layer-base {
     display: flex;

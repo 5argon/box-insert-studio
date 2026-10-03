@@ -133,7 +133,7 @@
     { side: 'right', glyph: '→' },
   ];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
-  /** Total height of one box including any lid, halved when two are stacked. */
+  /** Half the stack envelope for a pair; its bodies divide the height beneath one top lid. */
   const boxHeight = $derived((layer.height - B - (well?.padHeight ?? 0)) / (stacked ? 2 : 1));
   const boxBody = $derived(boxHeight - lidAllowance);
   /** Boxes standing on this compartment's floor: 0, 1, or 2 when stacked. */
@@ -146,9 +146,9 @@
     const total = `${mm(layer.height)} mm${li.multi ? '' : ' tray'}`;
     const wellPad = well?.pad ? ` − ${mm(well.padHeight)} mm raised floor` : '';
     const pad = c.pad ? ` − ${c.pad} × ${mm(T)} mm raised floor` : '';
-    const lid = boxLid ? sharedLid && pair ? ` − ${mm(lidAllowance)} mm share of the shared lid` : ` − ${mm(boxLid)} mm ${sharedLid ? 'shared lid' : 'lid'}` : '';
+    const lid = boxLid ? pair ? ` − ${mm(lidAllowance)} mm share of the ${sharedLid ? 'shared' : 'top'} lid` : ` − ${mm(boxLid)} mm ${sharedLid ? 'shared lid' : 'lid'}` : '';
     if (c.depth === 1 && c.stacked)
-      return `In each box: (${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm per box${lid} − ${mm(boxBase)} mm box floor${pad}`;
+      return `In each box: (${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm${lid} − ${mm(boxBase)} mm box floor${pad}`;
     if (c.depth === 1 && emptyAbove)
       return `(${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm box${lid} − ${mm(boxBase)} mm box floor${pad}; the half above stays empty`;
     if (c.depth === 1) return `${total} − ${mm(B)} mm tray floor${wellPad}${lid} − ${mm(boxBase)} mm box floor${pad}`;
@@ -365,8 +365,8 @@
       Floor raised {mm(c.padHeight)} mm; the box stands on it, {mm(sharedLid ? boxBody : boxHeight)} mm tall{sharedLid ? ' beneath its shared lid' : ''}, half the height left, with the rest above it empty. Marked
       <CompLabel {c} /> in the layout.
     {:else if c.pad && boxesHere}
-      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked boxes stand' : 'box stands'} on it, {mm(sharedLid ? boxBody : boxHeight)} mm tall{boxesHere === 2 ? ' each' : ''}, so the
-      top stays flush{sharedLid ? ' with the shared lid on' : ''}. Marked <CompLabel {c} /> in the layout.
+      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked box bodies stand' : 'box stands'} on it, {mm(sharedLid || pair ? boxBody : boxHeight)} mm tall{boxesHere === 2 ? ' each' : ''}, so the
+      top stays flush{sharedLid ? ' with the shared lid on' : pair && hasLid ? ' with the upper lid on' : ''}. Marked <CompLabel {c} /> in the layout.
     {:else if c.pad}
       Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked <CompLabel {c} /> in the layout.
     {:else if boxesHere && c.node.insert?.emptyAbove}
@@ -416,8 +416,8 @@
           {boxes.length === 1 ? 'One box' : `${boxes.length} boxes`}, {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} (half the height) with {mm(boxWall)} mm walls, {mm(boxBody - boxBase)} mm inside. The
           {mm(boxHeight)} mm above {boxes.length === 1 ? 'it' : 'them'} stays empty.
         {:else if pair}
-          Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box is {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} with {mm(boxWall)} mm walls and its own floor,
-          {mm(boxBody - boxBase)} mm inside. Together they sit flush.
+          Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box body is {mm(boxBody)} mm tall with {mm(boxWall)} mm walls and its own floor,
+          {mm(boxBody - boxBase)} mm inside.{hasLid ? ` Only the upper box has a ${mm(boxLid)} mm lid; the upper base covers the lower box.` : ''} Together they sit flush.
         {:else}
           {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} with {mm(boxWall)} mm walls, {mm(boxBody - boxBase)} mm inside, standing on
           the {well.pad ? 'raised floor' : 'base'} so the top sits flush.
@@ -438,18 +438,20 @@
     {#if hasLid}
       {#if mode === 'multiple'}
         <div class="row" role="group" aria-label="Lid coverage">
-          <button class="small" class:on={!sharedLid} aria-pressed={!sharedLid} onclick={() => setInsertSharedLid(well.node, false)}>Lid for each box</button>
+          <button class="small" class:on={!sharedLid} aria-pressed={!sharedLid} onclick={() => setInsertSharedLid(well.node, false)}>Lid for each {pair ? 'upper box' : 'box'}</button>
           <button class="small" class:on={sharedLid} aria-pressed={sharedLid} onclick={() => setInsertSharedLid(well.node, true)}>One lid over all boxes</button>
         </div>
       {/if}
       {#if project.material.secondaryThickness !== undefined}
-        <label class="check nested lid-material" data-tip={sharedLid ? 'Use the secondary material for the shared lid' : 'Use the secondary material for every lid, including both boxes when stacked'}>
+        <label class="check nested lid-material" data-tip={sharedLid ? 'Use the secondary material for the shared lid' : pair ? 'Use the secondary material for each upper-box lid; lower boxes need no lid' : 'Use the secondary material for each lid'}>
           <input type="checkbox" checked={!!well.node.insert?.secondaryLid} onchange={(e) => setInsertLidSecondary(well.node, e.currentTarget.checked)} />
           Use secondary material for {sharedLid ? 'the lid' : 'lids'}
         </label>
       {/if}
       {#if sharedLid}
         <p class="hint">The shared lid covers all the separate boxes and the gaps between them. Build and position every box first, then place the lid on top{pair ? ' of the entire stack' : ''}. Its {mm(boxLid)} mm thickness comes out of the height{pair ? ' before the two equal box bodies are divided' : ''}{emptyAbove ? '; the half above stays empty' : ' so the closed group stays flush'}.</p>
+      {:else if pair}
+        <p class="hint">Only the upper box needs a lid; its base covers the lower box in storage. Reserve {mm(boxLid)} mm for the top lid, then divide the remaining height into two equal {mm(boxBody)} mm box bodies. Adding or removing the lid keeps the stack flush.</p>
       {:else}
         <p class="hint">Each {mm(boxLid)} mm lid rests on the walls. The box beneath it is {mm(boxBody)} mm tall; adding or removing a lid keeps the total height at {mm(boxHeight)} mm{emptyAbove ? ', with the half above still empty' : ' so the top stays flush'}.</p>
       {/if}
@@ -472,7 +474,7 @@
     {/if}
     <label class="check">
       <input type="checkbox" checked={stacked} onchange={(e) => setStacked(well.node, e.currentTarget.checked)} />
-      Stack two boxes ({sharedLid ? 'two equal box bodies beneath one lid' : 'each half the height'})
+      Stack two boxes ({hasLid && !emptyAbove ? 'two equal box bodies beneath one top lid' : 'each half the height'})
     </label>
     {#if stacked}
       <label class="check nested" data-tip="Build only the lower box; the space above it stays open for something else">

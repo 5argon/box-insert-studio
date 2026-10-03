@@ -29,7 +29,8 @@ describe('OBJ export', () => {
     const back = s.pieces.find((x) => x.role === 'back wall' && x.depth === 0)!;
     expect(objects).toContain(`o Tray_1_piece_${cut.groupOf.get(back.id)!.number}_back_wall`);
     expect(objects.some((o) => o.startsWith('o Box_in_G_upper_piece_'))).toBe(true);
-    expect(objects.filter((o) => o.endsWith('_lid'))).toHaveLength(2);
+    expect(objects.filter((o) => o.endsWith('_lid'))).toHaveLength(1);
+    expect(objects.find((o) => o.endsWith('_lid'))).toContain('Box_in_G_upper');
     expect(lines.filter((l) => l.startsWith('f ')).length).toBeGreaterThan(s.pieces.length * 6);
 
     // Every vertex lies inside the box: x across, y up, z toward the front.

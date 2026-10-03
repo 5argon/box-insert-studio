@@ -48,7 +48,9 @@ shared project file cannot run scripts.
 
 Projects autosave in the browser; **Save** / **Open** use `.insert.json` files. **New** asks for the box's
 inside (or a preset of a popular game's box), the material and the first layer, then starts an
-empty design; it opens by itself the first time.
+empty design; it opens by itself the first time. Its layer sizing defaults to **Headroom** at
+15 mm, keeping that space fixed as you change box presets. Switch to **Layer height** to enter
+the layer's total height directly instead.
 **Undo** / **Redo** (⌘Z / ⇧⌘Z, or Ctrl+Z / Ctrl+Y) cover every change: each click is a step, and a
 drag or a burst of typing counts as one. The theme follows the system's light or dark setting, or
 pick one in the header; the printable report is always a white page.
@@ -86,13 +88,16 @@ With primary material thickness T, tray base thickness B and tray height H (incl
 - Separate trays each get their own base and walls, with the clearance between them.
 - A removable box stands on its tray's base inside a compartment, with the clearance around it.
   It is H − B tall, so its top sits flush with the walls around it; its walls and dividers are
-  shortened to match. Boxes go one level deep. Stacking splits that height exactly in half: two
-  identical boxes, each (H − B) / 2 tall with its own floor. Subtract the box's selected base
+  shortened to match. Boxes go one level deep. Without a lid, stacking splits that height in half:
+  two identical boxes, each (H − B) / 2 tall with its own floor. Subtract the box's selected base
   thickness from that height for the space inside. A loose lid covers the box's outside footprint;
-  its thickness also comes out of each box's height. Adding or removing the lid keeps the closed
-  top flush, including both lids in a stacked pair. In half-height mode the space above stays empty.
-  With **Separate boxes**, choose a lid for each box or **One lid over all boxes**. A shared lid
-  spans the whole group, including its gaps. With stacked boxes it covers the entire stack;
+  its thickness comes out of the available height. A stacked pair needs a lid only on the upper
+  box, since its base covers the lower box. Both identical bodies divide the height beneath this
+  one lid equally. Adding or removing the lid keeps the closed top flush. In half-height mode the
+  single box still gets its own lid, and the space above stays empty.
+  With **Separate boxes**, choose a lid for each box (each upper box when stacked) or
+  **One lid over all boxes**. A shared lid spans the whole group, including its gaps. With stacked
+  boxes it covers the entire stack;
   both identical box bodies divide the height beneath the one lid equally. Its assembly block
   follows all the group's box instructions: position every box first, then fit the shared cover.
 - Enable **Secondary Material** under Material to specify another thickness. Layer bases and
@@ -102,8 +107,10 @@ With primary material thickness T, tray base thickness B and tray height H (incl
   preserves compartment depth by adjusting layer heights; thinner removable-box bases increase
   space inside while keeping the box height, including each box of a stack. Cut lists, cutting
   sheets, CSV exports and assembly steps identify primary or secondary material.
-- **Strips across the sheet** is the default cutting layout. Fewest sheets and Edge-to-edge cuts
-  remain available; each material is planned on separate sheets.
+- **Packing** controls how pieces fill their material sheets. **Strips across the sheet** is the
+  default; Fewest sheets and Edge-to-edge cuts remain available. Primary and secondary materials
+  have independent packing choices in Material and in the cutting plan, where each material's
+  choices show its own sheet count and usage. Saved designs retain both choices.
 - A raised floor of n layers stacks n pieces cut to the compartment's inside size (less the
   clearance), taking n·T from its height. Under a removable box it lifts the box, which gets
   n·T shorter so its top stays flush. A floor that no longer fits (say after switching to a
