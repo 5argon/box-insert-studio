@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { sharedLidInstructions, trayInstructions } from '../core/assembly';
+  import { sharedLidInstructions, trayAssemblyPieces, trayInstructions } from '../core/assembly';
   import { NOTCH_BOTTOM_DEFAULT } from '../core/layout';
   import { lidNotchPoints, lidNotchText, lidOutline, polygonPath } from '../core/lidNotches';
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
-  import { CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
+  import { cutPacking, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import { setCutLayout } from '../core/edit';
-  import type { Project } from '../core/types';
+  import type { MaterialKind, Project } from '../core/types';
   import Markdown from './Markdown.svelte';
   import ReportOverview from './ReportOverview.svelte';
   import PieceCutting from './PieceCutting.svelte';
@@ -35,7 +35,7 @@
       // The upper box of a stack is built like the one below it; count it there.
       const tray = trayById.get(p.trayId)!;
       const t = tray.copyOf ? trayById.get(tray.copyOf)!.number : tray.number;
-      const kind = p.kind;
+      const kind = p.kind === 'lid' && tray.copyOf ? 'upper-box lid' : p.kind;
       const m = byTray.get(t) ?? new Map<string, number>();
       m.set(kind, (m.get(kind) ?? 0) + 1);
       byTray.set(t, m);
@@ -121,12 +121,22 @@
       .join(', '),
   );
 
-  /** Every layout planned side by side, so switching shows its sheet count before you pick it. */
-  const layout = $derived(project.material.layout ?? 'strips');
-  const layoutInfo = $derived(CUT_LAYOUTS.find((l) => l.value === layout) ?? CUT_LAYOUTS[0]);
-  const alternatives = $derived(
-    new Map(CUT_LAYOUTS.map((l) => [l.value, l.value === layout ? plan : planCuts({ ...project, material: { ...project.material, layout: l.value } }, cut)])),
-  );
+  /** Compare packing choices using only that material's pieces, with separate counts and efficiency. */
+  const packingMaterials = $derived<MaterialKind[]>(project.material.secondaryThickness !== undefined ? ['primary', 'secondary'] : ['primary']);
+  const packings = $derived(packingMaterials.map((material) => {
+    const packing = cutPacking(project, material);
+    const groups = cut.groups.filter((g) => g.material === material);
+    return {
+      material,
+      thickness: material === 'secondary' ? project.material.secondaryThickness ?? T : T,
+      value: packing,
+      info: CUT_LAYOUTS.find((l) => l.value === packing) ?? CUT_LAYOUTS[0],
+      alternatives: new Map(CUT_LAYOUTS.map((l) => [l.value, planCuts({
+        ...project,
+        material: { ...project.material, [material === 'secondary' ? 'secondaryLayout' : 'layout']: l.value },
+      }, { ...cut, groups })])),
+    };
+  }));
 
   /** Loads three.js on demand, like the 3D view, so the report stays light until it is asked for. */
   async function exportObj() {
@@ -254,24 +264,31 @@
 
     <section>
       <h2>Cutting plan</h2>
-      <div class="layouts no-print" role="group" aria-label="Cutting layout">
-        {#each CUT_LAYOUTS as l (l.value)}
-          {@const alt = alternatives.get(l.value)!}
-          <button class="layout" class:on={layout === l.value} aria-pressed={layout === l.value} onclick={() => setCutLayout(project, l.value)}>
-            <b>{l.name}</b>
-            <span>{sheetSummary(project, alt)}, {Math.round(alt.efficiency * 100)}% used</span>
-          </button>
-        {/each}
-      </div>
+      {#each packings as packing (packing.material)}
+        <div class="packing-options" data-material={packing.material}>
+          <h3>{materialLabel(packing.material, packing.thickness)} · Packing</h3>
+          <div class="packings no-print" role="group" aria-label="{packing.material === 'secondary' ? 'Secondary' : 'Primary'} material packing">
+            {#each CUT_LAYOUTS as l (l.value)}
+              {@const alt = packing.alternatives.get(l.value)!}
+              <button class="packing" class:on={packing.value === l.value} aria-pressed={packing.value === l.value} onclick={() => setCutLayout(project, l.value, packing.material)}>
+                <b>{l.name}</b>
+                <span>{sheetSummary(project, alt)}, {Math.round(alt.efficiency * 100)}% used</span>
+              </button>
+            {/each}
+          </div>
+          <p class="muted small"><b>{packing.info.name}.</b> {packing.info.detail}</p>
+        </div>
+      {/each}
       <p class="muted small">
-        <b>{layoutInfo.name}.</b> {layoutInfo.detail} Trim {project.material.trim} mm off each sheet edge first.
+        Trim {project.material.trim} mm off each sheet edge first.
         Cut out and number the rectangular pieces first{#if notchGroups.length || loweredGroups.length}; complete the notch and edge cuts below before assembly{/if}.
       </p>
       {#each plan.sheets as sheet (sheet.index)}
         {@const W = project.material.sheet.width}
         {@const H = project.material.sheet.height}
+        {@const packingInfo = CUT_LAYOUTS.find((l) => l.value === cutPacking(project, sheet.material)) ?? CUT_LAYOUTS[0]}
         <div class="sheet">
-          <svg viewBox="-2 -2 {W + 4} {H + 4}" class="sheet-svg" role="img" aria-label="Sheet {sheet.index + 1} layout">
+          <svg viewBox="-2 -2 {W + 4} {H + 4}" class="sheet-svg" role="img" aria-label="Sheet {sheet.index + 1} packing">
             <rect width={W} height={H} class="paper" />
             <rect x={project.material.trim} y={project.material.trim} width={W - 2 * project.material.trim} height={H - 2 * project.material.trim} class="trim" />
             {#each sheet.items as item, i (i)}
@@ -290,6 +307,7 @@
           </svg>
           <div class="sheet-text">
             <h3>Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</span></h3>
+            <p class="muted small">Packing: {packingInfo.name}.</p>
             <ol>
               {#each sheet.items as item, i (i)}
                 <li>
@@ -333,14 +351,15 @@
         </p>
       {/if}
       {#each assemblyTrays as t (t.id)}
-        {@const pieces = solved.pieces.filter((p) => p.trayId === t.id && !p.sharedLidFor)}
+        {@const pieces = trayAssemblyPieces(solved, t)}
+        {@const topLid = t.stacked ? pieces.find((p) => p.kind === 'lid') : undefined}
         {@const comps = solved.compartments.filter((c) => c.trayId === t.id)}
         <div class="tray">
           <h3>
             Tray {t.number}{t.stacked ? ' (make 2)' : ''} · {layerName.get(t.layerId)}{t.depth === 1
               ? ` · ${t.stacked ? 'two boxes stacked' : t.emptyAbove ? 'half-height box, empty above,' : 'box standing'} in ${wellLabel(t.wellId)} of tray ${parentNumber(t.parentTrayId)}`
               : ''} ·
-            {mm(t.outer.w)} × {mm(t.outer.h)} × {mm(t.height)} mm{t.lid ? ` including ${mm(t.lid)} mm lid` : ''} · compartments {t.compartments.join(', ')}
+            {mm(t.outer.w)} × {mm(t.outer.h)} × {mm(t.height)} mm{t.stacked ? ' per box body' : ''}{topLid ? ` · one ${mm(topLid.thickness)} mm lid on the upper box` : t.lid ? ` including ${mm(t.lid)} mm lid` : ''} · compartments {t.compartments.join(', ')}
           </h3>
           <div class="tray-body">
             <svg viewBox={trayView(t)} class="tray-svg" role="img" aria-label="Tray {t.number} top view">
@@ -391,7 +410,7 @@
                 {#each lid.lidNotches ?? [] as notch (notch.side)}
                   <path d={polygonPath(lidNotchPoints(lid.length, lid.height, notch), lid.footprint.x, lid.footprint.y)} class="tray-lid-notch" />
                 {/each}
-                <text x={t.outer.x + t.outer.w / 2} y={t.outer.y - 5} class="front">LID #{cut.groupOf.get(lid.id)?.number}</text>
+                <text x={t.outer.x + t.outer.w / 2} y={t.outer.y - 5} class="front">{t.stacked ? 'TOP LID' : 'LID'} #{cut.groupOf.get(lid.id)?.number}</text>
               {/each}
               <text x={t.outer.x + t.outer.w / 2} y={t.outer.y + t.outer.h + 8} class="front">FRONT</text>
             </svg>
@@ -700,19 +719,22 @@
   .step-note.lowered b {
     color: #6f4fb8;
   }
-  .layouts {
+  .packing-options {
+    margin-bottom: 14px;
+  }
+  .packings {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     margin: 4px 0 6px;
   }
-  .layout {
+  .packing {
     display: grid;
     gap: 1px;
     text-align: left;
     padding: 6px 10px;
   }
-  .layout span {
+  .packing span {
     font-size: 11.5px;
     color: var(--muted);
   }

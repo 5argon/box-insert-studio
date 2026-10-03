@@ -1,7 +1,7 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
 import { baseThickness } from './layout';
-import type { CutLayout, Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, Side, SplitNode } from './types';
+import type { CutLayout, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, Project, SectionNode, Side, SplitNode } from './types';
 
 export const MIN_REGION = 5;
 
@@ -318,7 +318,10 @@ function adjustLayerBases(project: Project, before: Mm) {
 export function setSecondaryThickness(project: Project, next: Mm | undefined) {
   const before = baseThickness(project);
   if (next === undefined) delete project.material.secondaryThickness;
-  else project.material.secondaryThickness = next;
+  else {
+    project.material.secondaryThickness = next;
+    project.material.secondaryLayout ??= 'strips';
+  }
   adjustLayerBases(project, before);
 }
 
@@ -344,7 +347,7 @@ export function setInsertLid(section: SectionNode, on: boolean) {
   else delete section.insert.lid;
 }
 
-/** Choose the lid material for a removable box, including both boxes of a stacked pair. */
+/** Choose the lid material for a removable box, covering only the upper box in a stacked pair. */
 export function setInsertLidSecondary(section: SectionNode, secondary: boolean) {
   if (!section.insert) return;
   if (secondary) section.insert.secondaryLid = true;
@@ -367,9 +370,10 @@ export function setLidNotchSide(section: SectionNode, side: Side, on: boolean) {
   else delete section.insert.lidNotches;
 }
 
-/** Choose how pieces are laid out on the sheets; the default layout is stored as unset. */
-export function setCutLayout(project: Project, layout: CutLayout) {
-  if (layout === 'strips') delete project.material.layout;
+/** Choose one material's packing without changing the other material's sheets. */
+export function setCutLayout(project: Project, layout: CutLayout, material: MaterialKind = 'primary') {
+  if (material === 'secondary') project.material.secondaryLayout = layout;
+  else if (layout === 'strips') delete project.material.layout;
   else project.material.layout = layout;
 }
 

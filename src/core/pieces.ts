@@ -9,7 +9,7 @@ import type { Issue, Low, Notch, PieceInst, Solved } from './layout';
 import { pack, packGuillotine } from './pack';
 import type { CutLayout, MaterialKind, Mm, Project } from './types';
 
-/** The cutting layouts, in the order they are offered. */
+/** Sheet packing choices, in the order they are offered. */
 export const CUT_LAYOUTS: { value: CutLayout; name: string; detail: string }[] = [
   {
     value: 'strips',
@@ -23,6 +23,11 @@ export const CUT_LAYOUTS: { value: CutLayout; name: string; detail: string }[] =
     detail: 'Every cut runs all the way across the piece of sheet in hand, so a straightedge or saw fence always reaches end to end.',
   },
 ];
+
+/** Each material independently defaults to strips across the sheet. */
+export function cutPacking(project: Project, material: MaterialKind): CutLayout {
+  return (material === 'secondary' ? project.material.secondaryLayout : project.material.layout) ?? 'strips';
+}
 
 /** A material label shared by the cut list, cutting plan and assembly instructions. */
 export function materialLabel(material: MaterialKind, thickness: Mm): string {
@@ -270,7 +275,7 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
   for (const material of materials) {
     const groups = cut.groups.filter((g) => g.material === material);
     const thickness = groups[0]?.thickness ?? project.material.thickness;
-    const part = planSheets(project, { ...cut, groups });
+    const part = planSheets(project, { ...cut, groups }, cutPacking(project, material));
     for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, items: s.items });
     strips.push(...part.strips);
     issues.push(...part.issues);
@@ -282,7 +287,7 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
   return { sheets, counts, strips, issues, efficiency };
 }
 
-function planSheets(project: Project, cut: CutList) {
+function planSheets(project: Project, cut: CutList, packing: CutLayout) {
   const { sheet, trim, kerf } = project.material;
   const usableW = sheet.width - 2 * trim;
   const usableH = sheet.height - 2 * trim;
@@ -310,8 +315,8 @@ function planSheets(project: Project, cut: CutList) {
     baseItems.push({ id: b.id, w: b.g.length, h: b.g.height });
   }
 
-  if ((project.material.layout ?? 'strips') === 'strips') return { ...planBands(project, fitting, bases.filter((b) => fitsSheet(b.g.length, b.g.height)), usableW, usableH), issues };
-  const packer = project.material.layout === 'guillotine' ? packGuillotine : pack;
+  if (packing === 'strips') return { ...planBands(project, fitting, bases.filter((b) => fitsSheet(b.g.length, b.g.height)), usableW, usableH), issues };
+  const packer = packing === 'guillotine' ? packGuillotine : pack;
 
   // Long strips mean fewer cuts, but shorter ones fit the gaps beside the bases. Try full-length
   // strips, strips as long as the sheet's short side, and one piece per strip; keep the fewest sheets.

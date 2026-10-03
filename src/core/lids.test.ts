@@ -4,7 +4,7 @@ import { migrateProject } from './defaults';
 import { setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked, splitSection } from './edit';
 import { blankProject } from './fixtures';
 import { fitItems } from './items';
-import { insertLidThickness, maxPad, solveProject, type Solved } from './layout';
+import { insertLidAllowance, insertLidThickness, maxPad, solveProject, type Solved } from './layout';
 import { buildCutList, panelUse, planCuts } from './pieces';
 import { buildScene, overlap } from './scene';
 import type { Project, SectionNode, SplitNode } from './types';
@@ -54,19 +54,27 @@ describe('removable-box lids', () => {
               const lidThickness = secondary ? 3 : 5;
               const boxes = solved.trays.filter((t) => t.depth === 1);
               const lids = solved.pieces.filter((p) => p.kind === 'lid');
-              expect(lids).toHaveLength((join === 'trays' ? 2 : 1) * (stack === 'pair' ? 2 : 1));
-              expect(boxes.map((t) => t.height)).toEqual(before.trays.filter((t) => t.depth === 1).map((t) => t.height));
+              expect(lids).toHaveLength(join === 'trays' ? 2 : 1);
               expect(lids.every((p) => p.thickness === lidThickness && p.material === (secondary ? 'secondary' : 'primary'))).toBe(true);
               expect(solved.compartments.flatMap((c) => c.issues).filter((i) => i.level === 'error')).toEqual([]);
               for (const box of boxes) {
-                expect(box.wallHeight).toBeCloseTo(before.trays.find((t) => t.id === box.id)!.wallHeight - lidThickness);
-                const lid = lids.find((p) => p.trayId === box.id)!;
-                expect(lid.footprint).toEqual(box.outer);
-                expect(lid.length).toBe(box.outer.w);
-                expect(lid.height).toBe(box.outer.h);
+                const old = before.trays.find((t) => t.id === box.id)!;
+                expect(box.wallHeight).toBeCloseTo(old.wallHeight - lidThickness / (stack === 'pair' ? 2 : 1));
+                expect(box.height).toBeCloseTo(old.height + (stack === 'pair' ? (box.copyOf ? 1 : -1) * lidThickness / 2 : 0));
+                const lid = lids.find((p) => p.trayId === box.id);
+                if (stack === 'pair' && !box.copyOf) {
+                  expect(lid).toBeUndefined();
+                  expect(box.lid).toBe(0);
+                } else {
+                  expect(lid!.copy).toBe(false);
+                  expect(lid!.footprint).toEqual(box.outer);
+                  expect(lid!.length).toBe(box.outer.w);
+                  expect(lid!.height).toBe(box.outer.h);
+                  expect(box.lid).toBe(lidThickness);
+                }
               }
               for (const c of solved.compartments.filter((c) => c.depth === 1)) {
-                expect(c.height).toBeCloseTo(before.compartments.find((old) => old.id === c.id)!.height - lidThickness);
+                expect(c.height).toBeCloseTo(before.compartments.find((old) => old.id === c.id)!.height - lidThickness / (stack === 'pair' ? 2 : 1));
               }
               const scene = sceneWithoutOverlaps(project, solved);
               const well = solved.compartments.find((c) => c.id === host.id)!;
@@ -82,7 +90,7 @@ describe('removable-box lids', () => {
     }
   });
 
-  it('reserves a lid on each stacked box, keeping raised floors and simulated contents below it', () => {
+  it('reserves only a top lid, keeping equal raised floors and contents below the upper base and lid', () => {
     const { project, layer, host } = boxed();
     setSecondaryThickness(project, 2);
     setLayerBaseSecondary(project, true);
@@ -95,52 +103,50 @@ describe('removable-box lids', () => {
     const inner = host.insert!.root as SectionNode;
     setPad(inner, 1);
     inner.arrow = 'front';
-    inner.items = { on: true, shape: 'box', width: 20, height: 25.5, thickness: 5, spare: 10 };
+    inner.items = { on: true, shape: 'box', width: 20, height: 26.5, thickness: 5, spare: 10 };
     const solved = solveProject(project);
     const c = solved.compartments.find((c) => c.id === inner.id)!;
-    // 76 − 2 mm layer base − 5 mm raised floor = 69 mm, split into 34.5 mm per closed box.
-    // Each reserves 2 mm for the lid, 2 mm for the box base, and 5 mm for its inside raised floor.
-    expect(c.height).toBe(25.5);
+    // 76 − 2 mm layer base − 5 mm raised floor − 2 mm top lid = 67 mm: two 33.5 mm bodies.
+    // Each reserves 2 mm for its base and 5 mm for its inside raised floor.
+    expect(c.height).toBe(26.5);
     expect(fitItems(c, inner.arrow, inner.items).warnings).toEqual([]);
     const scene = sceneWithoutOverlaps(project, solved);
     const boxes = scene.trays.filter((t) => t.depth === 1);
     expect(boxes).toHaveLength(2);
-    for (const box of boxes) {
-      const lid = box.blocks.find((b) => b.kind === 'lid')!;
-      for (const item of box.items.flatMap((row) => row.items)) expect(item.z + item.h).toBeCloseTo(lid.z);
-    }
-    const lowerLid = boxes[0]!.blocks.find((b) => b.kind === 'lid')!;
+    expect(boxes[0]!.blocks.some((b) => b.kind === 'lid')).toBe(false);
     const upperBase = boxes[1]!.blocks.find((b) => b.kind === 'base')!;
-    expect(lowerLid.z + lowerLid.h).toBe(upperBase.z);
-    expect(boxes[1]!.blocks.find((b) => b.kind === 'lid')!.z + 2).toBe(76);
+    const upperLid = boxes[1]!.blocks.find((b) => b.kind === 'lid')!;
+    for (const item of boxes[0]!.items.flatMap((row) => row.items)) expect(item.z + item.h).toBeCloseTo(upperBase.z);
+    for (const item of boxes[1]!.items.flatMap((row) => row.items)) expect(item.z + item.h).toBeCloseTo(upperLid.z);
+    expect(upperLid.z + 2).toBe(76);
     setInsertLidSecondary(host, false);
     const thicker = solveProject(project).compartments.find((c) => c.id === inner.id)!;
-    expect(thicker.height).toBe(22.5);
-    expect(fitItems(thicker, inner.arrow, inner.items).warnings[0]).toContain('3 mm above');
+    expect(thicker.height).toBe(25);
+    expect(fitItems(thicker, inner.arrow, inner.items).warnings[0]).toContain('1.5 mm above');
   });
 
   it('accounts for lids when limiting raised floors or rejecting shallow boxes', () => {
     const { project, layer, host } = boxed();
-    layer.height = 33;
+    layer.height = 29;
     setStacked(host, true);
     setInsertLid(host, true);
     let solved = solveProject(project);
     expect(solved.trays.filter((t) => t.depth === 1)).toEqual([]);
-    expect(solved.compartments[0]!.issues[0]!.message).toContain('at least 35 mm tall');
+    expect(solved.compartments[0]!.issues[0]!.message).toContain('at least 30 mm tall');
     setSecondaryThickness(project, 3);
     setInsertLidSecondary(host, true);
     solved = solveProject(project);
     expect(solved.trays.filter((t) => t.depth === 1)).toHaveLength(2);
-    expect(solved.compartments.filter((c) => c.depth === 1)[0]!.height).toBe(6);
-    expect(maxPad(28, 5, 2, 5, 3)).toBe(0);
+    expect(solved.compartments.filter((c) => c.depth === 1)[0]!.height).toBe(5.5);
+    expect(maxPad(24, 5, 2, 5, insertLidAllowance(project, host))).toBe(0);
     layer.height = 45;
-    expect(maxPad(40, 5, 2, 5, 5)).toBe(2);
     setInsertLidSecondary(host, false);
-    setPad(host, 3);
+    expect(maxPad(40, 5, 2, 5, insertLidAllowance(project, host))).toBe(3);
+    setPad(host, 4);
     solved = solveProject(project);
     expect(solved.trays.filter((t) => t.depth === 1)).toEqual([]);
     expect(solved.compartments[0]!.issues[0]!.message).toContain('Remove 1 layer.');
-    setPad(host, 2);
+    setPad(host, 3);
     solved = solveProject(project);
     expect(solved.trays.filter((t) => t.depth === 1)).toHaveLength(2);
     expect(solved.compartments.filter((c) => c.depth === 1)[0]!.height).toBe(5);
@@ -162,9 +168,9 @@ describe('removable-box lids', () => {
       expect(group.kind).toBe('base');
       expect(group.material).toBe('secondary');
       expect(panelUse(group)).toBe(base === 'under' ? 'base, lid' : 'lid');
-      expect(group.pieces).toHaveLength(base === 'under' ? 4 : 2);
+      expect(group.pieces).toHaveLength(base === 'under' ? 3 : 1);
       for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
-        const plan = planCuts({ ...project, material: { ...project.material, layout } }, cut);
+        const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
         expect(plan.issues).toEqual([]);
         const placed = plan.sheets.flatMap((s) => s.items).reduce((n, i) => n + (i.kind === 'base' ? 1 : i.strip!.cuts.length), 0);
         expect(placed).toBe(solved.pieces.length);
@@ -183,8 +189,11 @@ describe('removable-box lids', () => {
       expect(step.groups).toEqual([group.number]);
       expect(step.text).toContain('secondary material (3 mm)');
       expect(step.text).toContain('Keep it removable.');
-      expect(step.text).toContain(`${tray.height} mm tall`);
-      expect(steps.at(-1)!.text).toContain('with their lids on');
+      expect(step.text).toContain(`${2 * tray.height + 3} mm tall`);
+      expect(steps.at(-1)).toBe(step);
+      expect(step.text).toContain('upper box only');
+      expect(steps.at(-2)!.strong).toBe('Make a second, identical box body.');
+      expect(steps.at(-2)!.text).toContain('Its base covers the lower box');
     }
   });
 

@@ -28,7 +28,8 @@ describe('lid meshes', () => {
         group.updateMatrixWorld(true);
         try {
           const lids = model.trays.flatMap((t) => t.blocks).filter((b) => b.kind === 'lid');
-          expect(lids).toHaveLength(2);
+          expect(lids).toHaveLength(1);
+          expect(lids[0]!.z + thickness).toBe(layer.height);
           for (const lid of lids) {
             const mesh = group.getObjectByName(lid.id) as THREE.Mesh;
             const cast = (x: number, y: number) => new THREE.Raycaster(new THREE.Vector3(lid.x + x, lid.z + lid.h + 10, lid.y + y), new THREE.Vector3(0, -1, 0)).intersectObject(mesh);

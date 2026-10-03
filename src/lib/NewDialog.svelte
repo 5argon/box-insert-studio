@@ -13,8 +13,11 @@
   let { current, oncreate }: { current: Project; oncreate: (p: Project) => void } = $props();
 
   let dialog: HTMLDialogElement;
+  const DEFAULT_HEADROOM = 15;
   // Filled from the current design each time the dialog opens.
   let spec = $state<NewProjectSpec>(structuredClone(STARTER_SPEC));
+  let layerSizing = $state<'headroom' | 'height'>('headroom');
+  let requestedHeadroom = $state(DEFAULT_HEADROOM);
   let secondary = $state(false);
   let secondaryThickness = $state(3);
   let secondaryBase = $state(false);
@@ -27,12 +30,14 @@
       box: { ...p.box },
       thickness: p.material.thickness,
       sheet: { ...p.material.sheet },
-      layerHeight: p.layers.length === 1 ? p.layers[0].height : Math.max(10, p.box.height - 10),
+      layerHeight: p.box.height - DEFAULT_HEADROOM,
     };
   }
 
   export function open(opts: { replacing?: boolean } = {}) {
     spec = fromProject(current);
+    layerSizing = 'headroom';
+    requestedHeadroom = DEFAULT_HEADROOM;
     secondary = current.material.secondaryThickness !== undefined;
     secondaryThickness = current.material.secondaryThickness ?? SECONDARY_THICKNESS_PRESETS.filter((t) => t < current.material.thickness).pop() ?? current.material.thickness;
     secondaryBase = !!current.secondaryBase;
@@ -52,11 +57,18 @@
   }
 
   const base = $derived(secondary && secondaryBase ? secondaryThickness : spec.thickness);
-  const headroom = $derived(spec.box.height - spec.layerHeight);
+  const layerHeight = $derived(layerSizing === 'headroom' ? spec.box.height - requestedHeadroom : spec.layerHeight);
+  const headroom = $derived(spec.box.height - layerHeight);
+  function setLayerSizing(mode: typeof layerSizing) {
+    if (mode === layerSizing) return;
+    if (mode === 'height') spec.layerHeight = layerHeight;
+    else requestedHeadroom = headroom;
+    layerSizing = mode;
+  }
   const problem = $derived(
     headroom < 0
       ? 'The layer is taller than the box.'
-      : spec.layerHeight - base < 5
+      : layerHeight - base < 5
         ? 'The layer is too shallow for its base.'
         : Math.min(spec.box.width, spec.box.depth) < 20
           ? 'The box is too small.'
@@ -65,7 +77,7 @@
 
   function create() {
     if (problem) return;
-    oncreate(newProject({ ...$state.snapshot(spec), ...(secondary ? { secondaryThickness, secondaryBase } : {}) }));
+    oncreate(newProject({ ...$state.snapshot(spec), layerHeight, ...(secondary ? { secondaryThickness, secondaryBase } : {}) }));
     dialog.close();
   }
 </script>
@@ -153,14 +165,22 @@
 
     <section>
       <h3>Layer</h3>
-      <NumberField
-        label="Height"
-        value={spec.layerHeight}
-        min={5}
-        hint="From the bottom of its base to the top of its walls"
-        onchange={(v) => (spec.layerHeight = v)}
-      />
-      <p class="hint">Includes the {mm(base)} mm base. Finger notches start {mm(spec.layerHeight / 4)} mm wide and deep, a quarter of this height.</p>
+      <div class="row layer-sizing" role="group" aria-label="Layer sizing">
+        <button type="button" class="small" class:on={layerSizing === 'headroom'} aria-pressed={layerSizing === 'headroom'} onclick={() => setLayerSizing('headroom')}>Headroom</button>
+        <button type="button" class="small" class:on={layerSizing === 'height'} aria-pressed={layerSizing === 'height'} onclick={() => setLayerSizing('height')}>Layer height</button>
+      </div>
+      {#if layerSizing === 'headroom'}
+        <NumberField label="Headroom" value={requestedHeadroom} min={0}
+          hint="Space above the layer for the board and rulebook; stays fixed when the box height changes"
+          onchange={(v) => (requestedHeadroom = v)} />
+        <p class="hint">Keep this space above the layer when changing box presets or the box height.</p>
+      {:else}
+        <NumberField label="Height" value={spec.layerHeight} min={5}
+          hint="From the bottom of its base to the top of its walls"
+          onchange={(v) => (spec.layerHeight = v)} />
+        <p class="hint">Keep this layer height when changing box presets or the box height.</p>
+      {/if}
+      <p class="hint">Layer height includes the {mm(base)} mm base. Finger notches start {mm(layerHeight / 4)} mm wide and deep, a quarter of the layer height.</p>
       {#if secondary}
         <label class="check">
           <input type="checkbox" bind:checked={secondaryBase} />
@@ -168,8 +188,8 @@
         </label>
         <p class="hint">The base uses {secondaryBase ? 'secondary' : 'primary'} material ({mm(base)} mm); walls and dividers use primary material ({mm(spec.thickness)} mm).</p>
       {/if}
-      <p class="headroom" class:bad={headroom < 0} data-tip="Space left above the layer, for the board and rulebook">
-        Headroom: <b>{mm(headroom)} mm</b>
+      <p class="headroom" class:bad={!!problem} data-tip={layerSizing === 'headroom' ? 'From the bottom of its base to the top of its walls' : 'Space left above the layer, for the board and rulebook'}>
+        {layerSizing === 'headroom' ? 'Layer height' : 'Headroom'}: <b>{mm(layerSizing === 'headroom' ? layerHeight : headroom)} mm</b>
       </p>
     </section>
 
@@ -261,6 +281,9 @@
   }
   .headroom {
     margin: 10px 0 0;
+  }
+  .layer-sizing {
+    margin-bottom: 8px;
   }
   .headroom.bad,
   .problem {

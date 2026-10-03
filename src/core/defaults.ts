@@ -97,7 +97,7 @@ export function newProject(spec: NewProjectSpec): Project {
     box: { ...spec.box },
     material: {
       thickness: spec.thickness,
-      ...(spec.secondaryThickness !== undefined ? { secondaryThickness: spec.secondaryThickness } : {}),
+      ...(spec.secondaryThickness !== undefined ? { secondaryThickness: spec.secondaryThickness, secondaryLayout: 'strips' as const } : {}),
       sheet: { ...spec.sheet },
       trim: 5,
       kerf: 0.5,
@@ -133,5 +133,8 @@ export function migrateProject(raw: unknown): Project | undefined {
     p.secondaryBase = true;
     delete material.baseThickness;
   }
+  // Older designs used the primary packing for both materials. Keep that plan on first opening;
+  // explicitly storing the secondary choice also preserves an independent `strips` preference.
+  if (material.secondaryThickness !== undefined) material.secondaryLayout ??= material.layout ?? 'strips';
   return p;
 }

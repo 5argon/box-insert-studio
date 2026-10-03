@@ -74,7 +74,7 @@ describe('lid edge notches', () => {
     setLidNotchSide({ kind: 'section', id: 'no-insert', notches: [] }, 'front', true);
   });
 
-  it('keeps stacked lid cutouts identical and independent of sheet thickness or vertical box height', () => {
+  it('keeps upper-only stacked lid cutouts independent of sheet thickness or vertical box height', () => {
     const { project, layer, host } = boxed();
     for (const side of SIDES) setLidNotchSide(host, side, true);
     host.insert!.lidNotchSize = { width: 24, depth: 9, bottom: 0 };
@@ -84,14 +84,14 @@ describe('lid edge notches', () => {
     splitSection(layer, host.insert!.root.id, 'row', 5, 'trays');
     let solved = solveProject(project);
     const lids = solved.pieces.filter((p) => p.kind === 'lid');
-    expect(lids).toHaveLength(4);
+    expect(lids).toHaveLength(2);
     for (const lid of lids) {
       expect(lid.lidNotches).toHaveLength(4);
       expect(lid.lidNotches!.every((n) => n.width === 24 && n.depth === 9 && n.bottom === 0)).toBe(true);
-      if (lid.copy) {
-        const tray = solved.trays.find((t) => t.id === lid.trayId)!;
-        expect(lid.lidNotches).toEqual(lids.find((p) => p.trayId === tray.copyOf)!.lidNotches);
-      }
+      const tray = solved.trays.find((t) => t.id === lid.trayId)!;
+      expect(tray.copyOf).toBeDefined();
+      expect(lid.copy).toBe(false);
+      expect(lids.some((p) => p.trayId === tray.copyOf)).toBe(false);
     }
     setSecondaryThickness(project, 8);
     solved = solveProject(project);
@@ -128,7 +128,7 @@ describe('lid edge notches', () => {
     expect(cut.groupOf.get('plain-base')).toBe(cut.groupOf.get('plain-lid'));
     expect(area(lidOutline(group.length, group.height, group.lidNotches))).toBe(9600 - 120);
     for (const layout of ['strips', 'fewest', 'guillotine'] as const) {
-      const plan = planCuts({ ...project, material: { ...project.material, layout } }, cut);
+      const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
       expect(plan.issues).toEqual([]);
       expect(plan.sheets.flatMap((s) => s.items)).toHaveLength(pieces.length);
       for (const item of plan.sheets.flatMap((s) => s.items)) {

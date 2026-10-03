@@ -57,13 +57,13 @@ export interface SectionNode {
   pad?: number;
   insert?: {
     root: LayoutNode;
-    /** Two identical boxes divide the available height, each with its own floor. */
+    /** Two identical box bodies divide the height beneath any top lid, each with its own floor. */
     stacked?: boolean;
     /** With `stacked`: build only the lower box and leave the half above it empty. */
     emptyAbove?: boolean;
     /** Cut the box bases from the secondary material when it is configured. */
     secondaryBase?: boolean;
-    /** A loose lid rests on the box walls, within the allocated height. */
+    /** A loose lid rests on the box walls, on the upper box only when a pair is stacked. */
     lid?: boolean;
     /** With separate boxes, one lid covers the entire group instead of one lid per box. */
     sharedLid?: boolean;
@@ -92,7 +92,7 @@ export interface ItemSpec {
 }
 
 /**
- * Cutting layouts: `fewest` packs pieces anywhere (MaxRects) for the fewest sheets; `guillotine`
+ * Sheet packing: `fewest` packs pieces anywhere (MaxRects) for the fewest sheets; `guillotine`
  * keeps every cut edge to edge; `strips` cuts the sheet into full-length strips first, then
  * crosses them.
  */
@@ -138,8 +138,10 @@ export interface Project {
     trim: Mm;
     /** Material lost per cut. */
     kerf: Mm;
-    /** How pieces are laid out on the sheets; unset is `strips`. */
+    /** Packing for primary material sheets; unset is `strips`. */
     layout?: CutLayout;
+    /** Independent packing for secondary material sheets; unset is `strips`. */
+    secondaryLayout?: CutLayout;
   };
   /** Piece sizes are rounded to this step, so near-identical pieces become one cut size. */
   precision: Mm;

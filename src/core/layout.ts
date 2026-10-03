@@ -47,7 +47,7 @@ export type PieceKind = 'base' | 'lid' | 'wall' | 'divider' | 'pad';
 export interface PieceInst {
   id: string;
   kind: PieceKind;
-  /** Belongs to the upper box of a stacked pair; same place and shape as its twin below. */
+  /** Duplicates a piece in the lower box of a stacked pair; the upper-only lid is not a copy. */
   copy: boolean;
   /** 0 for trays in the layer, 1 for removable boxes inside a compartment. */
   depth: 0 | 1;
@@ -111,11 +111,11 @@ export interface Tray {
   parentTrayId?: string;
   /** The layout node this tray was built from; stable while the layout is edited. */
   nodeId: string;
-  /** Part of a stack of two identical boxes. */
+  /** Part of a stack of two identical box bodies, with any lid on the upper box only. */
   stacked: boolean;
   /** A half-height box whose upper twin was left out: the space above it stays empty. */
   emptyAbove?: boolean;
-  /** For the upper box of a stack: the tray id of the identical box below it. */
+  /** For the upper box of a stack: the tray id of the matching body below it. */
   copyOf?: string;
 }
 
@@ -230,10 +230,10 @@ export function usesSharedLid(section: SectionNode): boolean {
   return !!(insert?.lid && insert.sharedLid && insert.root.kind === 'split' && insert.root.join === 'trays');
 }
 
-/** Lid allowance per box: a stacked group shares one cover across both equal-height bodies. */
+/** Lid allowance per body: a stacked pair reserves one lid above both equal-height bodies. */
 export function insertLidAllowance(project: Project, section: SectionNode): Mm {
   const lid = insertLidThickness(project, section);
-  return usesSharedLid(section) && section.insert?.stacked && !section.insert.emptyAbove ? lid / 2 : lid;
+  return section.insert?.stacked && !section.insert.emptyAbove ? lid / 2 : lid;
 }
 
 /** Most raised-floor layers that leave usable height, including bases and lids of boxes above. */
@@ -404,12 +404,14 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     inside(node, inner, bounds, tray, add, ctx);
     if (lid) {
       const cutouts = solveLidNotches(outer.w, outer.h, ctx.lidNotches ?? [], ctx.lidNotchSize);
-      if (!ctx.copy) issues.push(...cutouts.warnings.map((message) => ({ level: 'warn' as const, message, trayId: tray.id })));
-      add({
+      issues.push(...cutouts.warnings.map((message) => ({ level: 'warn' as const, message, trayId: tray.id })));
+      const lidPiece = add({
         kind: 'lid', role: 'lid', length: outer.w, height: outer.h, footprint: outer, axis: 'x', start: outer.x,
         material: ctx.secondaryLid && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary',
         ...(cutouts.notches.length ? { lidNotches: cutouts.notches } : {}),
       });
+      // The lower box has no lid: this is a unique piece even when its box body is a copy.
+      lidPiece.copy = false;
     }
   }
 
@@ -437,8 +439,8 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
         return;
       }
       // The box stands on this tray's base and any raised floor, so it is that much shorter and its
-      // top sits flush with the walls around it. A stack of two splits that height exactly in half;
-      // leaving the top one out keeps the lower box at half height with the space above it empty.
+      // top sits flush with the walls around it. A pair divides the height beneath its top lid
+      // equally; leaving the top one out keeps one closed box at half height, with empty space above.
       const half = !!node.insert.stacked;
       const emptyAbove = half && !!node.insert.emptyAbove;
       const stacked = half && !emptyAbove;
@@ -446,18 +448,21 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       const boxLid = insertLidThickness(project, node);
       const shared = usesSharedLid(node);
       const allowance = insertLidAllowance(project, node);
-      // A shared cover sits above the whole group; both stacked bodies share the space beneath it.
+      // Only the upper box needs a lid; its base covers the lower box in storage.
       const envelope = (ctx.height - ctx.base - pad * T) / (half ? 2 : 1);
-      const height = envelope - (shared ? allowance : 0);
+      const bodyHeight = envelope - allowance;
+      const lid = shared || stacked ? 0 : boxLid;
+      const height = bodyHeight + lid;
       // Too shallow: the compartment reports it (see solveProject) and no box is built.
-      if (height - boxBase - (shared ? 0 : boxLid) < MIN_BOX_INSIDE) return;
-      const box = { height, base: boxBase, secondaryBase: node.insert.secondaryBase, lid: shared ? 0 : boxLid, secondaryLid: node.insert.secondaryLid, lidNotches: node.insert.lidNotches, lidNotchSize: node.insert.lidNotchSize, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked, emptyAbove };
+      if (bodyHeight - boxBase < MIN_BOX_INSIDE) return;
+      const box = { height, base: boxBase, secondaryBase: node.insert.secondaryBase, lid, secondaryLid: node.insert.secondaryLid, lidNotches: node.insert.lidNotches, lidNotchSize: node.insert.lidNotchSize, depth: 1 as const, wellId: node.id, parentTrayId: tray.id, stacked, emptyAbove };
       const first = trays.length;
       cellLevel(node.insert.root, rect, box);
       let anchor = trays[first]!;
       if (stacked) {
         const upper = trays.length;
-        cellLevel(node.insert.root, rect, { ...box, copy: true });
+        const upperLid = shared ? 0 : boxLid;
+        cellLevel(node.insert.root, rect, { ...box, height: bodyHeight + upperLid, lid: upperLid, copy: true });
         for (let i = upper; i < trays.length; i++) trays[i].copyOf = trays[first + i - upper].id;
         anchor = trays[upper]!;
       }
@@ -753,7 +758,7 @@ export function solveProject(project: Project): Solved {
     const copyOf = new Map(sl.trays.filter((t) => t.copyOf).map((t) => [t.id, t.copyOf!]));
     for (const p of sl.pieces) {
       const twin = copyOf.has(p.trayId) ? byId.get(`${copyOf.get(p.trayId)}/${p.order}`) : undefined;
-      if (!twin) continue;
+      if (!p.copy || !twin || twin.kind !== p.kind) continue;
       p.notches = twin.notches.map((n) => ({ ...n }));
       p.lows = twin.lows.map((l) => ({ ...l }));
       p.height = twin.height;
