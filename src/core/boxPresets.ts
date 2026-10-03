@@ -30,6 +30,7 @@ export const BOX_PRESETS: BoxPreset[] = [
   { name: '7 Wonders (2nd edition, insert-fit reference)', width: 287, depth: 287, height: 72, source: 'https://www.am-media.biz/prodotto/7-wonders-all-in-organizer/', dimensionBasis: 'insert-fit', note: 'Completed organizer size, not a measured box interior. Measure your box before designing; allow space above the trays for boards and rulebooks.' },
   { name: 'Ark Nova', width: 289, depth: 353, height: 67, source: 'https://www.etsy.com/listing/4468510515' },
   { name: 'Arkham Horror: The Card Game, Chapter 2 Core Set (2026)', width: 239, depth: 277, height: 74, source: 'Provided by the app author' },
+  { name: 'Arkham Horror: The Card Game, Chapter 2 Small Campaign Expansion', width: 150, depth: 219, height: 87, source: 'Provided by the app author' },
   { name: 'Arkham Horror: The Card Game, Revised Core Set (2021)', width: 244, depth: 284, height: 75, source: 'https://boardgamegeek.com/thread/2782774/article/39124932' },
   { name: 'Carcassonne (base game, insert-fit reference)', width: 184, depth: 267, height: 65, source: 'https://www.kalkared.eu/en/insert-pro-carcassonne/', dimensionBasis: 'insert-fit', note: 'Maker\'s required interior size for its insert, not a measured box interior. The source covers the standard base-game and 20th Anniversary boxes, not the Big Box.' },
   { name: 'Cascadia', width: 230, depth: 230, height: 68, source: 'https://cults3d.com/en/3d-model/game/cascadia-and-landmarks-expansion-insert' },
