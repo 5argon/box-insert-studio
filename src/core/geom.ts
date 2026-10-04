@@ -16,6 +16,9 @@ export const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) <= eps
 /** Snap float noise (87.49999999999999 → 87.5) before rounding, so equal sizes always round alike. */
 const snap = (v: number) => Math.round(v * 1e6) / 1e6;
 
+/** Round down to a step, so whatever is cut to it never comes out bigger than the space it fills. */
+export const floorTo = (v: number, step: number) => (step > 0 ? Math.round(Math.floor(snap(snap(v) / step)) * step * 1000) / 1000 : v);
+
 /** Round to the nearest step, halves up; equal sizes reached by different sums round the same. */
 export const roundTo = (v: number, step: number) => (step > 0 ? Math.round(Math.round(snap(snap(v) / step)) * step * 1000) / 1000 : v);
 

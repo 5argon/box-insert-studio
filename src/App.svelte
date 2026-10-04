@@ -64,7 +64,7 @@
     studio.selected?.kind === 'section' ? solvedLayer.compartments.find((c) => c.id === studio.selected?.id) : undefined,
   );
   const selectedSplit = $derived(studio.selected?.kind === 'split' ? solvedLayer.splits.find((s) => s.id === studio.selected?.id) : undefined);
-  const errorCount = $derived(designProblems(solved, plan).filter((i) => i.level === 'error').length);
+  const errorCount = $derived(designProblems(studio.project, solved, plan).filter((i) => i.level === 'error').length);
 
   function select(sel: Selection) {
     studio.selected = sel;
