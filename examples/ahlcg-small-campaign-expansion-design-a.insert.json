@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "name": "AHLCG Small Campaign Expansion - Design A",
+  "readme": "I've arrived at a pretty good generic layout for Small Campaign Expansion box for those who are always looking to bring this box to play in addition to the Core 2026 box.\n\nThis is based on Children of Blood box, and hope that all future small one will feature similar distribution of cards. I've designed with the same 1.5 cm headroom exactly the same as out of the box insert.\n\n# Overview\n\nGeneral idea is that the box originally comes with one center column with large horizontal padding and cards store vertically. But when trying to fit horizontally, you can fit 2 rows of cards in this box. A basic optimization would be to simply make 2 horizontal card rows and the padding would be gone. This is **\"Design A\"** with 2 compartments. Though you might need some sub dividers to prevent cards falling over.\n\nBut I could go further. What if we keep the vertical column, but it is instead left aligned instead of centered, and so you **also** get 2 more horizontal rows within that small space that was a padding! I'll call this **\"Design B\"**. The side slots might look small, but the shared campaign encounter set of a Small Campaign Expansion all fit in those 2 slots. Small slots also help with keeping the cards not tumbling down.\n\nOne last step **\"Design C\"** is to subdivide the long vertical compartment meaningfully, now that we knew the shared campaign encounter sets are all offloaded to the side slots. In Children of Blood, you require around 6 cm for the 3 scenarios. And another one is a modular 8 cm slot to store Core 2026 encounter sets. Modular as in, I'd make this same 8 cm slot in other Small / Large Campaign Expansion box and keep moving the block of Core 2026 encounter cards to the active campaign box. This way setup and teardown the scenario only use cards from the active campaign box, also you have more room to store things in the Core 2026 box. With 8 cm and 6 cm slot allocated, I still have a bit of space. Since the box is quite tall, I think this is good opportunity for stacked removable trays. This removable box comes with a lid as I don't trust the campaign book to be able to completely block the spills. In Children of Blood, you can store Blood Tokens here.\n\nAll 3 designs are separated JSON files that you can load into https://5argon.github.io/box-insert-studio/\n\n# Material\n\nDesign A and B **fits in one** A3 sheet with very little waste. Design C needs one and a half of A3 sheet. So making 2x of Design C for with one reserved for your future Small Campaign Expansion might be a good plan.",
+  "box": {
+    "width": 150,
+    "depth": 219,
+    "height": 87
+  },
+  "material": {
+    "thickness": 5,
+    "sheet": {
+      "preset": "A3",
+      "width": 297,
+      "height": 420
+    },
+    "trim": 5,
+    "kerf": 0.5
+  },
+  "precision": 0.5,
+  "clearance": 2,
+  "base": "under",
+  "fullWalls": "x",
+  "notch": {
+    "width": 40,
+    "depth": 15,
+    "bottom": 75
+  },
+  "layers": [
+    {
+      "id": "l-asukj2",
+      "name": "Layer 1",
+      "height": 72,
+      "root": {
+        "kind": "split",
+        "id": "p-s-2f9fa17",
+        "dir": "column",
+        "join": "divider",
+        "lower": 0,
+        "children": [
+          {
+            "size": {
+              "mode": "flex",
+              "weight": 1
+            },
+            "node": {
+              "kind": "section",
+              "id": "s-ingdc13",
+              "notches": [],
+              "arrow": "right",
+              "items": {
+                "on": false,
+                "shape": "cylinder",
+                "width": 30,
+                "height": 91,
+                "thickness": 5,
+                "spare": 3
+              }
+            }
+          },
+          {
+            "size": {
+              "mode": "flex",
+              "weight": 1
+            },
+            "node": {
+              "kind": "section",
+              "id": "s-2f9fa17",
+              "notches": [],
+              "arrow": "right"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
