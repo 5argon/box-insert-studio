@@ -24,6 +24,22 @@
     const y = pattern.edge === 'top' ? 30 : 110;
     return pattern.points.map((p) => [110 + (p.x - (minX + maxX) / 2) * scale, y + (p.y - edge.y) * scale]);
   }
+  /**
+   * Where a cut's number goes: inside the piece beside the cut's opening, just past its far end and
+   * near its own edge, so cuts on opposite edges of a thin piece never put their numbers together.
+   */
+  function badgeAt(pattern: CutPattern) {
+    const [a, , , d] = pattern.points;
+    const r = 5 * unit;
+    const off = r + unit;
+    const keep = (v: number, size: number) => Math.min(size - r, Math.max(r, v));
+    const across = pattern.edge === 'top' || pattern.edge === 'bottom';
+    const [lo, hi] = across ? [Math.min(a!.x, d!.x), Math.max(a!.x, d!.x)] : [Math.min(a!.y, d!.y), Math.max(a!.y, d!.y)];
+    const length = across ? group.length : group.height;
+    const along = keep(hi + off <= length - r ? hi + off : lo - off, length);
+    if (across) return { x: along, y: keep(pattern.edge === 'top' ? off : group.height - off, group.height) };
+    return { x: keep(pattern.edge === 'left' ? off : group.length - off, group.length), y: along };
+  }
   function labelPosition(pattern: CutPattern, corners: [number, number][], i: number) {
     const [x, y] = corners[i];
     const outer = i === 0 || i === 3;
@@ -49,6 +65,12 @@
       <text x={group.length / 2} y={group.height + 9 * unit} font-size={8 * unit}>BOTTOM</text>
       {#each patterns as pattern, i (i)}
         <path d={polygonPath(pattern.points.map((p) => [p.x, p.y]))} class="waste" class:lowered={kind === 'lowered'} style:stroke-width={unit * 0.6} />
+      {/each}
+      <!-- Each cut's number, as in its heading below, just inside the piece past the cut. -->
+      {#each patterns as pattern, i (i)}
+        {@const at = badgeAt(pattern)}
+        <circle cx={at.x} cy={at.y} r={5 * unit} class="badge" class:lowered={kind === 'lowered'} />
+        <text x={at.x} y={at.y} font-size={6.5 * unit} class="badge-text">{i + 1}</text>
       {/each}
     </svg>
   </div>
@@ -94,6 +116,9 @@
   .blank { fill: #f7f5f0; stroke: #6f6a61; stroke-width: 0.8; }
   .waste { fill: #fff1c2; stroke: #a26400; stroke-width: 0.8; }
   .waste.lowered { fill: #e9e1f3; stroke: #6f4fb8; }
+  .badge { fill: #a26400; }
+  .badge.lowered { fill: #6f4fb8; }
+  .badge-text { fill: #fff; font-weight: 700; dominant-baseline: central; }
   .cut-line { fill: none; stroke: #22201c; stroke-width: 1.5; }
   circle { fill: #22201c; }
   text { text-anchor: middle; fill: #6f6a61; font-family: inherit; }
