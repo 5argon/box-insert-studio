@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { addSibling, axisOwner, findParent, insertMode, removeSection, setCompartmentSize, sizeOwner, setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setInsertSharedLid, setJoin, setLidNotchSide, setNotchOverrideSide, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
+  import { addSibling, axisOwner, findParent, insertMode, removeSection, setCompartmentSize, sizeOwner, setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setInsertSharedLid, setJoin, setLidNotchSide, setLowOverrideSide, setNotchOverrideSide, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
   import { LID_NOTCH_DEFAULT } from '../core/lidNotches';
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
-  import { baseThickness, insertHeights, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, NOTCH_BOTTOM_DEFAULT, padLimit, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { baseThickness, insertHeights, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, NOTCH_BOTTOM_DEFAULT, padLimit, usesLowOverride, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import { roundTo } from '../core/geom';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
@@ -593,9 +593,59 @@
       <p class="hint shared">The {side} side is lowered for {shared.join(', ')}: the divider between you is cut down.</p>
     {/if}
   {/each}
+  <div class="notch-size">
+    {#if c.node.lowerHeight}
+      {@const own = c.node.lowerHeight}
+      <div class="override-head">
+        <span class="custom-mark lowered-mark" aria-hidden="true"></span>
+        <span>Override height</span>
+        <button class="small" onclick={() => delete c.node.lowerHeight} data-tip="Go back to the project's lowered height">Use default</button>
+      </div>
+      <div class="notches override-sides" role="group" aria-label="Sides using the lowered height override">
+        {#each SIDE_ORDER as side (side)}
+          {@const lowered = !!c.node.lowered?.includes(side)}
+          {@const selected = lowered && usesLowOverride(c.node, side)}
+          <button
+            class="small"
+            class:on={selected}
+            aria-label="Override {side} lowered height"
+            aria-pressed={selected}
+            disabled={!lowered}
+            onclick={() => setLowOverrideSide(c.node, side, !selected)}
+            data-tip={lowered
+              ? `Use ${selected ? `the project's ${lowPct}%` : 'this compartment’s own height'} for the ${side} side`
+              : lowSharedWith(solved, c, side).length
+                ? `This side is lowered by ${lowSharedWith(solved, c, side).join(', ')}; select that compartment to change its height`
+                : `Lower the ${side} side above to override it`}
+          >{cap(side)}</button>
+        {/each}
+      </div>
+      <NumberField
+        label="Height"
+        unit="%"
+        value={own.percent}
+        min={10}
+        max={95}
+        step={5}
+        decimals={0}
+        hint="How tall the selected lowered sides stand, as a share of this compartment's depth"
+        onchange={(v) => (own.percent = v)}
+      />
+      <p class="hint override-hint">
+        Selected sides stand {own.percent}% of the {mm(c.fullHeight)} mm depth, {mm(roundTo((own.percent / 100) * c.fullHeight, project.precision))} mm above the
+        floor. Other lowered sides use the project's {lowPct}%.
+      </p>
+    {:else}
+      <span class="hint">{lowPct}% of the {mm(c.fullHeight)} mm depth, {mm(lowTop)} mm above the floor: the project default, set under Construction</span>
+      <button
+        class="small"
+        onclick={() => (c.node.lowerHeight = { percent: lowPct, sides: [...(c.node.lowered ?? [])] })}
+        data-tip="Give this compartment's lowered sides their own height; they are drawn in a different colour">Override</button
+      >
+    {/if}
+  </div>
   <p class="hint">
-    A lowered side stands {lowPct}% of the {mm(c.fullHeight)} mm depth, {mm(lowTop)} mm above the floor, along this compartment only, to reach in from that side.
-    Lowered along its whole length, a piece is just cut from a narrower strip. Set the share under Construction.
+    A lowered side is cut down along this compartment only, to reach in from that side. Lowered along its whole length, a piece is just cut from a narrower strip.
   </p>
 </div>
 
@@ -782,6 +832,9 @@
   }
   .override-head button {
     margin-left: auto;
+  }
+  .custom-mark.lowered-mark {
+    background: var(--lowered-custom);
   }
   .custom-mark {
     width: 12px;
