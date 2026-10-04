@@ -7,7 +7,7 @@ import { mm, roundTo } from './geom';
 import { rotateLidNotches, type LidNotch } from './lidNotches';
 import type { Issue, Low, Notch, PieceInst, Solved } from './layout';
 import { pack, packGuillotine } from './pack';
-import type { CutLayout, MaterialKind, Mm, Project } from './types';
+import type { CutLayout, MaterialKind, Mm, Project, SheetSpec } from './types';
 
 /** Sheet packing choices, in the order they are offered. */
 export const CUT_LAYOUTS: { value: CutLayout; name: string; detail: string }[] = [
@@ -23,6 +23,18 @@ export const CUT_LAYOUTS: { value: CutLayout; name: string; detail: string }[] =
     detail: 'Every cut runs all the way across the piece of sheet in hand, so a straightedge or saw fence always reaches end to end.',
   },
 ];
+
+/** The sheet a material is cut from: the secondary's own size when it has one. */
+export function sheetFor(project: Project, material: MaterialKind): SheetSpec {
+  return (material === 'secondary' ? project.material.secondarySheet : undefined) ?? project.material.sheet;
+}
+
+/** "A3", or the dimensions of a custom sheet. */
+export function sheetName(sheet: SheetSpec): string {
+  return sheet.preset === 'Custom' ? `${mm(sheet.width)} × ${mm(sheet.height)} mm` : sheet.preset;
+}
+
+const sameSize = (a: SheetSpec, b: SheetSpec) => a.width === b.width && a.height === b.height;
 
 /** Each material independently defaults to strips across the sheet. */
 export function cutPacking(project: Project, material: MaterialKind): CutLayout {
@@ -223,14 +235,16 @@ export interface PlanSheet {
   /** Material and thickness of this cutting sheet. */
   thickness: Mm;
   material: MaterialKind;
+  /** Its size: each material can come in its own sheet size. */
+  sheet: SheetSpec;
   items: SheetItem[];
 }
 
 export interface CutPlan {
   /** Grouped by material, in cut-list order. */
   sheets: PlanSheet[];
-  /** How many sheets of each material. */
-  counts: { material: MaterialKind; thickness: Mm; sheets: number }[];
+  /** How many sheets of each material, and their size. */
+  counts: { material: MaterialKind; thickness: Mm; sheet: SheetSpec; sheets: number }[];
   strips: Strip[];
   issues: Issue[];
   /** Share of the sheets' area that ends up in pieces. */
@@ -301,12 +315,26 @@ export function sheetSteps(sheet: PlanSheet): string[] {
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 
-/** Sheet counts, with each material identified when more than one is used. */
+/**
+ * What to buy: "3 A3 sheets", "1 × 3 mm secondary + 3 × 5 mm primary A3 sheets", or, when the
+ * materials come in different sizes, "1 × 3 mm secondary A2 + 3 × 5 mm primary A3 sheets".
+ */
 export function sheetSummary(project: Project, plan: CutPlan): string {
-  const { preset } = project.material.sheet;
   const total = plan.sheets.length;
-  if (plan.counts.length <= 1) return `${total} ${preset} sheet${total === 1 ? '' : 's'}`;
-  return `${plan.counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material}`).join(' + ')} ${preset} sheets`;
+  const plural = (n: number) => `sheet${n === 1 ? '' : 's'}`;
+  if (!plan.counts.length) return `${total} ${sheetName(project.material.sheet)} ${plural(total)}`;
+  if (plan.counts.length === 1) return `${total} ${sheetName(plan.counts[0]!.sheet)} ${plural(total)}`;
+  if (plan.counts.every((c) => sameSize(c.sheet, plan.counts[0]!.sheet))) {
+    return `${plan.counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material}`).join(' + ')} ${sheetName(plan.counts[0]!.sheet)} ${plural(total)}`;
+  }
+  return `${plan.counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material} ${sheetName(c.sheet)}`).join(' + ')} ${plural(total)}`;
+}
+
+/** The distinct sheet sizes a plan uses, e.g. "297 × 420 mm" or "A3 297 × 420 mm, A2 420 × 594 mm". */
+export function sheetSizes(plan: CutPlan): string {
+  const sizes = plan.counts.map((c) => c.sheet).filter((s, i, all) => all.findIndex((o) => sameSize(o, s)) === i);
+  if (sizes.length === 1) return `${mm(sizes[0]!.width)} × ${mm(sizes[0]!.height)} mm`;
+  return sizes.map((s) => `${s.preset === 'Custom' ? '' : `${s.preset} `}${mm(s.width)} × ${mm(s.height)} mm`).join(', ');
 }
 
 /** Each material is packed onto its own sheets, even when their thicknesses match. */
@@ -316,25 +344,27 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
   const issues: Issue[] = [];
   const counts: CutPlan['counts'] = [];
   let usedArea = 0;
+  let sheetArea = 0;
   const materials = [...new Set(cut.groups.map((g) => g.material))];
   if (!materials.length) materials.push('primary');
   for (const material of materials) {
     const groups = cut.groups.filter((g) => g.material === material);
     const thickness = groups[0]?.thickness ?? project.material.thickness;
-    const part = planSheets(project, { ...cut, groups }, cutPacking(project, material));
-    for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, items: s.items });
+    const sheet = sheetFor(project, material);
+    const part = planSheets(project, { ...cut, groups }, cutPacking(project, material), sheet);
+    for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, sheet, items: s.items });
     strips.push(...part.strips);
     issues.push(...part.issues);
     usedArea += part.usedArea;
-    counts.push({ material, thickness, sheets: part.sheets.length });
+    sheetArea += part.sheets.length * sheet.width * sheet.height;
+    counts.push({ material, thickness, sheet, sheets: part.sheets.length });
   }
-  const { width, height } = project.material.sheet;
-  const efficiency = sheets.length ? usedArea / (sheets.length * width * height) : 0;
+  const efficiency = sheetArea ? usedArea / sheetArea : 0;
   return { sheets, counts, strips, issues, efficiency };
 }
 
-function planSheets(project: Project, cut: CutList, packing: CutLayout) {
-  const { sheet, trim, kerf } = project.material;
+function planSheets(project: Project, cut: CutList, packing: CutLayout, sheet: SheetSpec) {
+  const { trim, kerf } = project.material;
   const usableW = sheet.width - 2 * trim;
   const usableH = sheet.height - 2 * trim;
   const maxLen = Math.max(usableW, usableH);
@@ -347,7 +377,7 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout) {
     const what = g.kind === 'base' ? `${panelUse(g)} #${g.number}` : `#${g.number}`;
     issues.push({
       level: 'error',
-      message: `${what} (${mm(g.length)} × ${mm(g.height)} mm${g.pieces.length > 1 ? `, ×${g.pieces.length}` : ''}) does not fit the usable ${mm(usableW)} × ${mm(usableH)} mm of a ${sheet.preset} sheet after trimming.`,
+      message: `${what} (${mm(g.length)} × ${mm(g.height)} mm${g.pieces.length > 1 ? `, ×${g.pieces.length}` : ''}) does not fit the usable ${mm(usableW)} × ${mm(usableH)} mm of a ${sheetName(sheet)} sheet after trimming.`,
     });
     return false;
   };
@@ -395,7 +425,7 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout) {
       for (const n of s ? s.cuts.map((c) => c.group) : [baseById.get(id)!.number]) lostGroups.set(n, (lostGroups.get(n) ?? 0) + 1);
     }
     const what = [...lostGroups].map(([n, k]) => `#${n}${k > 1 ? ` ×${k}` : ''}`).join(', ');
-    issues.push({ level: 'error', message: `Could not place ${what} on a ${sheet.preset} sheet; those pieces are missing from the plan.` });
+    issues.push({ level: 'error', message: `Could not place ${what} on a ${sheetName(sheet)} sheet; those pieces are missing from the plan.` });
   }
   return { sheets, strips, issues, usedArea };
 }

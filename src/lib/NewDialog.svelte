@@ -2,7 +2,7 @@
   import { BOX_PRESETS } from '../core/boxPresets';
   import { NEW_CLEARANCE, newProject, SECONDARY_THICKNESS_PRESETS, SHEET_PRESETS, STARTER_SPEC, THICKNESS_PRESETS, type NewProjectSpec } from '../core/defaults';
   import { mm } from '../core/geom';
-  import type { Project } from '../core/types';
+  import type { Project, SheetSpec } from '../core/types';
   import NumberField from './NumberField.svelte';
   import NumberInput from './NumberInput.svelte';
 
@@ -21,6 +21,8 @@
   let secondary = $state(false);
   let secondaryThickness = $state(3);
   let secondaryBase = $state(false);
+  /** The secondary material's own sheet; undefined uses the primary's. */
+  let secondarySheet = $state<SheetSpec | undefined>(undefined);
   /** False on first run, when there is nothing to lose. */
   let replacing = $state(true);
 
@@ -41,6 +43,7 @@
     secondary = current.material.secondaryThickness !== undefined;
     secondaryThickness = current.material.secondaryThickness ?? SECONDARY_THICKNESS_PRESETS.filter((t) => t < current.material.thickness).pop() ?? current.material.thickness;
     secondaryBase = !!current.secondaryBase;
+    secondarySheet = current.material.secondarySheet ? { ...current.material.secondarySheet } : undefined;
     replacing = opts.replacing ?? true;
     dialog.showModal();
   }
@@ -54,6 +57,11 @@
   function chooseSheet(name: string) {
     const p = SHEET_PRESETS.find((x) => x.preset === name);
     spec.sheet = p ? { ...p } : { ...spec.sheet, preset: 'Custom' };
+  }
+
+  function chooseSecondarySheet(name: string) {
+    const p = SHEET_PRESETS.find((x) => x.preset === name);
+    secondarySheet = !name ? undefined : p ? { ...p } : { ...(secondarySheet ?? spec.sheet), preset: 'Custom' };
   }
 
   const base = $derived(secondary && secondaryBase ? secondaryThickness : spec.thickness);
@@ -77,7 +85,7 @@
 
   function create() {
     if (problem) return;
-    oncreate(newProject({ ...$state.snapshot(spec), layerHeight, ...(secondary ? { secondaryThickness, secondaryBase } : {}) }));
+    oncreate(newProject({ ...$state.snapshot(spec), layerHeight, ...(secondary ? { secondaryThickness, secondaryBase, ...(secondarySheet ? { secondarySheet: $state.snapshot(secondarySheet) } : {}) } : {}) }));
     dialog.close();
   }
 </script>
@@ -160,6 +168,23 @@
       {#if spec.sheet.preset === 'Custom'}
         <NumberField label="Sheet width" value={spec.sheet.width} min={50} onchange={(v) => (spec.sheet.width = v)} />
         <NumberField label="Sheet height" value={spec.sheet.height} min={50} onchange={(v) => (spec.sheet.height = v)} />
+      {/if}
+      {#if secondary}
+        <label class="field">
+          <span>Secondary sheet</span>
+          <select value={secondarySheet?.preset ?? ''} onchange={(e) => chooseSecondarySheet(e.currentTarget.value)} aria-label="Secondary material sheet">
+            <option value="">Same as primary</option>
+            {#each SHEET_PRESETS as s (s.preset)}
+              <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
+            {/each}
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+        {#if secondarySheet?.preset === 'Custom'}
+          {@const own = secondarySheet}
+          <NumberField label="Secondary sheet width" value={own.width} min={50} onchange={(v) => (own.width = v)} />
+          <NumberField label="Secondary sheet height" value={own.height} min={50} onchange={(v) => (own.height = v)} />
+        {/if}
       {/if}
     </section>
 
