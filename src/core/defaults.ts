@@ -69,6 +69,8 @@ export interface NewProjectSpec {
   sheet: SheetSpec;
   layerHeight: Mm;
   secondaryThickness?: Mm;
+  /** The secondary material's own sheet size, when it differs from `sheet`. */
+  secondarySheet?: SheetSpec;
   /** Use the secondary material for the first layer's base. */
   secondaryBase?: boolean;
 }
@@ -98,6 +100,7 @@ export function newProject(spec: NewProjectSpec): Project {
     material: {
       thickness: spec.thickness,
       ...(spec.secondaryThickness !== undefined ? { secondaryThickness: spec.secondaryThickness, secondaryLayout: 'strips' as const } : {}),
+      ...(spec.secondaryThickness !== undefined && spec.secondarySheet ? { secondarySheet: { ...spec.secondarySheet } } : {}),
       sheet: { ...spec.sheet },
       trim: 5,
       kerf: 0.5,

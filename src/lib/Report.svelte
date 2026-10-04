@@ -5,7 +5,7 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
-  import { cutPacking, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetSteps, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
+  import { cutPacking, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetName, sheetSizes, sheetSteps, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import { setCutLayout } from '../core/edit';
   import { designProblems } from '../core/problems';
   import type { MaterialKind, Project } from '../core/types';
@@ -157,7 +157,7 @@
           {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {mm(solved.headroom)} mm headroom
         </p>
         <p class="facts">
-          <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from {sheetSummary(project, plan)} ({project.material.sheet.width} × {project.material.sheet.height} mm)
+          <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from {sheetSummary(project, plan)} ({sheetSizes(plan)})
         </p>
       </div>
       <div class="actions no-print">
@@ -287,8 +287,8 @@
         Cut out and number the rectangular pieces first{#if notchGroups.length || loweredGroups.length}; complete the notch and edge cuts below before assembly{/if}.
       </p>
       {#each plan.sheets as sheet (sheet.index)}
-        {@const W = project.material.sheet.width}
-        {@const H = project.material.sheet.height}
+        {@const W = sheet.sheet.width}
+        {@const H = sheet.sheet.height}
         {@const packingInfo = CUT_LAYOUTS.find((l) => l.value === cutPacking(project, sheet.material)) ?? CUT_LAYOUTS[0]}
         <div class="sheet">
           <svg viewBox="-2 -2 {W + 4} {H + 4}" class="sheet-svg" role="img" aria-label="Sheet {sheet.index + 1} packing">
@@ -309,7 +309,10 @@
             {/each}
           </svg>
           <div class="sheet-text">
-            <h3>Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</span></h3>
+            <h3>
+              Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</span>
+              · {sheetName(sheet.sheet)}
+            </h3>
             <p class="muted small">Packing: {packingInfo.name}.</p>
             <ol>
               {#each sheetSteps(sheet) as step, i (i)}

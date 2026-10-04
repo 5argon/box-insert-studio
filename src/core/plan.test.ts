@@ -38,7 +38,7 @@ function segments(p: Project, item: SheetItem) {
 /** Everything wrong with a plan; pieces left out are fine only when an error names them. */
 function planProblems(p: Project, cut: CutList, plan: CutPlan): string[] {
   const out: string[] = [];
-  const { kerf, trim, sheet } = p.material;
+  const { kerf, trim } = p.material;
   const counts = new Map<number, number>();
   const byNumber = new Map(cut.groups.map((g) => [g.number, g]));
   for (const s of plan.sheets) {
@@ -65,8 +65,11 @@ function planProblems(p: Project, cut: CutList, plan: CutPlan): string[] {
         for (const seg of segments(p, it)) rects.push({ ...seg, what: `#${seg.group}` });
       }
     }
+    // Each sheet against its own size: the materials can come in different sheets.
+    const expected = s.material === 'secondary' ? (p.material.secondarySheet ?? p.material.sheet) : p.material.sheet;
+    if (s.sheet.width !== expected.width || s.sheet.height !== expected.height) out.push(`sheet ${s.index} is ${s.sheet.width}×${s.sheet.height}, its material comes in ${expected.width}×${expected.height}`);
     for (const r of rects) {
-      if (r.x < trim - EPS || r.y < trim - EPS || r.x + r.w > sheet.width - trim + EPS || r.y + r.h > sheet.height - trim + EPS) out.push(`${r.what} in the trimmed edge`);
+      if (r.x < trim - EPS || r.y < trim - EPS || r.x + r.w > s.sheet.width - trim + EPS || r.y + r.h > s.sheet.height - trim + EPS) out.push(`${r.what} in the trimmed edge`);
     }
     for (let i = 0; i < rects.length; i++) {
       for (let j = i + 1; j < rects.length; j++) {
@@ -87,7 +90,8 @@ function planProblems(p: Project, cut: CutList, plan: CutPlan): string[] {
     if (plan.sheets.filter((s) => s.material === c.material).length !== c.sheets) out.push(`${c.material} sheet count is wrong`);
   }
   const area = plan.sheets.flatMap((s) => s.items).reduce((a, it) => a + (it.kind === 'base' ? it.w * it.h : it.strip!.cuts.reduce((l, c) => l + c.length, 0) * it.strip!.height), 0);
-  if (plan.sheets.length && Math.abs(plan.efficiency - area / (plan.sheets.length * sheet.width * sheet.height)) > 1e-9) out.push(`efficiency ${plan.efficiency} is not the pieces' share`);
+  const sheetArea = plan.sheets.reduce((a, s) => a + s.sheet.width * s.sheet.height, 0);
+  if (plan.sheets.length && Math.abs(plan.efficiency - area / sheetArea) > 1e-9) out.push(`efficiency ${plan.efficiency} is not the pieces' share`);
   return out;
 }
 
@@ -114,6 +118,11 @@ const designs: [string, () => Project][] = [
     setInsertLid(g.node, true);
     setInsertSharedLid(g.node, true);
     setJoin(p.layers[0]!, g.node.insert!.root as SplitNode, 'trays', p.material.thickness);
+    return p;
+  }],
+  ['the AHLCG design with its 3 mm board on A2 sheets', () => {
+    const p = realDesign();
+    p.material.secondarySheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! };
     return p;
   }],
   ['walls taller than an A4 sheet is wide', () => {
@@ -143,14 +152,14 @@ describe('cutting plans', () => {
 
   it('turns a wall taller than the sheet is wide, instead of running it off the sheet', () => {
     for (const layout of LAYOUTS) {
-      const { plan } = check(withPacking(designs[4]![1](), layout));
+      const { plan } = check(withPacking(designs.find(([n]) => n.startsWith('walls taller'))![1](), layout));
       expect(plan.issues).toEqual([]);
     }
   });
 
   it('names pieces that cannot fit, and still places the ones that fit turned', () => {
     for (const layout of LAYOUTS) {
-      const { cut, plan } = check(withPacking(designs[5]![1](), layout));
+      const { cut, plan } = check(withPacking(designs.find(([n]) => n === 'a narrow custom sheet')![1](), layout));
       const tooBig = cut.groups.filter((g) => Math.min(g.length, g.height) > 110);
       expect(tooBig.length).toBeGreaterThan(0);
       const errors = plan.issues.map((i) => i.message).join(' | ');
@@ -171,6 +180,23 @@ describe('cutting plans', () => {
     const mentions = steps.join(' ').match(/#\d+ [\d.]+( × [\d.]+)?( \(turned\))?( ×\d+)?/g)!;
     const total = mentions.reduce((n, m) => n + Number(m.match(/ ×(\d+)$/)?.[1] ?? 1), 0);
     expect(total).toBe(check(p).cut.groups.reduce((n, g) => n + g.pieces.length, 0));
+  });
+
+  it('buys each material in its own sheet size', async () => {
+    const { sheetSummary, sheetSizes } = await import('./pieces');
+    const p = realDesign();
+    const same = check(p).plan;
+    expect(sheetSummary(p, same)).toBe('1 × 3 mm secondary + 3 × 5 mm primary A3 sheets');
+    expect(sheetSizes(same)).toBe('297 × 420 mm');
+    p.material.secondarySheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! };
+    const own = check(p).plan;
+    expect(own.sheets.filter((s) => s.material === 'secondary').every((s) => s.sheet.preset === 'A2')).toBe(true);
+    expect(own.sheets.filter((s) => s.material === 'primary').every((s) => s.sheet.preset === 'A3')).toBe(true);
+    expect(sheetSummary(p, own)).toBe('1 × 3 mm secondary A2 + 3 × 5 mm primary A3 sheets');
+    expect(sheetSizes(own)).toBe('A2 420 × 594 mm, A3 297 × 420 mm');
+    // A custom size is named by its dimensions.
+    p.material.secondarySheet = { preset: 'Custom', width: 600, height: 1000 };
+    expect(sheetSummary(p, check(p).plan)).toBe('1 × 3 mm secondary 600 × 1000 mm + 3 × 5 mm primary A3 sheets');
   });
 
   it('rounds equal sizes alike, however they were added up', () => {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SECONDARY_THICKNESS_PRESETS, SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
-  import { setLayerBaseSecondary, setSecondaryThickness, setConstruction, setCutLayout } from '../core/edit';
+  import { setLayerBaseSecondary, setSecondarySheet, setSecondaryThickness, setConstruction, setCutLayout } from '../core/edit';
   import { cutPacking, CUT_LAYOUTS } from '../core/pieces';
   import type { CutLayout } from '../core/types';
   import { mm } from '../core/geom';
@@ -33,6 +33,14 @@
   function chooseSheet(e: Event & { currentTarget: HTMLSelectElement }) {
     const p = SHEET_PRESETS.find((x) => x.preset === e.currentTarget.value);
     project.material.sheet = p ? { ...p } : { ...project.material.sheet, preset: 'Custom' };
+  }
+
+  /** The secondary material's own sheet, or the primary's when "Same as primary" is chosen. */
+  function chooseSecondarySheet(e: Event & { currentTarget: HTMLSelectElement }) {
+    const value = e.currentTarget.value;
+    const p = SHEET_PRESETS.find((x) => x.preset === value);
+    if (!value) setSecondarySheet(project, undefined);
+    else setSecondarySheet(project, p ?? { ...(project.material.secondarySheet ?? project.material.sheet), preset: 'Custom' });
   }
 
   function chooseLayer(id: string) {
@@ -111,8 +119,8 @@
     <p class="hint">Choose where to use it in Layers, Removable box or Divider materials. Each material gets its own cutting sheets.</p>
   {/if}
   <label class="field">
-    <span>Sheet</span>
-    <select value={project.material.sheet.preset} onchange={chooseSheet}>
+    <span>Sheet{#if secondary}<small class="packing-material">Primary</small>{/if}</span>
+    <select aria-label="Primary material sheet" value={project.material.sheet.preset} onchange={chooseSheet}>
       {#each SHEET_PRESETS as s (s.preset)}
         <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
       {/each}
@@ -122,6 +130,23 @@
   {#if project.material.sheet.preset === 'Custom'}
     <NumberField label="Sheet width" value={project.material.sheet.width} min={50} onchange={(v) => (project.material.sheet.width = v)} />
     <NumberField label="Sheet height" value={project.material.sheet.height} min={50} onchange={(v) => (project.material.sheet.height = v)} />
+  {/if}
+  {#if secondary}
+    {@const own = project.material.secondarySheet}
+    <label class="field" data-tip="The secondary material's sheet size, when it comes in a different size from the primary, e.g. in bulk">
+      <span>Sheet<small class="packing-material">Secondary</small></span>
+      <select aria-label="Secondary material sheet" value={own?.preset ?? ''} onchange={chooseSecondarySheet}>
+        <option value="">Same as primary</option>
+        {#each SHEET_PRESETS as s (s.preset)}
+          <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
+        {/each}
+        <option value="Custom">Custom</option>
+      </select>
+    </label>
+    {#if own?.preset === 'Custom'}
+      <NumberField label="Secondary sheet width" value={own.width} min={50} onchange={(v) => (own.width = v)} />
+      <NumberField label="Secondary sheet height" value={own.height} min={50} onchange={(v) => (own.height = v)} />
+    {/if}
   {/if}
   <label class="field" data-tip="How primary material pieces are packed onto sheets. The cut list page compares each packing choice's sheet count.">
     <span>Packing{#if secondary}<small class="packing-material">Primary</small>{/if}</span>

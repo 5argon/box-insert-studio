@@ -133,7 +133,10 @@ export interface Project {
     thickness: Mm;
     /** Optional second sheet thickness, available for bases, lids and individual dividers. */
     secondaryThickness?: Mm;
+    /** Sheet size for the primary material, and for the secondary unless it has its own. */
     sheet: SheetSpec;
+    /** The secondary material's own sheet size, e.g. a bulk size of the thinner board. Unset: `sheet`. */
+    secondarySheet?: SheetSpec;
     /** Damaged edge trimmed off every side of a sheet before cutting. */
     trim: Mm;
     /** Material lost per cut. */

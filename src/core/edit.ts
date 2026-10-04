@@ -1,7 +1,7 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
 import { baseThickness } from './layout';
-import type { CutLayout, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, Project, SectionNode, Side, SplitNode } from './types';
+import type { CutLayout, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, Project, SectionNode, SheetSpec, Side, SplitNode } from './types';
 
 export const MIN_REGION = 5;
 
@@ -368,6 +368,12 @@ export function setLidNotchSide(section: SectionNode, side: Side, on: boolean) {
   const next = on ? [...new Set([...sides, side])] : sides.filter((s) => s !== side);
   if (next.length) section.insert.lidNotches = next;
   else delete section.insert.lidNotches;
+}
+
+/** Give the secondary material its own sheet size, or `undefined` to use the primary's. */
+export function setSecondarySheet(project: Project, sheet: SheetSpec | undefined) {
+  if (sheet) project.material.secondarySheet = { ...sheet };
+  else delete project.material.secondarySheet;
 }
 
 /** Choose one material's packing without changing the other material's sheets. */
