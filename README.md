@@ -14,9 +14,9 @@ Currently there is no detailed manual yet, please figure out on your own by mess
 
 There are sample designs to download in the `examples` folder. Download a JSON file, then choose **Open** in the app to load it.
 
-- [Arkham Horror LCG Core Set 2026 insert (no player cards, with stand storage)](examples/ahlcg-core-set-2026-no-player-card-with-stand-storage.json)
+- [AHLCG Core Set 2026 : Utility Box Design with Stand Storage](examples/ahlcg-core-set-2026-utility-box-design-with-stand-storage.insert)
 - Arkham Horror LCG Small Campaign Expansion box, three layouts based on Children of Blood (each design's notes explain the idea):
-  - [Design A](examples/ahlcg-small-campaign-expansion-design-a.insert.json): two horizontal card rows instead of the original centred column. Fits one A3 sheet.
+  - [Design A](examples/ahlcg-small-campaign-expansion-design-a.insert.json): two horizontal card rows instead of the original centered column. Fits one A3 sheet.
   - [Design B](examples/ahlcg-small-campaign-expansion-design-b.insert.json): the vertical column moved to the left, with two small side slots for the shared encounter sets. Fits one A3 sheet.
   - [Design C](examples/ahlcg-small-campaign-expansion-design-c.insert.json): Design B with the long column divided for the scenarios, plus a modular 8 cm slot for Core 2026 encounter sets. About one and a half A3 sheets.
 

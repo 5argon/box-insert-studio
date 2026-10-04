@@ -11,7 +11,7 @@ import { roundTo } from './geom';
 import { solveProject } from './layout';
 import { buildCutList, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem } from './pieces';
 import type { CutLayout, Project, SplitNode } from './types';
-import designText from '../../examples/ahlcg-core-set-2026-no-player-card-with-stand-storage.json?raw';
+import designText from '../../examples/ahlcg-core-set-2026-utility-box-design-with-stand-storage.insert.json?raw';
 
 const LAYOUTS: CutLayout[] = ['strips', 'fewest', 'guillotine'];
 const EPS = 1e-6;

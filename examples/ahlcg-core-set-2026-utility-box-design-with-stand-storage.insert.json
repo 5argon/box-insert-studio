@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "AHLCG Core Set 2026 Box Insert : No player card, with stand storage",
+  "name": "AHLCG Core Set 2026 : Utility Box Design with Stand Storage",
   "box": {
     "width": 239,
     "depth": 277,
@@ -19,7 +19,7 @@
     {
       "id": "l-lp1ed19",
       "name": "Tray",
-      "height": 68,
+      "height": 64,
       "root": {
         "kind": "split",
         "id": "p-s-l7r7021",
@@ -61,29 +61,6 @@
                           "id": "s-df4yg3",
                           "notches": [],
                           "arrow": "right",
-                          "lowered": [
-                            "right"
-                          ],
-                          "items": {
-                            "on": true,
-                            "shape": "box",
-                            "width": 93,
-                            "height": 67,
-                            "thickness": 0.625,
-                            "spare": 5
-                          }
-                        }
-                      },
-                      {
-                        "size": {
-                          "mode": "flex",
-                          "weight": 1
-                        },
-                        "node": {
-                          "kind": "section",
-                          "id": "s-q4b548",
-                          "notches": [],
-                          "arrow": "right",
                           "items": {
                             "on": true,
                             "shape": "box",
@@ -102,29 +79,6 @@
                         "node": {
                           "kind": "section",
                           "id": "s-tmwuq8",
-                          "notches": [],
-                          "arrow": "right",
-                          "lowered": [
-                            "right"
-                          ],
-                          "items": {
-                            "on": true,
-                            "shape": "box",
-                            "width": 93,
-                            "height": 67,
-                            "thickness": 0.625,
-                            "spare": 5
-                          }
-                        }
-                      },
-                      {
-                        "size": {
-                          "mode": "flex",
-                          "weight": 1
-                        },
-                        "node": {
-                          "kind": "section",
-                          "id": "s-bvuee9",
                           "notches": [],
                           "arrow": "right",
                           "items": {
@@ -154,8 +108,8 @@
                     "children": [
                       {
                         "size": {
-                          "mode": "fixed",
-                          "mm": 65
+                          "mode": "flex",
+                          "weight": 1
                         },
                         "node": {
                           "kind": "section",
@@ -169,11 +123,13 @@
                               "id": "s-qr83r10",
                               "notches": []
                             },
-                            "stacked": true
+                            "stacked": true,
+                            "lid": true,
+                            "secondaryLid": true
                           },
                           "notchSize": {
-                            "width": 30,
-                            "depth": 40,
+                            "width": 25,
+                            "depth": 20,
                             "bottom": 80,
                             "sides": [
                               "front"
@@ -183,8 +139,8 @@
                       },
                       {
                         "size": {
-                          "mode": "fixed",
-                          "mm": 65
+                          "mode": "flex",
+                          "weight": 1
                         },
                         "node": {
                           "kind": "section",
@@ -199,14 +155,17 @@
                               "id": "s-k32tx11",
                               "notches": []
                             },
-                            "stacked": true
+                            "stacked": true,
+                            "secondaryBase": true,
+                            "lid": true,
+                            "secondaryLid": true
                           }
                         }
                       },
                       {
                         "size": {
-                          "mode": "flex",
-                          "weight": 42
+                          "mode": "fixed",
+                          "mm": 36
                         },
                         "node": {
                           "kind": "section",
@@ -216,8 +175,8 @@
                             "front"
                           ],
                           "notchSize": {
-                            "width": 30,
-                            "depth": 40,
+                            "width": 25,
+                            "depth": 20,
                             "bottom": 80,
                             "sides": [
                               "front"
@@ -231,7 +190,7 @@
                 {
                   "size": {
                     "mode": "fixed",
-                    "mm": 40
+                    "mm": 45
                   },
                   "node": {
                     "kind": "section",
@@ -239,55 +198,19 @@
                     "notches": [],
                     "insert": {
                       "root": {
-                        "kind": "split",
-                        "id": "p-s-4nrcz7",
-                        "dir": "row",
-                        "join": "divider",
-                        "lower": 0,
-                        "children": [
-                          {
-                            "size": {
-                              "mode": "flex",
-                              "weight": 82.5
-                            },
-                            "node": {
-                              "kind": "section",
-                              "id": "s-53gun6",
-                              "notches": [],
-                              "arrow": "right",
-                              "items": {
-                                "on": true,
-                                "shape": "cylinder",
-                                "width": 27,
-                                "height": 91,
-                                "thickness": 5,
-                                "spare": 2
-                              }
-                            }
-                          },
-                          {
-                            "size": {
-                              "mode": "flex",
-                              "weight": 82.5
-                            },
-                            "node": {
-                              "kind": "section",
-                              "id": "s-4nrcz7",
-                              "notches": [],
-                              "arrow": "right",
-                              "items": {
-                                "on": true,
-                                "shape": "cylinder",
-                                "width": 27,
-                                "height": 91,
-                                "thickness": 5,
-                                "spare": 2
-                              }
-                            }
-                          }
-                        ]
+                        "kind": "section",
+                        "id": "s-53gun6",
+                        "notches": [],
+                        "items": {
+                          "on": false,
+                          "shape": "cylinder",
+                          "width": 27,
+                          "height": 91,
+                          "thickness": 5,
+                          "spare": 2
+                        }
                       },
-                      "stacked": true
+                      "lid": true
                     }
                   }
                 }
@@ -347,10 +270,6 @@
                 "emptyAbove": true,
                 "lid": true,
                 "secondaryLid": true,
-                "lidNotches": [
-                  "left",
-                  "right"
-                ],
                 "lidNotchSize": {
                   "width": 30,
                   "depth": 10,
@@ -373,9 +292,9 @@
     },
     "trim": 5,
     "kerf": 0.5,
-    "layout": "strips",
-    "secondaryThickness": 3
+    "secondaryThickness": 3,
+    "secondaryLayout": "guillotine"
   },
-  "readme": "**Author :** 5argon,  https://arkham-starter.com\n\nThis box is designed with quite a lot of specific requirements, the most notable is the long slot for act / agenda block stand that ended up being a major constraint affecting everything!\n\n# What goes where\n\n- A + B : Core encounter cards, Brethren of Ash cards, player reference cards.\n- C + D : All basic weakness you have.\n- E1 + E2 : Damage / horror tokens (1+3). It's too thin for 3 fingers to jam inside but just thumb and index to pinch the tokens out works ok.\n- F1 (top) : Clue / doom (1+3)\n- F2 (bottom) : Resources (1, 3, 5)\n- E1 (top) : Free space for numbered dices, colored wood blocks, etc.\n- E2 (bottom) : Lead investigator token, connection arrows, 5 flashlight tokens.\n- H : Cram active chaos bag with tokens inside here.\n- I : Inactive chaos tokens. Two trays, each fitting 16+16 tokens with center divider.\n\n# Details\n\n- A fixed content box that goes with you no matter what you are playing, without ever requiring to change its content on switching campaigns. The campaign cards and player's deck needs to be elsewhere. Any future player cards purchased will only add a few Basic Weakness to this box.\n- There's a slot for act / agenda stand as long as it is not longer than the long edge of the box. I've allocated 3 cm for this compartment. Bottom of this compartment is padded up with 2 removable boxes, otherwise your hand cannot reach down to pick up the stand. Lids are included for those bottom inner boxes to prevent spilling.\n- I've measured sleeved core encounter sets, plus Brethren of Ash cards, plus 5 player reference cards, to require 8 cm. There's a 8 cm slot to fit exactly this. Center lowered divider to prevent cards from falling over while quantity is reduced when you are playing.\n- Whenever a campaign requires adding random basic weakness this box ensure you have all of them with you. I've went back to measure the entirety of Chapter 1's Basic Weakness (full collection, including Return To) to be also around 8 cm, so an another compartment future-proofed expecting Chapter 2 at around year 2032 (?) reach similar amount. You will only have 15 basic weakness if you bought just all the Chapter 2 Evergreen contents however (not even 1 cm), and might require some padding for them to not fall over until game gets bigger.\n- Removable chaos token containers calculated to fit 64 coins. Game comes with 44 coins, which if Chapter 2 decided to implement Bless and Curse, that'll add up to 64 coins so I want to future-proof it. In order to stack 2 tokens on top of each other in one box, I had to reduce the headroom to be less than the original box's headroom. The space is enough for each capsuled token if they are not more than 27 mm.\n- Narrow slot which your hand can't reach the bottom, used for storing active Chaos Bag with Chaos Tokens inside it, so you are not required to take the tokens out of the bag back to the dedicated coin slots.\n- 4 generic removable trays for tokens, in addition to 2 long ones that's under the stand.\n",
+  "readme": "**Author :** 5argon,  https://arkham-starter.com\n\nThis Core 2026 box is designed for players with this storage scheme, bringing 3 boxes to each session : \n\n- **1. Core 2026** : All owned Basic Weakness, inactive chaos tokens, chaos bag with active chaos tokens, \n- **2. Small / Big Campaign Expansion Box** : The active campaign you are running, in addition to all scenarios of this campaign and the campaign-specific shared encounter cards, also Core 2026 encounter cards are in here so setup and teardown can entirely be done with one box. (However you will need to move this block of core encounter cards to the next campaign you are playing, leaving this space empty.)\n- **3. Deck Box** : Deck and Side Deck (upgrade cards planned to be purchased) of all 4 players. There's no space for them in either boxes. Personal favorite is \"Gamegenic Fourtress 320+\".\n- (Inactive player cards in a separated storage and not brought to play.)\n\nWith a special requirement of... having somewhere to store **act / agenda stand**! So the longest thing we got is the long edge of Core 2026 box. As long as the stand isn't wider than 4 cm, it should fit. This requirement throws a huge wrench in the design, but I think I've found a decent solution here. Headroom is 1 cm, the same as the original.\n\n## What goes where\n\n- **A** : All Basic Weakness you own for beginning and mid-campaign randomization. I've went back to measure the stack of full Chapter 1 collection (including Return To) and it fits in ~8 cm. This probably could handle more than 5 years onwards of Chapter 2 contents. The 5 player reference cards should also be here.\n- **B** : Free space for big things. For me this would be numbered dices and some colored utility wooden blocks.\n- **C1, C2** : A padding to bring the act / agenda stand up to be in reach. The padding are 2 removable boxes which you can store damage and horror tokens. The long shape might be a bit weird but better than not using this space for anything.\n- **D1, D2, E1, E2** : Four identical removable shallow boxes stacked, with lid on top to prevent spill in storage. It should be : resources, clue/doom, lead investigator token / connection arrows / flashlight tokens, and a free container.\n- **F** : This slot is so narrow your hand can't reach the bottom, but is perfect to tuck in active chaos bag with chaos tokens still inside.\n- **G1** : Storage for inactive chaos tokens. Given token diameter of ~30 mm (that is the token with 25~26 mm coin capsule) and 5 mm thick, this box should be able to store 5 stacks of 10 tokens each, adding up to 50 tokens. This game comes with 44 tokens so you can store everything and have an empty bag in **F**, but if Bless and Curse are added to the game, you would have 64 tokens which will not fit. In that case, you must always have some tokens left in the bag in slot **F**.\n\n## Materials\n\nThis design use **two different thickness**, one A3 sheet of 3 mm thick material, and 3 A3 sheets of 5 mm material.\n\nThe 3 mm thickness material is used for the tray's main base and all spill guard lids on the removable boxes. (Except the lid of G1, for reason that it'll ended up using more than one A3 sheet in that case.)  This saves you material cost as they are not required to be durable, and also improve the box's headroom. Crucially this allows 10 chaos tokens to be stacked inside the **G1** box if we still want the same headroom as the original.",
   "secondaryBase": true
 }

@@ -74,7 +74,7 @@
     {#if readmeTitle}<span class="hint readme-peek">{readmeTitle}</span>{/if}
   </div>
 </div>
-<ReadmeDialog bind:this={readme} {project} />
+<ReadmeDialog bind:this={readme} {project} {solved} />
 
 <div class="panel-section">
   <h2>Box inside</h2>
