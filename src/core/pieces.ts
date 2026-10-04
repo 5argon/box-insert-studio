@@ -195,7 +195,8 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
 export interface Strip {
   id: string;
   height: Mm;
-  cuts: { group: number; length: Mm }[];
+  /** In order along the strip. `turned`: the piece lies across, its height along the strip. */
+  cuts: { group: number; length: Mm; turned?: boolean }[];
   used: Mm;
 }
 
@@ -205,6 +206,11 @@ export interface SheetItem {
   strip?: Strip;
   /** Strips: the sheet axis their length runs along. */
   along?: 'x' | 'y';
+  /**
+   * Strips packing: the full-length strip (band) this item is cut from, numbered from 0 across the
+   * sheet, and that strip's width. A piece narrower than its band is trimmed after the crosscut.
+   */
+  band?: { index: number; width: Mm; across: Mm };
   /** Sheet coordinates of the item's rectangle as placed. */
   x: Mm;
   y: Mm;
@@ -255,6 +261,46 @@ function buildStrips(cut: CutList, limit: Mm, kerf: Mm): Strip[] {
   return strips;
 }
 
+/** "#3 285, #8 102 ×2": a strip's cuts in order, repeats of one size counted. */
+function cutsText(cuts: Strip['cuts']): string {
+  const parts: string[] = [];
+  for (let i = 0; i < cuts.length; ) {
+    let j = i;
+    while (j + 1 < cuts.length && cuts[j + 1].group === cuts[i].group && !!cuts[j + 1].turned === !!cuts[i].turned) j++;
+    const n = j - i + 1;
+    parts.push(`#${cuts[i].group} ${mm(cuts[i].length)}${cuts[i].turned ? ' (turned)' : ''}${n > 1 ? ` ×${n}` : ''}`);
+    i = j + 1;
+  }
+  return parts.join(', ');
+}
+
+/**
+ * What to cut on one sheet, in order. With strips packing, each line is one full-length strip:
+ * cut it at its width, then cut it into the listed pieces, trimming any that are narrower than the
+ * strip. Other packings list each strip and panel where it sits.
+ */
+export function sheetSteps(sheet: PlanSheet): string[] {
+  const panel = (item: SheetItem) => `${item.group ? panelUse(item.group) : 'panel'} #${item.group?.number} ${mm(item.group?.length ?? 0)} × ${mm(item.group?.height ?? 0)}`;
+  if (!sheet.items.some((it) => it.band)) {
+    return sheet.items.map((it) =>
+      it.kind === 'base' ? `${cap(panel(it))} mm.` : `Strip ${mm(it.strip!.height)} mm wide, ${mm(it.strip!.used)} mm long → ${cutsText(it.strip!.cuts)}.`,
+    );
+  }
+  const bands = new Map<number, SheetItem[]>();
+  for (const it of sheet.items) bands.set(it.band!.index, [...(bands.get(it.band!.index) ?? []), it]);
+  return [...bands.values()].map((items, k) => {
+    const width = items[0].band!.width;
+    const parts = items.map((it) => {
+      // Anything narrower than its strip is trimmed to width after it is cut off.
+      const trim = it.band!.across < width - 1e-6 ? `, trimmed to ${mm(it.band!.across)} mm wide` : '';
+      return it.kind === 'base' ? `${panel(it)}${trim}` : `${cutsText(it.strip!.cuts)}${trim}`;
+    });
+    return `Strip ${k + 1}: cut a ${mm(width)} mm wide strip along the full length of the sheet, then cut it into ${parts.join('; then ')}.`;
+  });
+}
+
+const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
+
 /** Sheet counts, with each material identified when more than one is used. */
 export function sheetSummary(project: Project, plan: CutPlan): string {
   const { preset } = project.material.sheet;
@@ -294,40 +340,36 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout) {
   const maxLen = Math.max(usableW, usableH);
   const issues: Issue[] = [];
 
-  // Pieces that can never fit are reported once and left out of the plan.
-  const fitting: CutList = {
-    ...cut,
-    groups: cut.groups.filter((g) => {
-      if (g.kind !== 'strip' || g.length <= maxLen) return true;
-      issues.push({ level: 'error', message: `#${g.number} is ${g.length} mm long, longer than a ${sheet.preset} sheet.` });
-      return false;
-    }),
+  // Pieces that can never fit, either way round, are reported once per cut size and left out.
+  const fitsSheet = (w: Mm, h: Mm) => (w <= usableW + 1e-6 && h <= usableH + 1e-6) || (h <= usableW + 1e-6 && w <= usableH + 1e-6);
+  const fits = (g: PieceGroup) => {
+    if (fitsSheet(g.length, g.height)) return true;
+    const what = g.kind === 'base' ? `${panelUse(g)} #${g.number}` : `#${g.number}`;
+    issues.push({
+      level: 'error',
+      message: `${what} (${mm(g.length)} × ${mm(g.height)} mm${g.pieces.length > 1 ? `, ×${g.pieces.length}` : ''}) does not fit the usable ${mm(usableW)} × ${mm(usableH)} mm of a ${sheet.preset} sheet after trimming.`,
+    });
+    return false;
   };
+  const fitting: CutList = { ...cut, groups: cut.groups.filter(fits) };
 
-  const bases = cut.groups.filter((g) => g.kind === 'base').flatMap((g) => g.pieces.map((p, i) => ({ id: `b${g.number}-${i}`, g })));
-  const fitsSheet = (w: Mm, h: Mm) => (w <= usableW && h <= usableH) || (h <= usableW && w <= usableH);
-  const baseItems: { id: string; w: Mm; h: Mm }[] = [];
-  for (const b of bases) {
-    if (!fitsSheet(b.g.length, b.g.height)) {
-      issues.push({ level: 'error', message: `${panelUse(b.g)} #${b.g.number} (${b.g.length} × ${b.g.height}) does not fit a ${sheet.preset} sheet.` });
-      continue;
-    }
-    baseItems.push({ id: b.id, w: b.g.length, h: b.g.height });
-  }
+  const bases = fitting.groups.filter((g) => g.kind === 'base').flatMap((g) => g.pieces.map((p, i) => ({ id: `b${g.number}-${i}`, g })));
+  const baseItems = bases.map((b) => ({ id: b.id, w: b.g.length, h: b.g.height }));
 
-  if (packing === 'strips') return { ...planBands(project, fitting, bases.filter((b) => fitsSheet(b.g.length, b.g.height)), usableW, usableH), issues };
+  if (packing === 'strips') return { ...planBands(project, fitting, bases, usableW, usableH), issues };
   const packer = packing === 'guillotine' ? packGuillotine : pack;
 
   // Long strips mean fewer cuts, but shorter ones fit the gaps beside the bases. Try full-length
   // strips, strips as long as the sheet's short side, and one piece per strip; keep the fewest sheets.
-  let best: { strips: Strip[]; items: { id: string; w: Mm; h: Mm }[]; result: ReturnType<typeof pack> } | undefined;
+  // A strip left out loses every piece in it, so compare tries by pieces left out, then sheets.
+  let best: { strips: Strip[]; items: { id: string; w: Mm; h: Mm }[]; result: ReturnType<typeof pack>; lost: number } | undefined;
   for (const limit of [maxLen, Math.min(usableW, usableH), 0]) {
     const strips = buildStrips(fitting, limit, kerf);
     const items = [...baseItems, ...strips.map((s) => ({ id: `s${s.id}`, w: s.used, h: s.height }))];
     const result = packer(items, usableW, usableH, kerf);
-    if (!best || result.unplaced.length < best.result.unplaced.length || (result.unplaced.length === best.result.unplaced.length && result.sheetCount < best.result.sheetCount)) {
-      best = { strips, items, result };
-    }
+    const cutsIn = new Map(strips.map((s) => [`s${s.id}`, s.cuts.length]));
+    const lost = result.unplaced.reduce((n, id) => n + (cutsIn.get(id) ?? 1), 0);
+    if (!best || lost < best.lost || (lost === best.lost && result.sheetCount < best.result.sheetCount)) best = { strips, items, result, lost };
   }
   const { strips, items, result } = best!;
 
@@ -343,9 +385,18 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout) {
     const g = baseById.get(pl.id);
     const s = stripById.get(pl.id);
     sheets[pl.sheet].items.push({ kind: g ? 'base' : 'strip', group: g, strip: s, along: s ? (pl.rotated ? 'y' : 'x') : undefined, x: trim + pl.x, y: trim + pl.y, w, h });
-    usedArea += it.w * it.h;
+    // Only the pieces count as used: the kerf between a strip's cuts is waste.
+    usedArea += s ? s.cuts.reduce((a, c) => a + c.length, 0) * s.height : it.w * it.h;
   }
-  for (const id of result.unplaced) issues.push({ level: 'error', message: `Could not place ${id} on a sheet.` });
+  if (result.unplaced.length) {
+    const lostGroups = new Map<number, number>();
+    for (const id of result.unplaced) {
+      const s = stripById.get(id);
+      for (const n of s ? s.cuts.map((c) => c.group) : [baseById.get(id)!.number]) lostGroups.set(n, (lostGroups.get(n) ?? 0) + 1);
+    }
+    const what = [...lostGroups].map(([n, k]) => `#${n}${k > 1 ? ` ×${k}` : ''}`).join(', ');
+    issues.push({ level: 'error', message: `Could not place ${what} on a ${sheet.preset} sheet; those pieces are missing from the plan.` });
+  }
   return { sheets, strips, issues, usedArea };
 }
 
@@ -361,17 +412,22 @@ function planBands(project: Project, cut: CutList, bases: { id: string; g: Piece
   const longX = usableW >= usableH;
   const L = Math.max(usableW, usableH);
   const S = Math.min(usableW, usableH);
-  type Item = { kind: 'base' | 'piece'; g: PieceGroup; len: Mm; ht: Mm };
+  type Item = { kind: 'base' | 'piece'; g: PieceGroup; len: Mm; ht: Mm; turned?: boolean };
   const items: Item[] = [];
   // A base lies along the band when it can, so its short side sets the band's width.
   for (const b of bases) {
     const lies = b.g.length <= L + EPS && b.g.height <= S + EPS;
     items.push({ kind: 'base', g: b.g, len: lies ? b.g.length : b.g.height, ht: lies ? b.g.height : b.g.length });
   }
-  for (const g of cut.groups) if (g.kind === 'strip') for (let i = 0; i < g.pieces.length; i++) items.push({ kind: 'piece', g, len: g.length, ht: g.height });
+  // A wall or divider taller than the sheet is wide is cut the other way round, when that fits.
+  for (const g of cut.groups) {
+    if (g.kind !== 'strip') continue;
+    const lies = g.length <= L + EPS && g.height <= S + EPS;
+    for (let i = 0; i < g.pieces.length; i++) items.push({ kind: 'piece', g, len: lies ? g.length : g.height, ht: lies ? g.height : g.length, ...(lies ? {} : { turned: true }) });
+  }
   items.sort((a, b) => b.ht - a.ht || b.len - a.len || a.g.number - b.g.number);
 
-  type Band = { sheet: number; at: Mm; ht: Mm; used: Mm; items: Item[] };
+  type Band = { sheet: number; index: number; at: Mm; ht: Mm; used: Mm; items: Item[] };
   const bands: Band[] = [];
   /** How far across each sheet the bands reach. */
   const across: Mm[] = [];
@@ -387,7 +443,7 @@ function planBands(project: Project, cut: CutList, bases: { id: string; g: Piece
         s = across.length;
         across.push(-kerf);
       }
-      band = { sheet: s, at: across[s] + kerf, ht: it.ht, used: 0, items: [] };
+      band = { sheet: s, index: bands.filter((b) => b.sheet === s).length, at: across[s] + kerf, ht: it.ht, used: 0, items: [] };
       across[s] += kerf + it.ht;
       bands.push(band);
     }
@@ -407,7 +463,7 @@ function planBands(project: Project, cut: CutList, bases: { id: string; g: Piece
     // Consecutive pieces of one width share a strip; a base stands on its own.
     const flush = () => {
       if (!run) return;
-      sheets[b.sheet].items.push({ kind: 'strip', strip: run, along: longX ? 'x' : 'y', ...rect(runStart, b.at, run.used, run.height) });
+      sheets[b.sheet].items.push({ kind: 'strip', strip: run, along: longX ? 'x' : 'y', band: { index: b.index, width: b.ht, across: run.height }, ...rect(runStart, b.at, run.used, run.height) });
       strips.push(run);
       run = undefined;
     };
@@ -415,14 +471,14 @@ function planBands(project: Project, cut: CutList, bases: { id: string; g: Piece
       if (k) pos += kerf;
       if (it.kind === 'base') {
         flush();
-        sheets[b.sheet].items.push({ kind: 'base', group: it.g, ...rect(pos, b.at, it.len, it.ht) });
+        sheets[b.sheet].items.push({ kind: 'base', group: it.g, band: { index: b.index, width: b.ht, across: it.ht }, ...rect(pos, b.at, it.len, it.ht) });
       } else {
         if (!run || run.height !== it.ht) {
           flush();
           run = { id: `${it.g.material}:band${bi}-${k}`, height: it.ht, cuts: [], used: -kerf };
           runStart = pos;
         }
-        run.cuts.push({ group: it.g.number, length: it.len });
+        run.cuts.push({ group: it.g.number, length: it.len, ...(it.turned ? { turned: true } : {}) });
         run.used += kerf + it.len;
       }
       pos += it.len;
