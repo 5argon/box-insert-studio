@@ -17,7 +17,7 @@
     {#each solved.layers as solvedLayer, i (solvedLayer.layer.id)}
       <figure>
         <div class="plan">
-          <LayoutCanvas {project} layer={solvedLayer.layer} solved={solvedLayer} {cut} readonly selected={null} hoverGroup={null} showNumbers={false} onselect={() => {}} />
+          <LayoutCanvas {project} layer={solvedLayer.layer} solved={solvedLayer} {cut} readonly selection={[]} hoverGroup={null} showNumbers={false} onselect={() => {}} />
         </div>
         <figcaption><b>{i + 1}. {solvedLayer.layer.name}</b> · {mm(solvedLayer.layer.height)} mm</figcaption>
       </figure>

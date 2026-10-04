@@ -1,8 +1,9 @@
 <script lang="ts">
   import { canUseTrays, distributeEqually, insertHost, lockChild, offStep, roundParts, sectionIds, setDividerSecondary, setJoin } from '../core/edit';
-  import { baseThickness, dividerMaterial, dividerThickness, insertHeights, type SolvedLayer, type SolvedSplit } from '../core/layout';
+  import { dividerMaterial, dividerThickness, type SolvedLayer, type SolvedSplit } from '../core/layout';
   import { materialLabel } from '../core/pieces';
   import type { Layer, Project } from '../core/types';
+  import { maxDividerLower } from '../core/multi';
   import LockButton from './LockButton.svelte';
   import NumberField from './NumberField.svelte';
 
@@ -27,11 +28,8 @@
   const mm2 = (v: number) => String(Number(v.toFixed(2)));
   const off = $derived(split.childSizes.flatMap((v, i) => (offStep(v, step) ? [i] : [])));
   const offSizes = $derived([...new Set(off.map((i) => mm2(split.childSizes[i])))]);
-  const well = $derived(host ? solvedLayer.compartments.find((c) => c.id === host.id) : undefined);
   /** Dividers keep at least 5 mm: inside a box, of the box's own inside height. */
-  const maxLower = $derived(
-    (host && well ? insertHeights(project, host, well.fullHeight, well.padHeight).inside : layer.height - baseThickness(project)) - 5,
-  );
+  const maxLower = $derived(maxDividerLower(project, layer, solvedLayer, node.id));
 </script>
 
 <div class="panel-section">

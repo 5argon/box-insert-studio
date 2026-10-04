@@ -12,6 +12,7 @@
     disabled = false,
     hint = '',
     decimals = 2,
+    mixed = false,
   }: {
     label: string;
     value: number;
@@ -23,12 +24,14 @@
     disabled?: boolean;
     hint?: string;
     decimals?: number;
+    /** Several things selected whose values differ: shown as "—", typing sets them all. */
+    mixed?: boolean;
   } = $props();
 </script>
 
 <label class="field" data-tip={hint || undefined}>
   <span class="label">{label}</span>
-  <NumberInput {value} {onchange} {step} {min} {max} {disabled} {decimals} />
+  <NumberInput {value} {onchange} {step} {min} {max} {disabled} {decimals} {mixed} />
   <span class="unit">{unit}</span>
 </label>
 

@@ -149,6 +149,16 @@ button.small {
   padding: 2px 7px;
   font-size: 12px;
 }
+/* Several things selected and they differ here: a dashed outline, and a dash where there is room. */
+button.mixed {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+button.mixed.dash::after {
+  content: '–';
+  margin-left: 4px;
+  color: var(--accent);
+}
 button.on {
   background: var(--accent-soft);
   border-color: var(--accent);
