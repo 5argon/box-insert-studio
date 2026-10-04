@@ -7,14 +7,14 @@
   import { dividerThickness, type Bar, type PieceInst, type SolvedLayer } from '../core/layout';
   import type { CutList } from '../core/pieces';
   import type { Layer, Project } from '../core/types';
-  import type { Selection } from './state.svelte';
+  import type { Pick, Selection } from './state.svelte';
 
   let {
     project,
     layer,
     solved,
     cut,
-    selected,
+    selection,
     hoverGroup,
     showNumbers,
     onselect,
@@ -24,10 +24,12 @@
     layer: Layer;
     solved: SolvedLayer;
     cut: CutList;
-    selected: Selection;
+    /** Selected compartments or dividers. */
+    selection: Pick[];
     hoverGroup: number | null;
     showNumbers: boolean;
-    onselect: (s: Selection) => void;
+    /** `add`: Cmd/Ctrl-click, adding to or removing from the selection. */
+    onselect: (s: Selection, add?: boolean) => void;
     /** Static reference plan, including in printed reports. */
     readonly?: boolean;
   } = $props();
@@ -90,6 +92,11 @@
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     const split = solved.splits.find((s) => s.id === bar.splitId);
     if (!split) return;
+    // Cmd/Ctrl-click picks dividers to edit together; it never starts a drag.
+    if (e.metaKey || e.ctrlKey) {
+      onselect({ kind: 'split', id: bar.splitId, index: bar.index }, true);
+      return;
+    }
     const p = toMm(e);
     drag = { bar, start: bar.dir === 'row' ? p.x : p.y, sizes: [...split.childSizes], targets: snapTargets(bar) };
     onselect({ kind: 'split', id: bar.splitId, index: bar.index });
@@ -106,8 +113,10 @@
     drag = null;
   }
 
-  const selectedSplit = $derived(selected?.kind === 'split' ? selected.id : null);
-  const selectedIndex = $derived(selected?.kind === 'split' ? selected.index : undefined);
+  /** Dimension guides follow a single selection. */
+  const selected = $derived(selection.length === 1 ? selection[0]! : null);
+  const dividerSelected = (splitId: string | undefined, index: number | undefined) =>
+    selection.some((p) => p.kind === 'split' && p.id === splitId && (p.index === undefined || p.index === index));
 
   interface Span {
     from: number;
@@ -156,7 +165,7 @@
   function pieceFill(p: PieceInst): string {
     const g = cut.groupOf.get(p.id)?.number;
     if (hoverGroup !== null && g === hoverGroup) return 'var(--accent)';
-    if (p.kind === 'divider' && p.splitId === selectedSplit && (selectedIndex === undefined || p.barIndex === selectedIndex)) return 'var(--piece-selected)';
+    if (p.kind === 'divider' && dividerSelected(p.splitId, p.barIndex)) return 'var(--piece-selected)';
     if (p.depth === 1) return 'var(--piece-inner)';
     return 'var(--piece)';
   }
@@ -178,7 +187,9 @@
   onpointermove={move}
   onpointerup={up}
   onpointercancel={up}
-  onpointerdown={() => onselect(null)}
+  onpointerdown={(e) => {
+    if (!(e.metaKey || e.ctrlKey)) onselect(null);
+  }}
   role={readonly ? 'img' : 'application'}
   aria-label="Top view of {layer.name}"
 >
@@ -207,7 +218,7 @@
           class="box-hit"
           onpointerdown={(e) => {
             e.stopPropagation();
-            if (t.wellId) onselect({ kind: 'section', id: t.wellId });
+            if (t.wellId) onselect({ kind: 'section', id: t.wellId }, e.metaKey || e.ctrlKey);
           }}
           role="button"
           tabindex="-1"
@@ -216,12 +227,12 @@
     {/if}
 
     {#each solved.compartments.filter((c) => c.depth === depth) as c (c.id)}
-      {@const isSel = selected?.kind === 'section' && selected.id === c.id}
+      {@const isSel = selection.some((p) => p.kind === 'section' && p.id === c.id)}
       <g
         class="compartment"
         onpointerdown={(e) => {
           e.stopPropagation();
-          onselect({ kind: 'section', id: c.id });
+          onselect({ kind: 'section', id: c.id }, e.metaKey || e.ctrlKey);
         }}
         role={readonly ? undefined : 'button'}
         aria-label={readonly ? undefined : `Compartment ${c.label}`}
@@ -326,7 +337,7 @@
       height={vertical ? bar.to - bar.from : hit}
       class="hit"
       class:trays={bar.join === 'trays'}
-      class:sel={selectedSplit === bar.splitId && (selectedIndex === undefined || selectedIndex === bar.index)}
+      class:sel={dividerSelected(bar.splitId, bar.index)}
       style:cursor={vertical ? 'ew-resize' : 'ns-resize'}
       onpointerdown={(e) => barDown(e, bar)}
       role="separator"

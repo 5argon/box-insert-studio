@@ -46,7 +46,7 @@
   function chooseLayer(id: string) {
     if (studio.layerId === id) return;
     studio.layerId = id;
-    studio.selected = null;
+    studio.selection = [];
   }
 
   function addLayer() {
@@ -60,7 +60,7 @@
     if (project.layers.length <= 1) return;
     project.layers = project.layers.filter((l) => l.id !== id);
     if (studio.layerId === id) studio.layerId = project.layers[project.layers.length - 1].id;
-    studio.selected = null;
+    studio.selection = [];
   }
 </script>
 

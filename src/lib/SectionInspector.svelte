@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { addSibling, axisOwner, findParent, insertMode, lockChild, removeSection, setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setInsertSharedLid, setJoin, setLidNotchSide, setNotchOverrideSide, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
+  import { addSibling, axisOwner, findParent, insertMode, removeSection, setCompartmentSize, sizeOwner, setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setInsertSharedLid, setJoin, setLidNotchSide, setNotchOverrideSide, setPad, setStacked, splitJoin, splitSection } from '../core/edit';
   import { LID_NOTCH_DEFAULT } from '../core/lidNotches';
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
-  import { baseThickness, insertBaseThickness, insertHeights, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, maxPad, NOTCH_BOTTOM_DEFAULT, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { baseThickness, insertHeights, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, NOTCH_BOTTOM_DEFAULT, padLimit, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import { roundTo } from '../core/geom';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
@@ -62,30 +62,13 @@
     { dir: 'column', label: 'Depth', key: 'h' },
   ];
 
-  /**
-   * The split whose part sets this compartment's size on an axis, and what to add to an inside size
-   * to get that part's size: tray splits size tray outsides (two walls more). A compartment inside a
-   * box with nothing splitting that axis falls back to its well: two box walls and the clearance more.
-   */
-  function ownerFor(dir: Dir): { split: SplitNode; index: number; extra: number } | undefined {
-    const o = axisOwner(layer.root, c.id, dir);
-    if (o) return { ...o, extra: o.split.join === 'trays' ? 2 * T : 0 };
-    if (c.wellId) {
-      const w = axisOwner(layer.root, c.wellId, dir);
-      if (w) return { ...w, extra: 2 * T + project.clearance + (w.split.join === 'trays' ? 2 * T : 0) };
-    }
-    return undefined;
-  }
-  const owners = $derived({ row: ownerFor('row'), column: ownerFor('column') });
+  const owners = $derived({ row: sizeOwner(project, layer, c, 'row'), column: sizeOwner(project, layer, c, 'column') });
 
   function sizesOf(splitId: string) {
     return solvedLayer.splits.find((x) => x.id === splitId)?.childSizes ?? [];
   }
 
-  function setSize(dir: Dir, value: number) {
-    const o = owners[dir];
-    if (o) lockChild(o.split, o.index, value + o.extra, sizesOf(o.split.id));
-  }
+  const setSize = (dir: Dir, value: number) => setCompartmentSize(project, layer, c.id, dir, value);
 
   /** Sizes other compartments already use (with how many use them); picking one keeps cut sizes shared. */
   function sizesInUse(key: 'w' | 'h'): { v: number; uses: number }[] {
@@ -140,7 +123,7 @@
   const boxBody = $derived(heights.body);
   /** Boxes standing on this compartment's floor: 0, 1, or 2 when stacked. */
   const boxesHere = $derived(c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0);
-  const padLimit = $derived(maxPad(c.fullHeight, T, boxesHere, insertBaseThickness(project, c.node), insertLidAllowance(project, c.node)));
+  const padMax = $derived(padLimit(project, c));
   const li = $derived(layerInfo(project, layer.id));
 
   /** How the height adds up, every number with its unit. The layer is named only when there are several. */
@@ -357,9 +340,9 @@
     <button
       class="small"
       onclick={() => setPad(c.node, c.pad + 1)}
-      disabled={c.pad + 1 > padLimit}
+      disabled={c.pad + 1 > padMax}
       aria-label="Add a layer"
-      data-tip={c.pad + 1 > padLimit ? 'No room for another layer' : 'Add a layer'}>+</button
+      data-tip={c.pad + 1 > padMax ? 'No room for another layer' : 'Add a layer'}>+</button
     >
   </div>
   <p class="hint">
@@ -372,13 +355,13 @@
     {:else if c.pad}
       Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked <CompLabel {c} /> in the layout.
     {:else if boxesHere && c.node.insert?.emptyAbove}
-      Raise the floor under the box to make it shallower; it stays half the height left above the raised floor, with the rest empty. Up to {padLimit}
-      layer{padLimit === 1 ? '' : 's'} fit here.
+      Raise the floor under the box to make it shallower; it stays half the height left above the raised floor, with the rest empty. Up to {padMax}
+      layer{padMax === 1 ? '' : 's'} fit here.
     {:else if boxesHere}
       Raise the floor under the {boxesHere === 2 ? 'stacked boxes' : 'box'} to make {boxesHere === 2 ? 'them' : 'it'} shallower; {boxesHere === 2 ? 'they get' : 'it gets'} shorter
-      so the top stays flush. Up to {padLimit} layer{padLimit === 1 ? '' : 's'} fit here.
+      so the top stays flush. Up to {padMax} layer{padMax === 1 ? '' : 's'} fit here.
     {:else}
-      Stack layers of material on the floor to bring a few flat tokens up within reach. Up to {padLimit} layer{padLimit === 1 ? '' : 's'} fit here.
+      Stack layers of material on the floor to bring a few flat tokens up within reach. Up to {padMax} layer{padMax === 1 ? '' : 's'} fit here.
     {/if}
   </p>
 </div>

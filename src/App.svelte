@@ -19,7 +19,10 @@
   import SectionInspector from './lib/SectionInspector.svelte';
   import SplitInspector from './lib/SplitInspector.svelte';
   import { breakStep, recordProject, redo, undo, undoState } from './lib/history.svelte';
-  import { download, firstRun, persist, replaceProject, setPreviewCollapsed, slug, studio, type Selection } from './lib/state.svelte';
+  import { download, firstRun, persist, replaceProject, select, setPreviewCollapsed, slug, studio } from './lib/state.svelte';
+  import MultiSectionInspector from './lib/MultiSectionInspector.svelte';
+  import MultiDividerInspector from './lib/MultiDividerInspector.svelte';
+  import type { Compartment } from './core/layout';
   import { isDark, setTheme, theme, type ThemePref } from './lib/theme.svelte';
 
   const solved = $derived(solveProject(studio.project));
@@ -44,10 +47,14 @@
 
   /** ⌘Z / Ctrl+Z undo, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y redo. Text fields keep their own undo. */
   function keydown(e: KeyboardEvent) {
-    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     const target = e.target as HTMLElement | null;
     const typing = target?.closest('textarea, select, [contenteditable="true"]') || (target instanceof HTMLInputElement && !['checkbox', 'radio', 'button'].includes(target.type));
     if (typing) return;
+    if (e.key === 'Escape' && !target?.closest('dialog')) {
+      select(null);
+      return;
+    }
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     const key = e.key.toLowerCase();
     if (key === 'z' && !e.shiftKey) {
       e.preventDefault();
@@ -60,15 +67,18 @@
 
   const layer = $derived(studio.project.layers.find((l) => l.id === studio.layerId) ?? studio.project.layers[studio.project.layers.length - 1]);
   const solvedLayer = $derived(solved.layers.find((l) => l.layer.id === layer.id)!);
-  const selectedCompartment = $derived(
-    studio.selected?.kind === 'section' ? solvedLayer.compartments.find((c) => c.id === studio.selected?.id) : undefined,
+  /** What is selected on this layer: compartments, or dividers, never both. */
+  const selectedCompartments = $derived(
+    studio.selection.flatMap((p) => (p.kind === 'section' ? solvedLayer.compartments.filter((c): c is Compartment => c.id === p.id) : [])),
   );
-  const selectedSplit = $derived(studio.selected?.kind === 'split' ? solvedLayer.splits.find((s) => s.id === studio.selected?.id) : undefined);
+  const selectedDividers = $derived(
+    studio.selection.flatMap((p) => (p.kind === 'split' && p.index !== undefined && solvedLayer.splits.some((s) => s.id === p.id) ? [{ splitId: p.id, index: p.index }] : [])),
+  );
+  const selectedCompartment = $derived(selectedCompartments.length === 1 ? selectedCompartments[0] : undefined);
+  const splitPick = $derived(studio.selection.length === 1 && studio.selection[0]!.kind === 'split' ? studio.selection[0] : undefined);
+  const selectedSplit = $derived(splitPick ? solvedLayer.splits.find((s) => s.id === splitPick.id) : undefined);
   const errorCount = $derived(designProblems(studio.project, solved, plan).filter((i) => i.level === 'error').length);
 
-  function select(sel: Selection) {
-    studio.selected = sel;
-  }
 
   let newDialog: NewDialog | undefined = $state();
 
@@ -164,7 +174,7 @@
             {layer}
             solved={solvedLayer}
             {cut}
-            selected={studio.selected}
+            selection={studio.selection}
             hoverGroup={studio.hoverGroup}
             showNumbers={studio.showNumbers}
             onselect={select}
@@ -173,12 +183,16 @@
         <PiecesBar project={studio.project} {solved} {cut} {plan} layerId={layer.id} />
       </main>
       <aside class="right">
-        {#if selectedCompartment}
+        {#if selectedCompartments.length > 1}
+          <MultiSectionInspector project={studio.project} {layer} {solved} compartments={selectedCompartments} />
+        {:else if selectedDividers.length > 1}
+          <MultiDividerInspector project={studio.project} {layer} {solvedLayer} picks={selectedDividers} />
+        {:else if selectedCompartment}
           {#key selectedCompartment.id}
             <SectionInspector project={studio.project} {layer} {solved} {solvedLayer} {cut} compartment={selectedCompartment} onselect={select} />
           {/key}
         {:else if selectedSplit}
-          <SplitInspector project={studio.project} {layer} {solvedLayer} split={selectedSplit} dividerIndex={studio.selected?.kind === 'split' ? studio.selected.index : undefined} />
+          <SplitInspector project={studio.project} {layer} {solvedLayer} split={selectedSplit} dividerIndex={splitPick?.kind === 'split' ? splitPick.index : undefined} />
         {:else}
           <div class="panel-section">
             <h2 class="list-title">
@@ -188,13 +202,13 @@
                 Compartments
               {/if}
             </h2>
-            <p class="hint">Click a compartment to size it, add dividers or finger notches. Click or drag a divider to resize; it snaps to sizes already in use.</p>
+            <p class="hint">Click a compartment to size it, add dividers or finger notches. Click or drag a divider to resize; it snaps to sizes already in use. Cmd or Ctrl-click to select several and edit them together.</p>
             {#each solvedLayer.issues as issue, i (i)}
               <div class="issue {issue.level}">{issue.message}</div>
             {/each}
             {#each solvedLayer.compartments as c (c.id)}
               {@const errs = c.issues.filter((i) => i.level === 'error').length}
-              <button class="list-item" class:nested={c.depth === 1} onclick={() => select({ kind: 'section', id: c.id })}>
+              <button class="list-item" class:nested={c.depth === 1} onclick={(e) => select({ kind: 'section', id: c.id }, e.metaKey || e.ctrlKey)}>
                 <CompSquare {c} />
                 <span>{Math.round(c.rect.w * 10) / 10} × {Math.round(c.rect.h * 10) / 10} × {Math.round(c.height * 10) / 10} mm</span>
                 {#if c.node.insert && c.depth === 0}<span class="hint">box inside</span>{/if}

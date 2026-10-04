@@ -244,6 +244,12 @@ export function insertLidAllowance(project: Project, section: SectionNode): Mm {
   return section.insert?.stacked && !section.insert.emptyAbove ? lid / 2 : lid;
 }
 
+/** Most raised-floor layers this compartment can take, with any removable boxes standing on them. */
+export function padLimit(project: Project, c: Compartment): number {
+  const boxes = c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0;
+  return maxPad(c.fullHeight, project.material.thickness, boxes, insertBaseThickness(project, c.node), insertLidAllowance(project, c.node));
+}
+
 /** Heights of the removable box (or each box of a pair) standing in a compartment. */
 export interface InsertHeights {
   /** Height given to each box, including its share of a lid: the compartment's depth above any raised floor, halved for a pair. */

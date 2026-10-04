@@ -1,6 +1,6 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
-import { baseThickness } from './layout';
+import { baseThickness, solveProject, type Compartment } from './layout';
 import type { CutLayout, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, Project, SectionNode, SheetSpec, Side, SplitNode } from './types';
 
 export const MIN_REGION = 5;
@@ -449,6 +449,35 @@ export function dragBar(split: SplitNode, index: number, startSizes: Mm[], delta
  * Lock one child's size. If that leaves no flex sibling to absorb the change, the largest
  * other sibling becomes flex, so the layout still fills its space.
  */
+/**
+ * The split whose part sets a compartment's size on an axis, and what to add to an inside size to
+ * get that part's size: tray splits size tray outsides (two walls more). A compartment inside a box
+ * with nothing splitting that axis falls back to its well: two box walls and the clearance more.
+ */
+export function sizeOwner(project: Project, layer: Layer, c: Compartment, dir: Dir): { split: SplitNode; index: number; extra: Mm } | undefined {
+  const T = project.material.thickness;
+  const o = axisOwner(layer.root, c.id, dir);
+  if (o) return { ...o, extra: o.split.join === 'trays' ? 2 * T : 0 };
+  if (c.wellId) {
+    const w = axisOwner(layer.root, c.wellId, dir);
+    if (w) return { ...w, extra: 2 * T + project.clearance + (w.split.join === 'trays' ? 2 * T : 0) };
+  }
+  return undefined;
+}
+
+/**
+ * Lock a compartment's inside width (`row`) or depth (`column`). Solves afresh for the split's
+ * current sizes, so several compartments can be set one after another.
+ */
+export function setCompartmentSize(project: Project, layer: Layer, compartmentId: string, dir: Dir, value: Mm) {
+  const solved = solveProject(project);
+  const c = solved.compartments.find((x) => x.id === compartmentId);
+  const o = c && sizeOwner(project, layer, c, dir);
+  if (!o) return;
+  const sizes = solved.layers.find((l) => l.layer.id === layer.id)?.splits.find((s) => s.id === o.split.id)?.childSizes ?? [];
+  lockChild(o.split, o.index, value + o.extra, sizes);
+}
+
 export function lockChild(split: SplitNode, index: number, mm: Mm, currentSizes: Mm[] = []) {
   split.children[index].size = { mode: 'fixed', mm };
   if (split.children.some((c) => c.size.mode === 'flex')) return;
