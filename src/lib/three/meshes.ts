@@ -290,9 +290,9 @@ export function applyStyle(t: TrayObjects, style: TrayStyle, items = true, glass
  * Every piece as a solid mesh for export, notches and lowered stretches included: millimetres,
  * Y up, origin at the back-left corner of the box floor. No outline, items or materials.
  */
-export function exportMeshes(model: SceneModel, nameOf: (block: Block, tray: SceneTray) => string): THREE.Group {
+export function exportMeshes(model: SceneModel, nameOf: (block: Block, tray: SceneTray) => string, trays: SceneTray[] = model.trays): THREE.Group {
   const group = new THREE.Group();
-  for (const t of model.trays) {
+  for (const t of trays) {
     for (const b of t.blocks) {
       const mesh = new THREE.Mesh(pieceGeometry(b));
       mesh.name = nameOf(b, t);

@@ -3,6 +3,7 @@ import { setConstruction, setInsertLid, setInsertLidSecondary, setLidNotchSide, 
 import { doomExample } from '../../core/fixtures';
 import { solveProject } from '../../core/layout';
 import { buildCutList } from '../../core/pieces';
+import type { SplitNode } from '../../core/types';
 import { insertObj } from './obj';
 
 describe('OBJ export', () => {
@@ -52,5 +53,46 @@ describe('OBJ export', () => {
     const s = solveProject(p);
     const obj = insertObj(p, s, buildCutList(s, p.precision));
     expect(obj.split('\n').filter((l) => l.startsWith('o '))).toHaveLength(s.pieces.length);
+  });
+});
+
+describe('OBJ zip', () => {
+  it('holds the whole insert plus one file per tray, box and shared lid, each at its own origin', async () => {
+    const { unzipSync, strFromU8 } = await import('three/addons/libs/fflate.module.js');
+    const { insertObjZip } = await import('./obj');
+    const { buildScene } = await import('../../core/scene');
+    const { setInsertSharedLid, setJoin } = await import('../../core/edit');
+    const p = doomExample();
+    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    setStacked(g.node, true);
+    setInsertLid(g.node, true);
+    setInsertSharedLid(g.node, true);
+    setJoin(p.layers[0]!, g.node.insert!.root as SplitNode, 'trays', p.material.thickness);
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const files = unzipSync(insertObjZip(p, s, cut));
+    const names = Object.keys(files);
+
+    expect(names).toContain('doom-style-insert.obj');
+    expect(names).toContain('README.txt');
+    const trays = names.filter((n) => n.startsWith('trays/'));
+    const scene = buildScene(p, s);
+    expect(trays).toHaveLength(scene.trays.length);
+    expect(trays.some((n) => /box-in-g-lower/.test(n))).toBe(true);
+    expect(trays.some((n) => /box-in-g-upper/.test(n))).toBe(true);
+    expect(trays.some((n) => /shared-lid-in-g/.test(n))).toBe(true);
+
+    // Every piece is in exactly one tray file, and each file starts at its own corner.
+    let objects = 0;
+    for (const n of trays) {
+      const lines = strFromU8(files[n]!).split('\n');
+      objects += lines.filter((l) => l.startsWith('o ')).length;
+      const vs = lines.filter((l) => l.startsWith('v ')).map((l) => l.slice(2).split(' ').map(Number));
+      for (const axis of [0, 1, 2]) expect(Math.min(...vs.map((v) => v[axis]!))).toBeCloseTo(0, 3);
+    }
+    expect(objects).toBe(s.pieces.length);
+    // The whole model keeps the box's origin.
+    const whole = strFromU8(files['doom-style-insert.obj']!);
+    expect(whole.split('\n').filter((l) => l.startsWith('o '))).toHaveLength(s.pieces.length);
   });
 });
