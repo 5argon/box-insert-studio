@@ -5,7 +5,7 @@
  * and walls standing on the base are one thickness shorter than the tray.
  */
 import { labelFor } from './defaults';
-import { inset, roundTo, type Rect } from './geom';
+import { floorTo, inset, roundTo, type Rect } from './geom';
 import { solveLidNotches, type LidNotch } from './lidNotches';
 import type { ChildSize, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, NotchSize, Project, SectionNode, Side, SplitNode } from './types';
 
@@ -262,10 +262,14 @@ export interface InsertHeights {
  * The one calculation of a removable box's heights, so what the solver builds and what the
  * inspector reports cannot drift apart. `depth` is the compartment's height above its tray floor;
  * `padHeight` its raised floor, if any.
+ *
+ * The body is rounded down to the rounding step: cut sizes are rounded to it, and a body on the
+ * step cannot round up and stand proud. Halving a depth often lands on a quarter millimetre, which
+ * would round both boxes of a pair up; this way the pair sits up to one step low instead.
  */
 export function insertHeights(project: Project, section: SectionNode, depth: Mm, padHeight: Mm): InsertHeights {
   const envelope = (depth - padHeight) / (section.insert?.stacked ? 2 : 1);
-  const body = envelope - insertLidAllowance(project, section);
+  const body = floorTo(envelope - insertLidAllowance(project, section), project.precision);
   const base = insertBaseThickness(project, section);
   return { envelope, body, base, wall: project.base === 'under' ? body - base : body, inside: body - base };
 }
@@ -614,7 +618,10 @@ function mergeLows(lows: Low[]): Low[] {
   return out;
 }
 
-/** Overlapping notches become one: the outer slants of the two ends, one flat bottom between. */
+/**
+ * Overlapping notches become one spanning both, as deep as the deeper. A notch has one flat bottom
+ * centred in its opening, so the merged slopes are equal: together as long as the two outer slopes.
+ */
 function mergeNotches(notches: Notch[]): Notch[] {
   const sorted = [...notches].sort((a, b) => a.center - b.center);
   const out: { a: Mm; b: Mm; depth: Mm; custom: boolean; leftRun: Mm; rightRun: Mm }[] = [];
@@ -766,7 +773,9 @@ export function solveProject(project: Project): Solved {
         const custom = usesNotchOverride(c.node, side);
         const size = custom ? c.node.notchSize! : project.notch;
         const width = Math.min(size.width, span - 4);
-        const depth = Math.min(size.depth, p.height - p.thickness);
+        // Keep a strip one board thick above the floor: a wall wrapped around the base starts below it.
+        const floor = p.kind === 'wall' && project.base === 'inside' ? (trayOf.get(p.trayId)?.base ?? 0) : 0;
+        const depth = Math.min(size.depth, p.height - floor - p.thickness);
         if (width < 5 || depth < 2) {
           c.issues.push({ level: 'warn', message: `No room for a finger notch on the ${side}.` });
           continue;

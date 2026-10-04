@@ -39,3 +39,37 @@ describe('removable box heights', () => {
     });
   }
 });
+
+describe('box heights on the rounding step', () => {
+  it('never lets a stacked pair stand proud when half the depth lands between steps', async () => {
+    const { buildCutList } = await import('./pieces');
+    const p = doomExample();
+    p.layers[0]!.height = 56.5; // 51.5 mm above the floor: half is 25.75
+    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+    setStacked(g.node, true);
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const well = s.compartments.find((c) => c.label === 'G')!;
+    const box = s.trays.find((t) => t.wellId === well.id && !t.copyOf)!;
+    expect(box.height).toBe(25.5);
+    // As cut: two boxes of rounded walls on their floors fit within the well.
+    const wall = s.pieces.find((x) => x.trayId === box.id && x.kind === 'wall')!;
+    const cutWall = cut.groupOf.get(wall.id)!.height;
+    expect(2 * (cutWall + box.base)).toBeLessThanOrEqual(well.fullHeight + 1e-9);
+  });
+
+  it('keeps a notch above the floor on walls wrapped around a thicker base', async () => {
+    const { setLayerBaseSecondary, setSecondaryThickness } = await import('./edit');
+    const p = doomExample();
+    p.base = 'inside';
+    p.material.thickness = 3;
+    setSecondaryThickness(p, 5);
+    setLayerBaseSecondary(p, true);
+    p.notch = { width: 30, depth: 100 };
+    const s = solveProject(p);
+    const tray = s.trays.find((t) => t.depth === 0)!;
+    const walls = s.pieces.filter((x) => x.trayId === tray.id && x.kind === 'wall' && x.notches.length);
+    expect(walls.length).toBeGreaterThan(0);
+    for (const w of walls) for (const n of w.notches) expect(w.height - n.depth).toBeGreaterThanOrEqual(tray.base + w.thickness - 1e-9);
+  });
+});

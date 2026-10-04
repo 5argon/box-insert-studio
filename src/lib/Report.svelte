@@ -21,7 +21,7 @@
   const layerName = $derived(new Map(project.layers.map((l) => [l.id, l.name])));
   const total = $derived(cut.groups.reduce((a, g) => a + g.pieces.length, 0));
   /** Everything wrong or adjusted, so nobody buys material for a design that will not build as shown. */
-  const problems = $derived(designProblems(solved, plan));
+  const problems = $derived(designProblems(project, solved, plan));
   const errors = $derived(problems.filter((i) => i.level === 'error'));
   const warnings = $derived(problems.filter((i) => i.level === 'warn'));
 
