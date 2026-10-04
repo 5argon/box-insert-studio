@@ -254,9 +254,9 @@
       <rect x={p.footprint.x} y={p.footprint.y} width={Math.max(0, p.footprint.w)} height={Math.max(0, p.footprint.h)} style:fill={pieceFill(p)} class="piece" />
       {#each p.lowFrom as l, i (i)}
         {#if p.axis === 'x'}
-          <rect x={p.start + l.from} y={p.footprint.y} width={l.to - l.from} height={p.footprint.h} class="lowered" />
+          <rect x={p.start + l.from} y={p.footprint.y} width={l.to - l.from} height={p.footprint.h} class="lowered" class:custom={l.custom} />
         {:else}
-          <rect x={p.footprint.x} y={p.start + l.from} width={p.footprint.w} height={l.to - l.from} class="lowered" />
+          <rect x={p.footprint.x} y={p.start + l.from} width={p.footprint.w} height={l.to - l.from} class="lowered" class:custom={l.custom} />
         {/if}
       {/each}
       {#each p.notches as n, i (i)}
@@ -471,6 +471,9 @@
   .lowered {
     fill: var(--lowered);
     pointer-events: none;
+  }
+  .lowered.custom {
+    fill: var(--lowered-custom);
   }
   .letter {
     font-weight: 700;

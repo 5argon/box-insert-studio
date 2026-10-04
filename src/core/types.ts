@@ -44,6 +44,13 @@ export interface SectionNode {
   };
   /** Sides whose wall or divider is cut down beside this compartment. Never also notched. */
   lowered?: Side[];
+  /** This compartment's own lowered height on selected sides, instead of the project's `lowered`. */
+  lowerHeight?: {
+    /** Height of the lowered side, in percent of the compartment's depth. */
+    percent: number;
+    /** Sides using it. Unset applies it to every lowered side. */
+    sides?: Side[];
+  };
   /** An arrow drawn beside the letter: which way the items in this slot face. */
   arrow?: Side;
   /** Items to simulate standing in a row along the arrow, e.g. cards or tokens on edge. */

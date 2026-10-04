@@ -384,9 +384,9 @@
                 <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="tray-piece" />
                 {#each p.lowFrom as l, i (i)}
                   {#if p.axis === 'x'}
-                    <rect x={p.start + l.from} y={p.footprint.y} width={l.to - l.from} height={p.footprint.h} class="tray-lowered" />
+                    <rect x={p.start + l.from} y={p.footprint.y} width={l.to - l.from} height={p.footprint.h} class="tray-lowered" class:custom={l.custom} />
                   {:else}
-                    <rect x={p.footprint.x} y={p.start + l.from} width={p.footprint.w} height={l.to - l.from} class="tray-lowered" />
+                    <rect x={p.footprint.x} y={p.start + l.from} width={p.footprint.w} height={l.to - l.from} class="tray-lowered" class:custom={l.custom} />
                   {/if}
                 {/each}
                 {#each p.notches as n, i (i)}
@@ -675,6 +675,9 @@
   }
   .tray-lowered {
     fill: #9b7fd4;
+  }
+  .tray-lowered.custom {
+    fill: #c2569b;
   }
   .tray-notch.custom {
     fill: #1aa6b7;

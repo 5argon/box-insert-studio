@@ -142,6 +142,16 @@ export function setNotchOverrideSide(section: SectionNode, side: Side, override:
   size.sides = override ? [...new Set([...sides, side])] : sides.filter((s) => s !== side);
 }
 
+/** Choose which of this compartment's lowered sides use its own lowered height. */
+export function setLowOverrideSide(section: SectionNode, side: Side, override: boolean) {
+  const own = section.lowerHeight;
+  const lowered = section.lowered ?? [];
+  if (!own || !lowered.includes(side)) return;
+  // An override without a selection applied to every lowered side; keep those when one changes.
+  const sides = own.sides ?? lowered;
+  own.sides = override ? [...new Set([...sides, side])] : sides.filter((s) => s !== side);
+}
+
 /** Choose the material of one divider, rather than all the dividers in its split. */
 export function setDividerSecondary(split: SplitNode, index: number, secondary: boolean) {
   if (split.join !== 'divider' || !Number.isInteger(index) || index < 0 || index >= split.children.length - 1) return;

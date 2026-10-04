@@ -75,7 +75,7 @@ export interface PieceInst {
   /** Lowered stretches of the top edge. Empty when the whole piece is lowered: see `cut`. */
   lows: Low[];
   /** Which compartment side asked for each lowered stretch, even when it became `cut`. */
-  lowFrom: { compartmentId: string; side: Side; from: Mm; to: Mm }[];
+  lowFrom: { compartmentId: string; side: Side; from: Mm; to: Mm; custom?: boolean }[];
   /** Lowered along its whole length: this much shorter than it would be, already taken off `height`. */
   cut?: Mm;
   /** Glue order inside its tray. */
@@ -186,6 +186,16 @@ export interface Solved {
 }
 
 export const SIDES: Side[] = ['back', 'front', 'left', 'right'];
+
+/** Whether this lowered side uses the compartment's own height instead of the project's. */
+export function usesLowOverride(section: SectionNode, side: Side): boolean {
+  return !!section.lowerHeight && (section.lowerHeight.sides === undefined || section.lowerHeight.sides.includes(side));
+}
+
+/** Height of a lowered side, in percent of its compartment's depth: its own, or the project's. */
+export function lowPercent(project: Project, section: SectionNode, side: Side): number {
+  return usesLowOverride(section, side) ? section.lowerHeight!.percent : (project.lowered ?? LOWERED_DEFAULT);
+}
 
 /** Whether this side uses the compartment's own notch settings. */
 export function usesNotchOverride(section: SectionNode, side: Side): boolean {
@@ -704,11 +714,12 @@ export function solveProject(project: Project): Solved {
     // stands at a share of the compartment's depth above its floor, rounded like every cut size so
     // identical walls lowered the same way stay one cut size.
     const trayOf = new Map(sl.trays.map((t) => [t.id, t]));
-    const share = (project.lowered ?? LOWERED_DEFAULT) / 100;
     for (const c of sl.compartments) {
       for (const side of c.node.lowered ?? []) {
         const p = byId.get(c.bounds[side]);
         if (!p) continue;
+        const custom = usesLowOverride(c.node, side);
+        const share = lowPercent(project, c.node, side) / 100;
         // A wall wrapped around the base starts at the tray's bottom, one base below the floor.
         const below = p.kind === 'wall' && project.base === 'inside' ? (trayOf.get(p.trayId)?.base ?? 0) : 0;
         const top = roundTo(below + share * c.fullHeight, project.precision);
@@ -721,7 +732,7 @@ export function solveProject(project: Project): Solved {
         const from = Math.max(0, a);
         const to = Math.min(p.length, b);
         p.lows.push({ from, to, depth });
-        p.lowFrom.push({ compartmentId: c.id, side, from, to });
+        p.lowFrom.push({ compartmentId: c.id, side, from, to, ...(custom ? { custom: true } : {}) });
       }
     }
     for (const p of sl.pieces) {
