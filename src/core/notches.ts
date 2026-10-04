@@ -1,10 +1,7 @@
 import { lowsFacing, notchesFacing, type Compartment, type Solved } from './layout';
 import type { Side } from './types';
 
-/**
- * Corners of a slanted finger notch as [along the piece, down from the top edge]: top-left,
- * bottom-left, bottom-right, top-right. Three straight cuts: two slants and the flat bottom.
- */
+/** Corners of a slanted finger notch; lives in geom.ts, shared with lid cutouts. */
 export { notchCorners } from './geom';
 
 /** The slants' angle from level, in degrees: what to set a square or protractor to. 90 is straight down. */

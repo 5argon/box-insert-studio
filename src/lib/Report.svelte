@@ -7,6 +7,7 @@
   import type { Solved, Tray } from '../core/layout';
   import { cutPacking, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import { setCutLayout } from '../core/edit';
+  import { designProblems } from '../core/problems';
   import type { MaterialKind, Project } from '../core/types';
   import Markdown from './Markdown.svelte';
   import ReportOverview from './ReportOverview.svelte';
@@ -19,7 +20,10 @@
   const trayById = $derived(new Map(solved.trays.map((t) => [t.id, t])));
   const layerName = $derived(new Map(project.layers.map((l) => [l.id, l.name])));
   const total = $derived(cut.groups.reduce((a, g) => a + g.pieces.length, 0));
-  const errors = $derived([...solved.issues, ...solved.layers.flatMap((l) => l.issues), ...plan.issues].filter((i) => i.level === 'error'));
+  /** Everything wrong or adjusted, so nobody buys material for a design that will not build as shown. */
+  const problems = $derived(designProblems(solved, plan));
+  const errors = $derived(problems.filter((i) => i.level === 'error'));
+  const warnings = $derived(problems.filter((i) => i.level === 'warn'));
 
   const wellLabel = (id?: string) => solved.compartments.find((c) => c.id === id)?.label ?? '?';
   const parentNumber = (id?: string) => (id ? trayById.get(id)?.number : undefined) ?? '?';
@@ -177,9 +181,22 @@
       </div>
     </header>
 
-    {#each errors as e, i (i)}
-      <div class="issue error">{e.message}</div>
-    {/each}
+    {#if errors.length}
+      <div class="issue error">
+        <b>Fix before buying or cutting: the cut list below is incomplete or wrong.</b>
+        <ul>
+          {#each errors as e, i (i)}<li>{e.where ? `${e.where}: ` : ''}{e.message}</li>{/each}
+        </ul>
+      </div>
+    {/if}
+    {#if warnings.length}
+      <div class="issue warn">
+        <b>Check before cutting: the design was adjusted where it did not fit.</b>
+        <ul>
+          {#each warnings as w, i (i)}<li>{w.where ? `${w.where}: ` : ''}{w.message}</li>{/each}
+        </ul>
+      </div>
+    {/if}
 
     <ReportOverview {project} {solved} {cut} />
 
@@ -706,6 +723,10 @@
     background: #fff1c2;
     padding: 0 3px;
     border-radius: 3px;
+  }
+  .issue ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
   }
   .step-note {
     display: block;

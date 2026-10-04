@@ -200,14 +200,22 @@ export function baseThickness(project: Project): Mm {
   return materialThickness(project, project.secondaryBase);
 }
 
+/**
+ * The material a part is cut from: the secondary only when the part asks for it and a secondary
+ * thickness is set. Every part's material and thickness come from here, so the two never disagree.
+ */
+export function materialFor(project: Project, secondary = false): MaterialKind {
+  return secondary && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary';
+}
+
 /** Thickness for a part that can opt into the secondary material. */
 export function materialThickness(project: Project, secondary = false): Mm {
-  return secondary ? (project.material.secondaryThickness ?? project.material.thickness) : project.material.thickness;
+  return materialFor(project, secondary) === 'secondary' ? project.material.secondaryThickness! : project.material.thickness;
 }
 
 /** Material selected for one divider, with primary material as the fallback. */
 export function dividerMaterial(project: Project, split: SplitNode, index: number): MaterialKind {
-  return split.children[index]?.secondaryDivider && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary';
+  return materialFor(project, split.children[index]?.secondaryDivider);
 }
 
 export function dividerThickness(project: Project, split: SplitNode, index: number): Mm {
@@ -368,7 +376,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
     let order = 0;
     const add = (p: PieceInput): PieceInst => {
-      const material = p.material ?? (p.kind === 'base' && ctx.secondaryBase && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary');
+      const material = p.material ?? materialFor(project, p.kind === 'base' && ctx.secondaryBase);
       const thickness = p.kind === 'base' ? ctx.base : materialThickness(project, material === 'secondary');
       const piece: PieceInst = { ...p, id: `${tray.id}/${order}`, order, layerId: layer.id, trayId: tray.id, thickness, material, notches: [], notchFrom: [], lows: [], lowFrom: [], depth: ctx.depth, copy: !!ctx.copy };
       order += 1;
@@ -407,7 +415,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       issues.push(...cutouts.warnings.map((message) => ({ level: 'warn' as const, message, trayId: tray.id })));
       const lidPiece = add({
         kind: 'lid', role: 'lid', length: outer.w, height: outer.h, footprint: outer, axis: 'x', start: outer.x,
-        material: ctx.secondaryLid && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary',
+        material: materialFor(project, ctx.secondaryLid),
         ...(cutouts.notches.length ? { lidNotches: cutouts.notches } : {}),
       });
       // The lower box has no lid: this is a unique piece even when its box body is a copy.
@@ -475,7 +483,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
           id: `${anchor.id}/${order}`, kind: 'lid', role: 'lid', sharedLidFor: node.id,
           copy: false, depth: 1, layerId: layer.id, trayId: anchor.id, order,
           length: footprint.w, height: footprint.h, thickness: boxLid,
-          material: node.insert.secondaryLid && project.material.secondaryThickness !== undefined ? 'secondary' : 'primary',
+          material: materialFor(project, node.insert.secondaryLid),
           footprint, axis: 'x', start: footprint.x, notches: [], notchFrom: [], lows: [], lowFrom: [],
           ...(cutouts.notches.length ? { lidNotches: cutouts.notches } : {}),
         });

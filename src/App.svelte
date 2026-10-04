@@ -3,6 +3,7 @@
   import { migrateProject } from './core/defaults';
   import { baseThickness, solveProject } from './core/layout';
   import { buildCutList, planCuts } from './core/pieces';
+  import { designProblems } from './core/problems';
   import { buildScene } from './core/scene';
   import { trayColors } from './lib/trayColors';
   import type { Project } from './core/types';
@@ -63,10 +64,7 @@
     studio.selected?.kind === 'section' ? solvedLayer.compartments.find((c) => c.id === studio.selected?.id) : undefined,
   );
   const selectedSplit = $derived(studio.selected?.kind === 'split' ? solvedLayer.splits.find((s) => s.id === studio.selected?.id) : undefined);
-  const errorCount = $derived(
-    [...solved.issues, ...solved.layers.flatMap((l) => l.issues), ...plan.issues].filter((i) => i.level === 'error').length +
-      solved.compartments.reduce((a, c) => a + c.issues.filter((i) => i.level === 'error').length, 0),
-  );
+  const errorCount = $derived(designProblems(solved, plan).filter((i) => i.level === 'error').length);
 
   function select(sel: Selection) {
     studio.selected = sel;
