@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canUseTrays, distributeEqually, insertHost, lockChild, offStep, roundParts, sectionIds, setDividerSecondary, setJoin } from '../core/edit';
-  import { baseThickness, dividerMaterial, dividerThickness, insertBaseThickness, insertLidAllowance, type SolvedLayer, type SolvedSplit } from '../core/layout';
+  import { baseThickness, dividerMaterial, dividerThickness, insertHeights, type SolvedLayer, type SolvedSplit } from '../core/layout';
   import { materialLabel } from '../core/pieces';
   import type { Layer, Project } from '../core/types';
   import LockButton from './LockButton.svelte';
@@ -28,9 +28,10 @@
   const off = $derived(split.childSizes.flatMap((v, i) => (offStep(v, step) ? [i] : [])));
   const offSizes = $derived([...new Set(off.map((i) => mm2(split.childSizes[i])))]);
   const well = $derived(host ? solvedLayer.compartments.find((c) => c.id === host.id) : undefined);
-  const maxLower = $derived(host
-    ? (well?.height ?? layer.height - baseThickness(project)) / (host.insert?.stacked ? 2 : 1) - insertBaseThickness(project, host) - insertLidAllowance(project, host) - 5
-    : layer.height - baseThickness(project) - 5);
+  /** Dividers keep at least 5 mm: inside a box, of the box's own inside height. */
+  const maxLower = $derived(
+    (host && well ? insertHeights(project, host, well.fullHeight, well.padHeight).inside : layer.height - baseThickness(project)) - 5,
+  );
 </script>
 
 <div class="panel-section">
