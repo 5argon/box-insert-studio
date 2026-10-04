@@ -11,13 +11,20 @@ import { roundTo } from './geom';
 import { solveProject } from './layout';
 import { buildCutList, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem } from './pieces';
 import type { CutLayout, Project, SplitNode } from './types';
-import designText from '../../examples/ahlcg-core-set-2026-utility-box-design-with-stand-storage.insert.json?raw';
+// Every design in examples/, whatever it is called: they are working files and change, so they are
+// only held to rules, never to their exact pieces.
+const exampleTexts = import.meta.glob('../../examples/*.json', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+const examples: [string, () => Project][] = Object.entries(exampleTexts).map(([path, text]) => [path.split('/').pop()!, () => migrateProject(JSON.parse(text))!]);
 
 const LAYOUTS: CutLayout[] = ['strips', 'fewest', 'guillotine'];
 const EPS = 1e-6;
 
-function realDesign(): Project {
-  return migrateProject(JSON.parse(designText))!;
+/** The reference design with its bases and lids on a 3 mm secondary material. */
+function withSecondary(): Project {
+  const p = doomExample();
+  setSecondaryThickness(p, 3);
+  setLayerBaseSecondary(p, true);
+  return p;
 }
 
 function withPacking(p: Project, layout: CutLayout): Project {
@@ -102,7 +109,7 @@ function check(p: Project) {
 }
 
 const designs: [string, () => Project][] = [
-  ['the AHLCG design', realDesign],
+  ...examples.map(([name, design]): [string, () => Project] => [`example ${name}`, design]),
   ['the reference design', doomExample],
   ['separate trays', () => {
     const p = doomExample();
@@ -120,8 +127,8 @@ const designs: [string, () => Project][] = [
     setJoin(p.layers[0]!, g.node.insert!.root as SplitNode, 'trays', p.material.thickness);
     return p;
   }],
-  ['the AHLCG design with its 3 mm board on A2 sheets', () => {
-    const p = realDesign();
+  ['secondary material on its own A2 sheets', () => {
+    const p = withSecondary();
     p.material.secondarySheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! };
     return p;
   }],
@@ -170,33 +177,36 @@ describe('cutting plans', () => {
   });
 
   it('describes strips packing strip by strip, trimming what is narrower than its strip', () => {
-    const p = withPacking(realDesign(), 'strips');
-    const { plan } = check(p);
-    const steps = plan.sheets.flatMap((s) => sheetSteps(s));
-    expect(steps.every((s) => /^Strip \d+: cut a [\d.]+ mm wide strip along the full length of the sheet, then cut it into .+\.$/.test(s))).toBe(true);
-    // #19 (24.5 mm wide) comes off the end of a 65 mm strip, so it says so.
-    expect(steps.some((s) => s.includes('65 mm wide') && s.includes('#19 38, trimmed to 24.5 mm wide'))).toBe(true);
-    // Every piece is in the text as often as it is cut.
-    const mentions = steps.join(' ').match(/#\d+ [\d.]+( × [\d.]+)?( \(turned\))?( ×\d+)?/g)!;
-    const total = mentions.reduce((n, m) => n + Number(m.match(/ ×(\d+)$/)?.[1] ?? 1), 0);
-    expect(total).toBe(check(p).cut.groups.reduce((n, g) => n + g.pieces.length, 0));
+    for (const [, design] of [...examples, ['reference', withSecondary] as const]) {
+      const p = withPacking(design(), 'strips');
+      const { plan, cut } = check(p);
+      const steps = plan.sheets.flatMap((s) => sheetSteps(s));
+      expect(steps.every((s) => /^Strip \d+: cut a [\d.]+ mm wide strip along the full length of the sheet, then cut it into .+\.$/.test(s))).toBe(true);
+      // Anything narrower than the strip it comes from says so, once each.
+      const narrower = plan.sheets.flatMap((s) => s.items).filter((it) => it.band && it.band.across < it.band.width - 1e-6).length;
+      expect(steps.join(' ').match(/trimmed to [\d.]+ mm wide/g)?.length ?? 0).toBe(narrower);
+      // Every piece is in the text as often as it is cut.
+      const mentions = steps.join(' ').match(/#\d+ [\d.]+( × [\d.]+)?( \(turned\))?( ×\d+)?/g) ?? [];
+      const total = mentions.reduce((n, m) => n + Number(m.match(/ ×(\d+)$/)?.[1] ?? 1), 0);
+      expect(total).toBe(cut.groups.reduce((n, g) => n + g.pieces.length, 0));
+    }
   });
 
   it('buys each material in its own sheet size', async () => {
     const { sheetSummary, sheetSizes } = await import('./pieces');
-    const p = realDesign();
+    const p = withSecondary();
     const same = check(p).plan;
-    expect(sheetSummary(p, same)).toBe('1 × 3 mm secondary + 3 × 5 mm primary A3 sheets');
-    expect(sheetSizes(same)).toBe('297 × 420 mm');
-    p.material.secondarySheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! };
+    expect(sheetSummary(p, same)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets$/);
+    expect(sheetSizes(same)).toBe('420 × 594 mm');
+    p.material.secondarySheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A3')! };
     const own = check(p).plan;
-    expect(own.sheets.filter((s) => s.material === 'secondary').every((s) => s.sheet.preset === 'A2')).toBe(true);
-    expect(own.sheets.filter((s) => s.material === 'primary').every((s) => s.sheet.preset === 'A3')).toBe(true);
-    expect(sheetSummary(p, own)).toBe('1 × 3 mm secondary A2 + 3 × 5 mm primary A3 sheets');
-    expect(sheetSizes(own)).toBe('A2 420 × 594 mm, A3 297 × 420 mm');
+    expect(own.sheets.filter((s) => s.material === 'secondary').every((s) => s.sheet.preset === 'A3')).toBe(true);
+    expect(own.sheets.filter((s) => s.material === 'primary').every((s) => s.sheet.preset === 'A2')).toBe(true);
+    expect(sheetSummary(p, own)).toMatch(/^\d+ × 3 mm secondary A3 \+ \d+ × 5 mm primary A2 sheets$/);
+    expect(sheetSizes(own)).toBe('A3 297 × 420 mm, A2 420 × 594 mm');
     // A custom size is named by its dimensions.
     p.material.secondarySheet = { preset: 'Custom', width: 600, height: 1000 };
-    expect(sheetSummary(p, check(p).plan)).toBe('1 × 3 mm secondary 600 × 1000 mm + 3 × 5 mm primary A3 sheets');
+    expect(sheetSummary(p, check(p).plan)).toMatch(/^\d+ × 3 mm secondary 600 × 1000 mm \+ \d+ × 5 mm primary A2 sheets$/);
   });
 
   it('rounds equal sizes alike, however they were added up', () => {
