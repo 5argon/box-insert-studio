@@ -4,7 +4,7 @@
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
-  import { baseThickness, insertBaseThickness, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, maxPad, NOTCH_BOTTOM_DEFAULT, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { baseThickness, insertBaseThickness, insertHeights, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, maxPad, NOTCH_BOTTOM_DEFAULT, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import { roundTo } from '../core/geom';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
@@ -41,7 +41,9 @@
   const tray = $derived(solved.trays.find((t) => t.id === c.trayId));
   /** The compartment a box stands in: this one if it holds a box, or the one around this box. */
   const well = $derived(c.wellId ? solved.compartments.find((x) => x.id === c.wellId) : c.node.insert ? c : undefined);
-  const boxBase = $derived(well ? insertBaseThickness(project, well.node) : T);
+  /** Heights from the solver's own calculation, for this box or the one this compartment would get. */
+  const heights = $derived(insertHeights(project, (well ?? c).node, (well ?? c).fullHeight, (well ?? c).padHeight));
+  const boxBase = $derived(heights.base);
   const hasLid = $derived(!!well?.node.insert?.lid);
   const boxLid = $derived(well ? insertLidThickness(project, well.node) : 0);
   const sharedLid = $derived(well ? usesSharedLid(well.node) : false);
@@ -133,9 +135,9 @@
     { side: 'right', glyph: '→' },
   ];
   const pieceById = $derived(new Map(solved.pieces.map((p) => [p.id, p])));
-  /** Half the stack envelope for a pair; its bodies divide the height beneath one top lid. */
-  const boxHeight = $derived((layer.height - B - (well?.padHeight ?? 0)) / (stacked ? 2 : 1));
-  const boxBody = $derived(boxHeight - lidAllowance);
+  /** Each box's share of the height, lid included; a pair's bodies divide it beneath one top lid. */
+  const boxHeight = $derived(heights.envelope);
+  const boxBody = $derived(heights.body);
   /** Boxes standing on this compartment's floor: 0, 1, or 2 when stacked. */
   const boxesHere = $derived(c.node.insert && c.depth === 0 ? (c.node.insert.stacked ? 2 : 1) : 0);
   const padLimit = $derived(maxPad(c.fullHeight, T, boxesHere, insertBaseThickness(project, c.node), insertLidAllowance(project, c.node)));
@@ -161,7 +163,7 @@
       return p?.kind === 'divider' && p.lower ? [`${side} ${mm(p.lower)} mm`] : [];
     }),
   );
-  const boxWall = $derived(project.base === 'under' ? boxBody - boxBase : boxBody);
+  const boxWall = $derived(heights.wall);
 
   /** A lowered side stands this share of the compartment's depth above its floor. */
   const lowPct = $derived(project.lowered ?? LOWERED_DEFAULT);
