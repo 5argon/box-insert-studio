@@ -244,6 +244,32 @@ export function insertLidAllowance(project: Project, section: SectionNode): Mm {
   return section.insert?.stacked && !section.insert.emptyAbove ? lid / 2 : lid;
 }
 
+/** Heights of the removable box (or each box of a pair) standing in a compartment. */
+export interface InsertHeights {
+  /** Height given to each box, including its share of a lid: the compartment's depth above any raised floor, halved for a pair. */
+  envelope: Mm;
+  /** Each box body, without the lid. */
+  body: Mm;
+  /** Its floor. */
+  base: Mm;
+  /** Its walls: standing on the floor, or wrapped around it. */
+  wall: Mm;
+  /** Usable height inside it. */
+  inside: Mm;
+}
+
+/**
+ * The one calculation of a removable box's heights, so what the solver builds and what the
+ * inspector reports cannot drift apart. `depth` is the compartment's height above its tray floor;
+ * `padHeight` its raised floor, if any.
+ */
+export function insertHeights(project: Project, section: SectionNode, depth: Mm, padHeight: Mm): InsertHeights {
+  const envelope = (depth - padHeight) / (section.insert?.stacked ? 2 : 1);
+  const body = envelope - insertLidAllowance(project, section);
+  const base = insertBaseThickness(project, section);
+  return { envelope, body, base, wall: project.base === 'under' ? body - base : body, inside: body - base };
+}
+
 /** Most raised-floor layers that leave usable height, including bases and lids of boxes above. */
 export function maxPad(fullHeight: Mm, thickness: Mm, boxes = 0, boxBase = thickness, boxLid = 0): number {
   if (thickness <= 0) return 0;
@@ -452,13 +478,10 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       const half = !!node.insert.stacked;
       const emptyAbove = half && !!node.insert.emptyAbove;
       const stacked = half && !emptyAbove;
-      const boxBase = insertBaseThickness(project, node);
       const boxLid = insertLidThickness(project, node);
       const shared = usesSharedLid(node);
-      const allowance = insertLidAllowance(project, node);
       // Only the upper box needs a lid; its base covers the lower box in storage.
-      const envelope = (ctx.height - ctx.base - pad * T) / (half ? 2 : 1);
-      const bodyHeight = envelope - allowance;
+      const { base: boxBase, body: bodyHeight } = insertHeights(project, node, ctx.height - (ctx.lid ?? 0) - ctx.base, pad * T);
       const lid = shared || stacked ? 0 : boxLid;
       const height = bodyHeight + lid;
       // Too shallow: the compartment reports it (see solveProject) and no box is built.
@@ -708,7 +731,7 @@ export function solveProject(project: Project): Solved {
       const boxBase = insertBaseThickness(project, c.node);
       const boxLid = insertLidAllowance(project, c.node);
       const pair = boxes === 2 && !c.node.insert?.emptyAbove;
-      if (boxes && (c.fullHeight / boxes - boxBase - boxLid) < MIN_BOX_INSIDE) {
+      if (boxes && insertHeights(project, c.node, c.fullHeight, 0).inside < MIN_BOX_INSIDE) {
         // Each box needs its floor, any lid and MIN_BOX_INSIDE; stacked boxes need that twice.
         const need = boxes * (boxBase + boxLid + MIN_BOX_INSIDE) + baseThickness(project);
         c.issues.push({
