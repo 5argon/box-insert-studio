@@ -19,6 +19,9 @@
 
   const trayById = $derived(new Map(solved.trays.map((t) => [t.id, t])));
   const layerName = $derived(new Map(project.layers.map((l) => [l.id, l.name])));
+  /** Layers are named only when there are several; with one, "Layer 1" means nothing to a builder. */
+  const multiLayer = $derived(project.layers.length > 1);
+  const inLayer = (id: string) => (multiLayer ? ` · ${layerName.get(id)}` : '');
   const total = $derived(cut.groups.reduce((a, g) => a + g.pieces.length, 0));
   /** Everything wrong or adjusted, so nobody buys material for a design that will not build as shown. */
   const problems = $derived(designProblems(project, solved, plan));
@@ -154,7 +157,7 @@
           Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · Primary material {mm(T)} mm{project.material.secondaryThickness !== undefined
             ? `, secondary material ${mm(project.material.secondaryThickness)} mm`
             : ''} ·
-          {project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ')} · {mm(solved.headroom)} mm headroom
+          {multiLayer ? project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ') : `${project.layers[0]?.height} mm tall`} · {mm(solved.headroom)} mm headroom
         </p>
         <p class="facts">
           <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from {sheetSummary(project, plan)} ({sheetSizes(plan)})
@@ -197,8 +200,8 @@
       <section>
         <h2>Placement</h2>
         <p class="muted small">
-          {project.construction === 'separate' ? 'Every compartment lifts out on its own, so the trays only fit back this way. ' : ''}Put the layers in bottom first;
-          each view looks down on the box with its front edge at the bottom.
+          {project.construction === 'separate' ? 'Every compartment lifts out on its own, so the trays only fit back this way. ' : ''}{multiLayer ? 'Put the layers in bottom first; each view looks' : 'The view looks'}
+          down on the box with its front edge at the bottom.
         </p>
         <div class="placement">
           {#each project.layers as layer, li (layer.id)}
@@ -228,7 +231,8 @@
                 <text x={project.box.width / 2} y={project.box.depth + 6 * scale} class="front" font-size={5 * scale}>FRONT</text>
               </svg>
               <figcaption>
-                <b>{li + 1}. {layer.name}</b>, {layer.height} mm: {topTrays(layer.id).length === 1 ? 'tray' : 'trays'}
+                {#if multiLayer}<b>{li + 1}. {layer.name}</b>, {layer.height} mm:{/if}
+                {multiLayer ? (topTrays(layer.id).length === 1 ? 'tray' : 'trays') : topTrays(layer.id).length === 1 ? 'Tray' : 'Trays'}
                 {topTrays(layer.id)
                   .map((t) => t.number)
                   .join(', ')}{boxesIn(layer.id).length ? `, with ${boxesIn(layer.id).length === 1 ? 'box' : 'boxes'} ${boxesIn(layer.id).map((b) => b.number).join(', ')} inside` : ''}
@@ -332,8 +336,8 @@
       </section>
     {/if}
     {#if loweredGroups.length}
-      <section class="lowered-cutting" aria-label="Lowered edge cutting">
-        <h2>Lowered edge cutting</h2>
+      <section class="lowered-cutting" aria-label="Lowered side cutting">
+        <h2>Lowered side cutting</h2>
         <p>Cut these lowered stretches before gluing, using the same four-point marking method. A line on an existing outer edge needs no additional cut.</p>
         {#each loweredGroups as group (group.key)}<PieceCutting {group} kind="lowered" />{/each}
       </section>
@@ -354,7 +358,7 @@
         {@const comps = solved.compartments.filter((c) => c.trayId === t.id)}
         <div class="tray">
           <h3>
-            Tray {t.number}{t.stacked ? ' (make 2)' : ''} · {layerName.get(t.layerId)}{t.depth === 1
+            Tray {t.number}{t.stacked ? ' (make 2)' : ''}{inLayer(t.layerId)}{t.depth === 1
               ? ` · ${t.stacked ? 'two boxes stacked' : t.emptyAbove ? 'half-height box, empty above,' : 'box standing'} in ${wellLabel(t.wellId)} of tray ${parentNumber(t.parentTrayId)}`
               : ''} ·
             {mm(t.outer.w)} × {mm(t.outer.h)} × {mm(t.height)} mm{t.stacked ? ' per box body' : ''}{topLid ? ` · one ${mm(topLid.thickness)} mm lid on the upper box` : t.lid ? ` including ${mm(t.lid)} mm lid` : ''} · compartments {t.compartments.join(', ')}
@@ -435,7 +439,7 @@
           {@const boxes = assemblyTrays.filter((box) => box.wellId === well.id)}
           {@const fp = sharedLid.footprint}
           <div class="tray shared-lid-assembly">
-            <h3>Shared lid · {layerName.get(t.layerId)} · over all separate boxes in {well.label} · {mm(sharedLid.length)} × {mm(sharedLid.height)} × {mm(sharedLid.thickness)} mm</h3>
+            <h3>Shared lid{inLayer(t.layerId)} · over all separate boxes in {well.label} · {mm(sharedLid.length)} × {mm(sharedLid.height)} × {mm(sharedLid.thickness)} mm</h3>
             <div class="tray-body">
               <svg viewBox="{fp.x - 12} {fp.y - 12} {fp.w + 24} {fp.h + 30}" class="tray-svg" role="img" aria-label="Shared lid over all separate boxes in {well.label}">
                 {#each boxes as box (box.id)}

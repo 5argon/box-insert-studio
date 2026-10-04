@@ -104,7 +104,7 @@
   </div>
   <label class="check" data-tip="Add another sheet thickness to use for bases, lids or individual dividers">
     <input type="checkbox" checked={secondary} onchange={(e) => setSecondaryThickness(project, e.currentTarget.checked ? thinner : undefined)} />
-    Secondary Material
+    Secondary material
   </label>
   {#if secondary}
     <div class="field">

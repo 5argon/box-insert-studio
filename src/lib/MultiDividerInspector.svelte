@@ -59,7 +59,7 @@
           : materialLabel(dividerMaterial(project, splitOf(dividers[0]!)!, dividers[0]!.index), dividerThickness(project, splitOf(dividers[0]!)!, dividers[0]!.index))}
       </p>
     {:else}
-      <p class="hint">Enable Secondary Material under Material to cut dividers from it.</p>
+      <p class="hint">Enable Secondary material under Material to cut dividers from it.</p>
     {/if}
   </div>
 

@@ -89,7 +89,7 @@
       {/each}
       <p class="hint">Each divider uses its selected thickness. Flexible compartments share the space left; locked sizes stay fixed.</p>
     {:else}
-      <p class="hint">Enable Secondary Material in Material to choose it for individual dividers.</p>
+      <p class="hint">Enable Secondary material in Material to choose it for individual dividers.</p>
     {/if}
   </div>
 {/if}

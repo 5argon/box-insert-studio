@@ -141,7 +141,7 @@
       </div>
       <label class="check">
         <input type="checkbox" bind:checked={secondary} />
-        Secondary Material
+        Secondary material
       </label>
       {#if secondary}
         <div class="field">

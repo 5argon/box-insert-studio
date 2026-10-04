@@ -19,7 +19,9 @@
         <div class="plan">
           <LayoutCanvas {project} layer={solvedLayer.layer} solved={solvedLayer} {cut} readonly selection={[]} hoverGroup={null} showNumbers={false} onselect={() => {}} />
         </div>
-        <figcaption><b>{i + 1}. {solvedLayer.layer.name}</b> · {mm(solvedLayer.layer.height)} mm</figcaption>
+        <figcaption>
+          {#if solved.layers.length > 1}<b>{i + 1}. {solvedLayer.layer.name}</b> · {mm(solvedLayer.layer.height)} mm{:else}<b>Top view</b> · {mm(solvedLayer.layer.height)} mm tall{/if}
+        </figcaption>
       </figure>
     {/each}
     <figure>
