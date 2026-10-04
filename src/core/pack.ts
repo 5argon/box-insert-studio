@@ -1,8 +1,6 @@
 /**
  * Deterministic sheet packing: MaxRects (best short side fit) with 90° rotation, run with a few
  * item orders; the result using the fewest sheets wins, ties go to the earlier order.
- * Items may expose `holes` (empty areas inside their bounding box, e.g. the corners between
- * the arms of a tray net) that later, smaller items can use.
  */
 import type { Rect } from './geom';
 import type { Mm } from './types';
@@ -11,7 +9,6 @@ export interface PackItem {
   id: string;
   w: Mm;
   h: Mm;
-  holes?: Rect[];
 }
 
 export interface Placement {
@@ -73,18 +70,10 @@ class Bin {
     }
     this.free = prune(next);
   }
-
-  addFree(r: Rect) {
-    if (r.w > EPS && r.h > EPS) this.free = prune([...this.free, r]);
-  }
 }
 
 function prune(rects: Rect[]): Rect[] {
   return rects.filter((r, i) => r.w > EPS && r.h > EPS && !rects.some((o, j) => j !== i && contains(o, r) && (!contains(r, o) || j < i)));
-}
-
-function rotateHole(h: Rect, itemH: Mm): Rect {
-  return { x: itemH - (h.y + h.h), y: h.x, w: h.h, h: h.w };
 }
 
 function packOrdered(items: PackItem[], W: Mm, H: Mm, gap: Mm): PackResult {
@@ -109,10 +98,6 @@ function packOrdered(items: PackItem[], W: Mm, H: Mm, gap: Mm): PackResult {
       const pw = spot.rotated ? ih : iw;
       const ph = spot.rotated ? iw : ih;
       bin.occupy({ x: spot.x, y: spot.y, w: pw, h: ph });
-      for (const hole of item.holes ?? []) {
-        const r = spot.rotated ? rotateHole(hole, item.h) : hole;
-        bin.addFree({ x: spot.x + r.x + gap, y: spot.y + r.y + gap, w: r.w - gap, h: r.h - gap });
-      }
       placements.push({ id: item.id, sheet: s, x: spot.x, y: spot.y, rotated: spot.rotated });
       placed = true;
     }
