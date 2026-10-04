@@ -5,7 +5,7 @@
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Solved, Tray } from '../core/layout';
-  import { cutPacking, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
+  import { cutPacking, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetSteps, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
   import { setCutLayout } from '../core/edit';
   import { designProblems } from '../core/problems';
   import type { MaterialKind, Project } from '../core/types';
@@ -71,20 +71,6 @@
 
   const notchGroups = $derived(cut.groups.filter((g) => g.notches.length || g.lidNotches?.length));
   const loweredGroups = $derived(cut.groups.filter((g) => g.lows.length));
-
-  function stripText(item: SheetItem): string {
-    const s = item.strip!;
-    const parts: string[] = [];
-    let i = 0;
-    while (i < s.cuts.length) {
-      let j = i;
-      while (j + 1 < s.cuts.length && s.cuts[j + 1].group === s.cuts[i].group) j++;
-      const n = j - i + 1;
-      parts.push(`#${s.cuts[i].group} ${mm(s.cuts[i].length)}${n > 1 ? ` ×${n}` : ''}`);
-      i = j + 1;
-    }
-    return `Strip ${mm(s.height)} mm wide, ${mm(s.used)} mm long → ${parts.join(', ')}`;
-  }
 
   function segments(item: SheetItem) {
     const s = item.strip!;
@@ -326,16 +312,8 @@
             <h3>Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</span></h3>
             <p class="muted small">Packing: {packingInfo.name}.</p>
             <ol>
-              {#each sheet.items as item, i (i)}
-                <li>
-                  {#if item.kind === 'base'}
-                    {item.group ? panelUse(item.group) : 'Panel'} #{item.group?.number}: {mm(item.group?.length ?? 0)} × {mm(item.group?.height ?? 0)} mm
-                    · <b class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</b>
-                  {:else}
-                    {stripText(item)}
-                    · <b class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</b>
-                  {/if}
-                </li>
+              {#each sheetSteps(sheet) as step, i (i)}
+                <li>{step}</li>
               {/each}
             </ol>
           </div>

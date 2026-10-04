@@ -13,8 +13,11 @@ export function inset(r: Rect, d: Mm): Rect {
 
 export const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) <= eps;
 
-/** Round to a step, avoiding float noise such as 87.49999. */
-export const roundTo = (v: number, step: number) => (step > 0 ? Math.round(Math.round(v / step) * step * 1000) / 1000 : v);
+/** Snap float noise (87.49999999999999 → 87.5) before rounding, so equal sizes always round alike. */
+const snap = (v: number) => Math.round(v * 1e6) / 1e6;
+
+/** Round to the nearest step, halves up; equal sizes reached by different sums round the same. */
+export const roundTo = (v: number, step: number) => (step > 0 ? Math.round(Math.round(snap(snap(v) / step)) * step * 1000) / 1000 : v);
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
