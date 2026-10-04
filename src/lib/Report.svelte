@@ -130,8 +130,8 @@
 
   /** Loads three.js on demand, like the 3D view, so the report stays light until it is asked for. */
   async function exportObj() {
-    const { insertObj } = await import('./three/obj');
-    download(`${slug(project.name)}.obj`, insertObj(project, solved, cut), 'model/obj');
+    const { insertObjZip } = await import('./three/obj');
+    download(`${slug(project.name)}-3d.zip`, insertObjZip(project, solved, cut), 'application/zip');
   }
 
   function exportCsv() {
@@ -163,7 +163,7 @@
       <div class="actions no-print">
         <button class="primary" onclick={() => window.print()}>Print / Save PDF</button>
         <button onclick={exportCsv}>Cut list CSV</button>
-        <button onclick={exportObj} data-tip="Every piece as a 3D solid (OBJ, in millimetres), for CAD, 3D printing or rendering">Download OBJ</button>
+        <button onclick={exportObj} data-tip="A zip of OBJ models in millimetres: the whole insert, plus one file per tray and removable box, for CAD, 3D printing or rendering">Download OBJ (zip)</button>
       </div>
     </header>
 
