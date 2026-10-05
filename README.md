@@ -6,6 +6,18 @@ Free web application hosted on GitHub Pages which you can use to design a board 
 
 Aside from this README, this is mostly vibe-coded and I simply don't have resources to write high quality code for this app I'll likely use once for my Arkham Horror LCG box. I'd rather spend time gluing up my box insert and play the game. I hope this is useful to someone out there looking to plan their own dream layout. I know box insert could be highly personal depending on blings of that game you are planning to pack into that box.
 
+The first page is where you work on your design from overhead view.
+
+<img src="screenshots/1.webp" width="600" alt="Layout: top-down plan of the box divided into compartments, with box and material settings on the left, the compartment list on the right, and the cut list below">
+
+The 2nd page you can spin 3D model around to check if it really looks like how you pictured it. What would usually happen here is once you see the height or how close or narrow each compartments are, you realize your hand can't work with it and need to go back to revise the design.
+
+<img src="screenshots/2.webp" width="600" alt="3D view: the insert drawn see-through, with each tray and removable box in its own color">
+
+Check out the final 3rd page for packing simulation of individual pieces and so you know how many sheets of materials you need to buy, along with cutting and assembling instructions.
+
+<img src="screenshots/3.webp" width="600" alt="Cut list & assembly: packing choices for each material and a numbered cutting plan for each sheet">
+
 ## How to use it
 
 https://5argon.github.io/box-insert-studio/
