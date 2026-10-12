@@ -105,6 +105,12 @@ export interface ItemSpec {
  */
 export type CutLayout = 'fewest' | 'guillotine' | 'strips';
 
+/**
+ * The sheet edge the longest cuts run along, for strips and edge-to-edge packing. `short` keeps
+ * cuts within reach of a ruler no longer than the sheet's short edge; `long` makes fewer, longer cuts.
+ */
+export type CutAlong = 'short' | 'long';
+
 /** A slanted finger notch: the opening at the top edge, how deep it goes, and its flat bottom. */
 export interface NotchSize {
   width: Mm;
@@ -152,6 +158,8 @@ export interface Project {
     layout?: CutLayout;
     /** Independent packing for secondary material sheets; unset is `strips`. */
     secondaryLayout?: CutLayout;
+    /** The edge the longest cuts run along, on sheets of both materials; unset is `short`. */
+    cutAlong?: CutAlong;
   };
   /** Piece sizes are rounded to this step, so near-identical pieces become one cut size. */
   precision: Mm;

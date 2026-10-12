@@ -10,12 +10,15 @@
   "material": {
     "thickness": 5,
     "sheet": {
-      "preset": "A3",
-      "width": 297,
-      "height": 420
+      "preset": "60 × 100 cm",
+      "width": 600,
+      "height": 1000
     },
-    "trim": 5,
-    "kerf": 0.5
+    "trim": 0,
+    "kerf": 1,
+    "secondaryLayout": "strips",
+    "layout": "guillotine",
+    "cutAlong": "long"
   },
   "precision": 0.5,
   "clearance": 2,
@@ -52,37 +55,44 @@
               "children": [
                 {
                   "size": {
-                    "mode": "flex",
-                    "weight": 82
+                    "mode": "fixed",
+                    "mm": 85
                   },
                   "node": {
                     "kind": "section",
                     "id": "s-qsw561",
-                    "notches": ["front", "right"],
+                    "notches": [
+                      "front",
+                      "right"
+                    ],
                     "arrow": "front"
                   }
                 },
                 {
                   "size": {
                     "mode": "fixed",
-                    "mm": 60
+                    "mm": 62
                   },
                   "node": {
                     "kind": "section",
                     "id": "s-vmibn4",
-                    "notches": ["front"],
+                    "notches": [
+                      "front"
+                    ],
                     "arrow": "front"
                   }
                 },
                 {
                   "size": {
-                    "mode": "fixed",
-                    "mm": 55
+                    "mode": "flex",
+                    "weight": 55
                   },
                   "node": {
                     "kind": "section",
                     "id": "s-v4r9o5",
-                    "notches": ["right"],
+                    "notches": [
+                      "right"
+                    ],
                     "arrow": "front",
                     "insert": {
                       "root": {

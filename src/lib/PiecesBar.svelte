@@ -1,7 +1,7 @@
 <script lang="ts">
   import { layerColor } from '../core/defaults';
   import type { Compartment, Solved } from '../core/layout';
-  import { materialLabel, panelUse, sheetSummary, type CutList, type CutPlan, type PieceGroup } from '../core/pieces';
+  import { materialLabel, panelUse, sheetSummary, twoMaterials, type CutList, type CutPlan, type PieceGroup } from '../core/pieces';
   import type { Project } from '../core/types';
   import CompSquare from './CompSquare.svelte';
   import LayerIcon from './LayerIcon.svelte';
@@ -36,10 +36,12 @@
     return [...out.values()];
   }
 
+  /** How many pieces of a size have finger notches cut into them. */
+  const notchedCount = (g: PieceGroup) => g.shapes.filter((x) => x.notches.length).reduce((n, x) => n + x.pieces.length, 0);
   const tip = (g: PieceGroup) =>
     g.kind === 'base'
-      ? `${g.pieces.length} × ${g.length} × ${g.height} mm ${panelUse(g)}${g.lidNotches?.length ? ', with lid finger notches' : ''}, from ${materialLabel(g.material, g.thickness)}`
-      : `${g.pieces.length} piece${g.pieces.length === 1 ? '' : 's'}, ${g.length} mm long and ${g.height} mm tall${g.notches.length ? ', notched' : ''}, from ${materialLabel(g.material, g.thickness)}. Hover to find them in the layout.`;
+      ? `${g.pieces.length} × ${g.length} × ${g.height} mm ${panelUse(g)}${g.shapes.some((x) => x.lidNotches?.length) ? ', with lid finger notches' : ''}, from ${materialLabel(g.material, g.thickness, !twoMaterials(project))}`
+      : `${g.pieces.length} piece${g.pieces.length === 1 ? '' : 's'}, ${g.length} mm long and ${g.height} mm tall${notchedCount(g) ? (notchedCount(g) === g.pieces.length ? ', notched' : `, ${notchedCount(g)} of them notched`) : ''}, from ${materialLabel(g.material, g.thickness, !twoMaterials(project))}. Hover to find them in the layout.`;
 </script>
 
 {#snippet chip(g: PieceGroup, other: boolean)}
@@ -67,7 +69,7 @@
         >{panelUse(g)}</span
       >{/if}
     {#if g.material === 'secondary'}<span class="tag own">secondary {g.thickness} mm</span>{/if}
-    {#if g.notches.length || g.lidNotches?.length}<span class="tag notch">notch</span>{/if}
+    {#if g.shapes.some((x) => x.notches.length || x.lidNotches?.length)}<span class="tag notch">notch</span>{/if}
   </button>
 {/snippet}
 

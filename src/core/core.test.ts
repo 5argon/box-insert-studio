@@ -5,8 +5,8 @@ import { blankProject, doomExample } from './fixtures';
 import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from './edit';
 import { allocate, solveProject } from './layout';
 import { pack } from './pack';
-import { buildCutList, planCuts } from './pieces';
-import type { LayoutNode, Project } from './types';
+import { buildCutList, planCuts, shapeOf } from './pieces';
+import type { LayoutNode, Project, SectionNode } from './types';
 
 function clearNotches(n: LayoutNode) {
   if (n.kind === 'section') n.notches = [];
@@ -17,7 +17,7 @@ function summary(project: Project, layerIndex: number) {
   const solved = solveProject(project);
   const layerId = project.layers[layerIndex].id;
   const cut = buildCutList({ ...solved, pieces: solved.pieces.filter((p) => p.layerId === layerId) }, project.precision);
-  return cut.groups.map((g) => `${g.pieces.length}× ${g.length}x${g.height}${g.notches.length ? '*' : ''}`);
+  return cut.groups.map((g) => `${g.pieces.length}× ${g.length}x${g.height}${g.shapes.some((x) => x.notches.length) ? '*' : ''}`);
 }
 
 describe('allocate', () => {
@@ -112,6 +112,22 @@ describe('foam solver', () => {
 });
 
 describe('cut list', () => {
+  it('gives every piece of one size one number, whatever is cut into it afterwards', () => {
+    const p = doomExample();
+    const cut = buildCutList(solveProject(p), p.precision);
+    const sizes = cut.groups.map((g) => `${g.material}:${g.thickness}:${g.kind}:${g.length}x${g.height}`);
+    expect(new Set(sizes).size).toBe(sizes.length);
+    for (const g of cut.groups) {
+      // A piece with notches or a lowered edge is in exactly one shape; a plain one in none.
+      const shaped = g.shapes.flatMap((x) => x.pieces);
+      expect(new Set(shaped).size).toBe(shaped.length);
+      for (const piece of g.pieces) expect(shaped.includes(piece)).toBe(!!(piece.notches.length || piece.lows.length || piece.lidNotches?.length));
+      for (const x of g.shapes) expect([x.length, x.height]).toEqual([g.length, g.height]);
+    }
+    // Some numbers mix notched and plain pieces: the cutting section says how many of each.
+    expect(cut.groups.some((g) => g.shapes.length && g.shapes.reduce((n, x) => n + x.pieces.length, 0) < g.pieces.length)).toBe(true);
+  });
+
   it('groups mirror-image notched pieces together', () => {
     const p = doomExample();
     const layer = newLayer('Mirror', 40, newSection());
@@ -131,14 +147,18 @@ describe('cut list', () => {
     const front = s.pieces.find((x) => x.role === 'front wall')!;
     expect(back.notches[0].center).not.toBeCloseTo(front.notches[0].center, 3);
     expect(cut.groupOf.get(back.id)).toBe(cut.groupOf.get(front.id));
+    expect(shapeOf(cut, back)).toBe(shapeOf(cut, front));
+    expect(shapeOf(cut, back)!.pieces).toHaveLength(2);
     expect(cut.flipped.has(back.id) !== cut.flipped.has(front.id)).toBe(true);
-    // Two notches on one wall and one on the other are different pieces.
+    // Two notches on one wall and one on the other are one cut size, cut to two shapes.
     r.notches = ['back', 'front'];
     const s2 = solveProject(p);
     const cut2 = buildCutList(s2, p.precision);
     const b2 = s2.pieces.find((x) => x.role === 'back wall')!;
     const f2 = s2.pieces.find((x) => x.role === 'front wall')!;
-    expect(cut2.groupOf.get(b2.id)).not.toBe(cut2.groupOf.get(f2.id));
+    expect(cut2.groupOf.get(b2.id)).toBe(cut2.groupOf.get(f2.id));
+    expect(shapeOf(cut2, b2)).not.toBe(shapeOf(cut2, f2));
+    expect(cut2.groupOf.get(b2.id)!.shapes.map((x) => [x.notches.length, x.pieces.length])).toEqual([[1, 1], [2, 1]]);
   });
 
   it('suggests merging pieces that differ by a millimetre or two', () => {
@@ -223,9 +243,68 @@ describe('assembly', () => {
     const steps = trayInstructions(p, s, cut, top);
     expect(steps[0].text).toMatch(/^Start with base #1/);
     expect(steps[1].text).toMatch(/back and front walls #\d+ ×2 on top of the base/);
-    expect(steps[2].text).toMatch(/left and right walls #\d+ ×2 between them/);
-    expect(steps[3].text).toMatch(/^Glue divider #\d+ between .+, 103 mm from the left wall/);
+    expect(steps[2].text).toMatch(/left and right walls #\d+ ×2 \(both without finger notches\) between them/);
+    expect(steps[3].text).toMatch(/^Glue divider #\d+ \(with 1 finger notch already cut\) between .+, 103 mm from the left wall/);
     expect(steps).toHaveLength(3 + 12);
+  });
+
+  it('names the pieces each step places, and measures each divider from the wall it is nearer to', () => {
+    const p = doomExample();
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const walls = new Set<string>();
+    for (const tray of s.trays.filter((t) => !t.copyOf)) {
+      const steps = trayInstructions(p, s, cut, tray);
+      const mine = s.pieces.filter((x) => x.trayId === tray.id);
+      // Every wall and divider is placed by exactly one step, the base by the first.
+      const placed = steps.flatMap((st) => st.pieces);
+      expect(new Set(placed).size).toBe(placed.length);
+      for (const x of mine.filter((x) => x.kind === 'wall' || x.kind === 'divider')) expect(placed).toContain(x.id);
+      expect(steps[0].pieces).toEqual([mine.find((x) => x.kind === 'base')!.id]);
+      for (const st of steps) {
+        expect(st.groups).toEqual(st.pieces.map((id) => cut.groupOf.get(id)!.number));
+        const divider = st.text.startsWith('Glue divider');
+        expect(!!st.measure).toBe(divider);
+        if (!st.measure) continue;
+        // The distance is the gap in the diagram between the divider and the nearer wall's inner face.
+        const d = mine.find((x) => x.id === st.pieces[0])!;
+        const f = d.footprint;
+        const gaps = { left: f.x - tray.inner.x, right: tray.inner.x + tray.inner.w - (f.x + f.w), back: f.y - tray.inner.y, front: tray.inner.y + tray.inner.h - (f.y + f.h) };
+        const [wall, opposite] = d.axis === 'y' ? (['left', 'right'] as const) : (['back', 'front'] as const);
+        expect([wall, opposite]).toContain(st.measure.wall);
+        expect(st.measure.distance).toBeCloseTo(Math.min(gaps[wall], gaps[opposite]));
+        expect(st.measure.distance).toBeCloseTo(gaps[st.measure.wall]);
+        expect(st.text).toContain(`${String(Math.round(st.measure.distance * 10) / 10)} mm from the ${st.measure.wall} wall`);
+        walls.add(st.measure.wall);
+      }
+    }
+    // Dividers past the middle are measured from the far wall.
+    expect([...walls].sort()).toEqual(['back', 'front', 'left', 'right']);
+  });
+
+  it('names a material only when the design has a secondary one to tell it from', async () => {
+    const { setInsertLid, setSecondaryThickness } = await import('./edit');
+    const { materialLabel } = await import('./pieces');
+    const texts = (p: Project) => {
+      const s = solveProject(p);
+      const cut = buildCutList(s, p.precision);
+      return s.trays.filter((t) => !t.copyOf).flatMap((t) => trayInstructions(p, s, cut, t).map((st) => st.text));
+    };
+    const p = doomExample();
+    setInsertLid(solveProject(p).compartments.find((c) => c.label === 'G')!.node, true);
+    expect(p.material.secondaryThickness).toBeUndefined();
+    const one = texts(p);
+    expect(one.join(' ')).not.toMatch(/primary|secondary|material/i);
+    expect(one[0]).toMatch(/^Start with base #\d+\.$/);
+    expect(one.some((t) => /^Glue divider #\d+.* mm from the (left|right|back|front) wall\.$/.test(t))).toBe(true);
+    expect(one.some((t) => /^Place lid #\d+ loosely on /.test(t))).toBe(true);
+    expect(materialLabel('primary', 5, true)).toBe('5 mm material');
+    setSecondaryThickness(p, 3);
+    const two = texts(p);
+    expect(two[0]).toMatch(/^Start with base #\d+, cut from primary material \(5 mm\)\.$/);
+    expect(two.some((t) => /wall, using primary material \(5 mm\)\.$/.test(t))).toBe(true);
+    expect(two.some((t) => /^Place lid #\d+, cut from primary material \(5 mm\), loosely on /.test(t))).toBe(true);
+    expect(two).toHaveLength(one.length);
   });
 });
 
@@ -789,9 +868,11 @@ describe('notch size override', () => {
         expect(notch.custom).toBeUndefined();
       }
     }
-    // A front/back pair no longer shares a cut group when only one side is overridden.
+    // A front/back pair is still one cut size when only one side is overridden, but two shapes.
     const cut = buildCutList(s, p.precision);
-    expect(cut.groupOf.get(c.bounds.back)).not.toBe(cut.groupOf.get(c.bounds.front));
+    const wall = (id: string) => s.pieces.find((x) => x.id === id)!;
+    expect(cut.groupOf.get(c.bounds.back)).toBe(cut.groupOf.get(c.bounds.front));
+    expect(shapeOf(cut, wall(c.bounds.back))).not.toBe(shapeOf(cut, wall(c.bounds.front)));
   });
 
   it('switches individual sides back to the default, including older overrides with no side selection', async () => {
@@ -1308,15 +1389,18 @@ describe('lowered sides', () => {
     const cut = buildCutList(s, p.precision);
     const g = cut.groupOf.get(backs[0].id)!;
     expect(cut.groupOf.get(backs[1].id)).toBe(g);
-    expect(g.pieces).toHaveLength(2);
-    expect(g.lows).toHaveLength(1);
+    // The plain front walls are the same size, so they share the number; only the back walls are cut.
+    expect(g.pieces).toHaveLength(4);
+    expect(g.shapes).toHaveLength(1);
+    expect(g.shapes[0]!.pieces).toHaveLength(2);
+    expect(g.shapes[0]!.lows).toHaveLength(1);
     // Front walls stay plain and full height.
     expect(s.pieces.filter((x) => x.role === 'front wall').every((x) => !x.lows.length && x.height === 29)).toBe(true);
     const tray = s.trays.find((t) => t.layerId === p.layers[0].id)!;
     // Edge cutting is completed before the walls are glued.
     expect(trayInstructions(p, s, cut, tray)[1].notes).toEqual([]);
-    const { groupCutPatterns } = await import('./cutting');
-    const marking = groupCutPatterns(g, 'lowered')[0]!;
+    const { shapeCutPatterns } = await import('./cutting');
+    const marking = shapeCutPatterns(g.shapes[0]!, 'lowered')[0]!;
     expect(marking.points[1]!.inward).toBe(7);
     expect(marking.points[2]!.inward).toBe(7);
   });
@@ -1451,13 +1535,14 @@ describe('notch flat bottom setting', () => {
     l2.node.notches = ['back'];
     r1.node.notches = [];
 
-    // Same notch but another flat bottom is another cut size.
+    // Same notch but another flat bottom is another shape of the same cut sizes.
     right.node.notches = [];
     p.notch = { width: 30, depth: 10 };
-    const a = buildCutList(solveProject(p), p.precision).groups.map((g) => g.key);
+    const a = buildCutList(solveProject(p), p.precision).groups;
     p.notch = { width: 30, depth: 10, bottom: 80 };
-    const b = buildCutList(solveProject(p), p.precision).groups.map((g) => g.key);
-    expect(a).not.toEqual(b);
+    const b = buildCutList(solveProject(p), p.precision).groups;
+    expect(a.map((g) => g.key)).toEqual(b.map((g) => g.key));
+    expect(a.flatMap((g) => g.shapes.map((x) => x.key))).not.toEqual(b.flatMap((g) => g.shapes.map((x) => x.key)));
   });
 });
 
@@ -1549,15 +1634,18 @@ describe('cutting layouts', () => {
     for (const base of await plans()) {
       const cut = buildCutList(solveProject(base), base.precision);
       for (const layout of ['guillotine', 'strips'] as const) {
-        const plan = planCuts({ ...base, material: { ...base.material, layout, secondaryLayout: layout } }, cut);
-        for (const sheet of plan.sheets) expect(guillotine(sheet.items)).toBe(true);
-        if (layout !== 'strips') continue;
-        // Bands run the sheet's long way: across it, any two pieces share a band start or don't overlap.
-        const longX = base.material.sheet.width >= base.material.sheet.height;
-        for (const sheet of plan.sheets) {
-          const across = sheet.items.map((it) => (longX ? [it.y, it.y + it.h] : [it.x, it.x + it.w]));
-          for (const [i, [a0, a1]] of across.entries()) {
-            for (const [b0, b1] of across.slice(i + 1)) expect(Math.abs(a0 - b0) < 1e-6 || a1 <= b0 + 1e-6 || b1 <= a0 + 1e-6).toBe(true);
+        for (const cutAlong of ['short', 'long'] as const) {
+          const plan = planCuts({ ...base, material: { ...base.material, layout, secondaryLayout: layout, cutAlong } }, cut);
+          for (const sheet of plan.sheets) expect(guillotine(sheet.items)).toBe(true);
+          if (layout !== 'strips') continue;
+          // Bands run along the chosen edge of the sheet: across it, any two pieces share a band start or don't overlap.
+          const { width, height } = base.material.sheet;
+          const alongX = cutAlong === 'short' ? width < height : width >= height;
+          for (const sheet of plan.sheets) {
+            const across = sheet.items.map((it) => (alongX ? [it.y, it.y + it.h] : [it.x, it.x + it.w]));
+            for (const [i, [a0, a1]] of across.entries()) {
+              for (const [b0, b1] of across.slice(i + 1)) expect(Math.abs(a0 - b0) < 1e-6 || a1 <= b0 + 1e-6 || b1 <= a0 + 1e-6).toBe(true);
+            }
           }
         }
       }
@@ -1579,16 +1667,37 @@ describe('cutting layouts', () => {
 });
 
 describe('assembly step notes', () => {
-  it('keeps finger notch cutting out of the gluing steps', () => {
+  it('reminds that a wall or divider is already notched, and keeps the cutting itself out of the gluing steps', () => {
     const p = doomExample();
     const s = solveProject(p);
     const cut = buildCutList(s, p.precision);
     const tray = s.trays.find((t) => t.depth === 0 && t.layerId === p.layers[0].id)!;
     const steps = trayInstructions(p, s, cut, tray);
-    const walls = steps[1];
-    expect(walls.text).not.toMatch(/notch/i);
-    expect(cut.groups.some((g) => g.notches.length)).toBe(true);
+    // The two walls are one cut size, so one number: told apart by their notches.
+    expect(steps[1].text).toMatch(/^Glue the back and front walls #(\d+) \(shape 2, with 2 finger notches already cut\) and #\1 \(shape 1, with 1 finger notch already cut\) on top of the base/);
+    expect(steps[2].text).toMatch(/^Glue the left and right walls #\d+ ×2 \(both without finger notches\) between them\.$/);
+    // Every divider says how many notches it has, when it has any, and nothing else about notches.
+    const dividers = s.pieces.filter((x) => x.trayId === tray.id && x.kind === 'divider');
+    expect(dividers.some((d) => d.notches.length) && dividers.some((d) => !d.notches.length)).toBe(true);
+    const glued = steps.filter((st) => st.text.startsWith('Glue divider'));
+    expect(glued.map((st) => Number(st.text.match(/^Glue divider #\d+ \((?:shape \d+, )?with (\d+) finger notch(es)? already cut\)/)?.[1] ?? 0)).sort()).toEqual(dividers.map((d) => d.notches.length).sort());
+    // A plain divider that shares its number with notched ones says so.
+    for (const st of glued) {
+      const d = dividers.find((x) => x.id === st.pieces[0])!;
+      const mixed = !d.notches.length && cut.groupOf.get(d.id)!.shapes.some((x) => x.notches.length);
+      expect(st.text.includes('(one without finger notches)')).toBe(mixed);
+    }
+    for (const st of steps) expect(st.text.replace(/ \(((each |shape \d+, )?with \d+ finger notch(es)? already cut|(one|both|all) without finger notches|\d+ with[^)]*)\)/g, '')).not.toMatch(/notch/i);
     expect(steps.flatMap((s) => s.notes)).toEqual([]);
+  });
+
+  it('counts the notches once for walls that are the same cut size', () => {
+    const p = blankProject();
+    (p.layers[0].root as SectionNode).notches = ['left', 'right'];
+    const s = solveProject(p);
+    const cut = buildCutList(s, p.precision);
+    const text = trayInstructions(p, s, cut, s.trays[0]).map((st) => st.text).join(' ');
+    expect(text).toMatch(/walls #\d+ ×2 \(each with 1 finger notch already cut\)/);
   });
 });
 

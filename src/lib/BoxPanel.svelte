@@ -1,8 +1,8 @@
 <script lang="ts">
   import { SECONDARY_THICKNESS_PRESETS, SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
-  import { setLayerBaseSecondary, setSecondarySheet, setSecondaryThickness, setConstruction, setCutLayout } from '../core/edit';
-  import { cutPacking, CUT_LAYOUTS } from '../core/pieces';
-  import type { CutLayout } from '../core/types';
+  import { setLayerBaseSecondary, setSecondarySheet, setSecondaryThickness, setConstruction, setCutAlong, setCutLayout } from '../core/edit';
+  import { cutAlong, cutPacking, CUT_ALONGS, CUT_LAYOUTS } from '../core/pieces';
+  import type { CutAlong, CutLayout } from '../core/types';
   import { mm } from '../core/geom';
   import { baseThickness, LOWERED_DEFAULT, type Solved } from '../core/layout';
   import type { Project } from '../core/types';
@@ -166,6 +166,14 @@
       </select>
     </label>
   {/if}
+  <label class="field" data-tip="The sheet edge the longest cuts run along, for strips and edge-to-edge packing. Short edge keeps cuts within reach of a ruler shorter than the sheet.">
+    <span>Cut along</span>
+    <select aria-label="Edge the longest cuts run along" value={cutAlong(project)} onchange={(e) => setCutAlong(project, e.currentTarget.value as CutAlong)}>
+      {#each CUT_ALONGS as a (a.value)}
+        <option value={a.value}>{a.name}</option>
+      {/each}
+    </select>
+  </label>
   <NumberField label="Edge trim" value={project.material.trim} min={0} hint="Unusable edge cut off each side of a sheet" onchange={(v) => (project.material.trim = v)} />
   <NumberField label="Kerf" value={project.material.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (project.material.kerf = v)} />
   <NumberField

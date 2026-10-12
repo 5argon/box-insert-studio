@@ -5,12 +5,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { migrateProject, SHEET_PRESETS } from './defaults';
-import { setConstruction, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setSecondaryThickness, setStacked } from './edit';
+import { setConstruction, setCutAlong, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setSecondaryThickness, setStacked } from './edit';
 import { blankProject, doomExample } from './fixtures';
-import { roundTo } from './geom';
+import { roundTo, type Rect } from './geom';
 import { solveProject } from './layout';
-import { buildCutList, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem } from './pieces';
-import type { CutLayout, Project, SplitNode } from './types';
+import { buildCutList, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem, type SheetStep, type StepPart } from './pieces';
+import type { CutAlong, CutLayout, Project, SplitNode } from './types';
 // Every design in examples/, whatever it is called: they are working files and change, so they are
 // only held to rules, never to their exact pieces.
 const exampleTexts = import.meta.glob('../../examples/*.json', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
@@ -27,8 +27,13 @@ function withSecondary(): Project {
   return p;
 }
 
-function withPacking(p: Project, layout: CutLayout): Project {
-  return { ...p, material: { ...p.material, layout, secondaryLayout: layout } };
+function withPacking(p: Project, layout: CutLayout, cutAlong: CutAlong = 'short'): Project {
+  return { ...p, material: { ...p.material, layout, secondaryLayout: layout, cutAlong } };
+}
+
+/** The longest of the cuts a sheet's steps show. */
+function longestCut(steps: SheetStep[]): number {
+  return Math.max(0, ...steps.flatMap((step) => lines(step).flat().flatMap((part) => part.cuts ?? [])).map((c) => Math.abs(c.x2 - c.x1) + Math.abs(c.y2 - c.y1)));
 }
 
 /** Each cut of a strip as it lies on the sheet. */
@@ -41,6 +46,11 @@ function segments(p: Project, item: SheetItem) {
     return { ...seg, group: c.group };
   });
 }
+
+/** A cutting step's own line and the lines under it. */
+const lines = (step: SheetStep): StepPart[][] => [step.parts, ...(step.then ?? []).flatMap(lines)];
+/** A cutting step as it reads. */
+const text = (step: SheetStep) => lines(step).map((line) => line.map((part) => part.text).join('')).join(' ');
 
 /** Everything wrong with a plan; pieces left out are fine only when an error names them. */
 function planProblems(p: Project, cut: CutList, plan: CutPlan): string[] {
@@ -152,6 +162,7 @@ describe('cutting plans', () => {
   for (const [name, design] of designs) {
     for (const layout of LAYOUTS) {
       it(`${name}, ${layout}`, () => {
+        expect(check(withPacking(design(), layout, 'long')).problems).toEqual([]);
         expect(check(withPacking(design(), layout)).problems).toEqual([]);
       });
     }
@@ -176,20 +187,136 @@ describe('cutting plans', () => {
     }
   });
 
-  it('describes strips packing strip by strip, trimming what is narrower than its strip', () => {
+  it('describes strips packing strip by strip, its pieces listed under it, trimming what is narrower than its strip', () => {
     for (const [, design] of [...examples, ['reference', withSecondary] as const]) {
-      const p = withPacking(design(), 'strips');
-      const { plan, cut } = check(p);
-      const steps = plan.sheets.flatMap((s) => sheetSteps(s));
-      expect(steps.every((s) => /^Strip \d+: cut a [\d.]+ mm wide strip along the full length of the sheet, then cut it into .+\.$/.test(s))).toBe(true);
-      // Anything narrower than the strip it comes from says so, once each.
-      const narrower = plan.sheets.flatMap((s) => s.items).filter((it) => it.band && it.band.across < it.band.width - 1e-6).length;
-      expect(steps.join(' ').match(/trimmed to [\d.]+ mm wide/g)?.length ?? 0).toBe(narrower);
-      // Every piece is in the text as often as it is cut.
-      const mentions = steps.join(' ').match(/#\d+ [\d.]+( × [\d.]+)?( \(turned\))?( ×\d+)?/g) ?? [];
-      const total = mentions.reduce((n, m) => n + Number(m.match(/ ×(\d+)$/)?.[1] ?? 1), 0);
-      expect(total).toBe(cut.groups.reduce((n, g) => n + g.pieces.length, 0));
+      for (const along of ['short', 'long'] as const) {
+        const p = withPacking(design(), 'strips', along);
+        const { plan, cut } = check(p);
+        const steps = plan.sheets.flatMap((s) => sheetSteps(p, s).map(text));
+        const full = along === 'short' ? 'across the full width' : 'along the full length';
+        expect(steps.every((s) => new RegExp(`^Strip \\d+: cut a [\\d.]+ mm wide strip ${full} of the sheet, then cut it into: .+\\.$`).test(s))).toBe(true);
+        // Anything narrower than the strip it comes from says so, once each.
+        const narrower = plan.sheets.flatMap((s) => s.items).filter((it) => it.band && it.band.across < it.band.width - 1e-6).length;
+        expect(steps.join(' ').match(/trimmed to [\d.]+ mm wide/g)?.length ?? 0).toBe(narrower);
+        // Every piece is in the text as often as it is cut, its size in mm.
+        const mentions = steps.join(' ').match(/#\d+ [\d.]+( × [\d.]+)? mm( \(turned\))?( ×\d+)?/g) ?? [];
+        expect(steps.join(' ').match(/#\d+/g)?.length).toBe(mentions.length);
+        const total = mentions.reduce((n, m) => n + Number(m.match(/ ×(\d+)$/)?.[1] ?? 1), 0);
+        expect(total).toBe(cut.groups.reduce((n, g) => n + g.pieces.length, 0));
+      }
     }
+  });
+
+  it('runs the strips along the chosen edge of the sheet, the short one unless told otherwise', () => {
+    for (const [, design] of [...examples, ['reference', withSecondary] as const]) {
+      for (const along of ['short', 'long'] as const) {
+        const p = withPacking(design(), 'strips', along);
+        for (const s of check(p).plan.sheets) {
+          const usable = [s.sheet.width, s.sheet.height].map((v) => v - 2 * p.material.trim);
+          const full = along === 'short' ? Math.min(...usable) : Math.max(...usable);
+          // The cut that frees each strip from the sheet; the last strip may end at the sheet's edge.
+          for (const step of sheetSteps(p, s)) for (const c of step.parts[0]!.cuts!) expect(Math.abs(c.x2 - c.x1) + Math.abs(c.y2 - c.y1)).toBeCloseTo(full);
+        }
+      }
+    }
+    const p = doomExample();
+    expect(p.material.cutAlong).toBeUndefined();
+    const cut = buildCutList(solveProject(p), p.precision);
+    expect(planCuts(p, cut)).toEqual(planCuts(withPacking(p, 'strips', 'short'), cut));
+    setCutAlong(p, 'long');
+    expect(p.material.cutAlong).toBe('long');
+    setCutAlong(p, 'short');
+    expect(p.material.cutAlong).toBeUndefined();
+  });
+
+  it('keeps edge-to-edge cuts within the short edge of the sheet when asked to, where the long way needs longer ones', () => {
+    const p = doomExample();
+    p.material.sheet = { ...SHEET_PRESETS.find((s) => s.preset === '60 × 100 cm')! };
+    const longest = (along: CutAlong) => {
+      const q = withPacking(p, 'guillotine', along);
+      const { plan, problems } = check(q);
+      expect(problems).toEqual([]);
+      return { sheets: plan.sheets.length, cut: Math.max(...plan.sheets.map((s) => longestCut(sheetSteps(q, s)))) };
+    };
+    const short = longest('short');
+    const long = longest('long');
+    expect(short.sheets).toBe(long.sheets);
+    expect(short.cut).toBeLessThanOrEqual(600 - 2 * p.material.trim + EPS);
+    expect(long.cut).toBeGreaterThan(600);
+  });
+
+  it('shows the cuts of each step: straight, clear of every piece, and freeing the pieces it names', () => {
+    for (const [, design] of [...examples, ['reference', withSecondary] as const]) {
+      for (const layout of ['strips', 'guillotine'] as const) {
+        const p = withPacking(design(), layout);
+        const { plan } = check(p);
+        for (const s of plan.sheets) {
+          const pieces = s.items.flatMap<Rect>((it) => (it.kind === 'base' ? [it] : segments(p, it)));
+          const steps = sheetSteps(p, s);
+          const cuts = steps.flatMap((step) => lines(step).flat().flatMap((part) => part.cuts ?? []));
+          for (const c of cuts) {
+            expect(Math.abs(c.x1 - c.x2) < EPS || Math.abs(c.y1 - c.y2) < EPS).toBe(true);
+            const through = pieces.some((r) => Math.max(c.x1, c.x2) > r.x + EPS && Math.min(c.x1, c.x2) < r.x + r.w - EPS && Math.max(c.y1, c.y2) > r.y + EPS && Math.min(c.y1, c.y2) < r.y + r.h - EPS);
+            expect(through).toBe(false);
+          }
+          // Each piece has a cut, or the trimmed sheet's edge, along all four of its sides.
+          const { trim, kerf } = p.material;
+          const along = (at: number, from: number, to: number, vertical: boolean) =>
+            cuts.some((c) => {
+              const [pos, a, b] = vertical ? [c.x1, c.y1, c.y2] : [c.y1, c.x1, c.x2];
+              return Math.abs(vertical ? c.x1 - c.x2 : c.y1 - c.y2) < EPS && Math.abs(pos - at) <= kerf / 2 + EPS && Math.min(a, b) <= from + EPS && Math.max(a, b) >= to - EPS;
+            });
+          for (const r of pieces) {
+            expect(r.x - trim < EPS || along(r.x - kerf / 2, r.y, r.y + r.h, true)).toBe(true);
+            expect(s.sheet.width - trim - (r.x + r.w) < kerf + EPS || along(r.x + r.w + kerf / 2, r.y, r.y + r.h, true)).toBe(true);
+            expect(r.y - trim < EPS || along(r.y - kerf / 2, r.x, r.x + r.w, false)).toBe(true);
+            expect(s.sheet.height - trim - (r.y + r.h) < kerf + EPS || along(r.y + r.h + kerf / 2, r.x, r.x + r.w, false)).toBe(true);
+          }
+          // Edge-to-edge packing lists every strip and panel once, under the larger piece it is cut from.
+          if (layout !== 'guillotine') continue;
+          const under = (step: SheetStep): SheetStep[] => [step, ...(step.then ?? []).flatMap(under)];
+          const all = steps.flatMap(under);
+          expect(all.filter((step) => !step.then).length).toBe(s.items.length);
+          const cutText = '(vertically|horizontally), [\\d.]+ mm from the (left|top)';
+          for (const step of all.filter((x) => x.then)) {
+            expect(text(step)).toMatch(new RegExp(`^Cut (the sheet|the remaining piece|it) ${cutText}, then cut up the (left|top) piece: `));
+            expect(step.then!.length).toBeGreaterThan(1);
+          }
+          // Each step says what it is cut from: the sheet or larger piece first, then what remains of it.
+          for (const [list, first] of [[steps, 'the sheet'] as const, ...all.filter((x) => x.then).map((x) => [x.then!, 'it'] as const)]) {
+            list.forEach((step, i) => {
+              const own = step.parts.map((part) => part.text).join('');
+              const from = i ? 'the remaining piece' : first;
+              expect(own).toMatch(new RegExp(`^(Cut ${from} ${cutText}(, and trim it to (size|[\\d.]+ mm wide))?|Trim ${from} to (size|[\\d.]+ mm wide)|${from[0]!.toUpperCase()}${from.slice(1)})(,| →) `));
+            });
+          }
+        }
+      }
+    }
+  });
+
+  it('lists fewest-sheets packing without cuts to show', () => {
+    const p = withPacking(doomExample(), 'fewest');
+    const { plan } = check(p);
+    expect(plan.sheets.flatMap((s) => sheetSteps(p, s).flatMap(lines).flat()).some((part) => part.cuts)).toBe(false);
+  });
+
+  it('lists the cut list as text to order from: the material thickness, then each size once with how many', async () => {
+    const { cutListText } = await import('./pieces');
+    const p = withSecondary();
+    const cut = buildCutList(solveProject(p), p.precision);
+    const text = cutListText(cut);
+    const blocks = text.split('\n\n').map((b) => b.split('\n'));
+    expect(blocks.map((b) => b[0])).toEqual(['Material thickness: 3 mm', 'Material thickness: 5 mm']);
+    expect(text).not.toMatch(/primary|secondary/i);
+    const lines = blocks.flatMap((b) => b.slice(1));
+    for (const line of lines) expect(line).toMatch(/^[\d.]+ × [\d.]+ mm, \d+ pcs?$/);
+    for (const b of blocks) expect(new Set(b).size).toBe(b.length);
+    // Every piece is counted once.
+    expect(lines.reduce((n, l) => n + Number(l.match(/, (\d+) pcs?$/)![1]), 0)).toBe(cut.groups.reduce((n, g) => n + g.pieces.length, 0));
+    expect(lines.some((l) => l.endsWith(', 1 pc'))).toBe(true);
+    const one = doomExample();
+    expect(cutListText(buildCutList(solveProject(one), one.precision)).split('\n')[0]).toBe('Material thickness: 5 mm');
   });
 
   it('buys each material in its own sheet size', async () => {

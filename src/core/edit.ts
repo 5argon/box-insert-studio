@@ -1,7 +1,7 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
 import { baseThickness, solveProject, type Compartment } from './layout';
-import type { CutLayout, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, Project, SectionNode, SheetSpec, Side, SplitNode } from './types';
+import type { CutAlong, CutLayout, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, Project, SectionNode, SheetSpec, Side, SplitNode } from './types';
 
 export const MIN_REGION = 5;
 
@@ -391,6 +391,12 @@ export function setCutLayout(project: Project, layout: CutLayout, material: Mate
   if (material === 'secondary') project.material.secondaryLayout = layout;
   else if (layout === 'strips') delete project.material.layout;
   else project.material.layout = layout;
+}
+
+/** Choose the sheet edge the longest cuts run along. */
+export function setCutAlong(project: Project, along: CutAlong) {
+  if (along === 'short') delete project.material.cutAlong;
+  else project.material.cutAlong = along;
 }
 
 /** Is a size off the project's rounding step (the step cut sizes are rounded to)? */

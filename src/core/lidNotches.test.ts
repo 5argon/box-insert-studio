@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
-import { groupCutPatterns } from './cutting';
+import { shapeCutPatterns } from './cutting';
 import { migrateProject } from './defaults';
 import { setInsert, setInsertLid, setInsertLidSecondary, setLidNotchSide, setSecondaryThickness, setStacked, splitSection } from './edit';
 import { blankProject } from './fixtures';
 import { solveProject, type PieceInst } from './layout';
 import { LID_NOTCH_DEFAULT, lidNotchPoints, lidOutline, rotateLidNotches, solveLidNotches } from './lidNotches';
-import { buildCutList, panelUse, planCuts } from './pieces';
+import { buildCutList, panelUse, planCuts, shapeOf } from './pieces';
 import { buildScene } from './scene';
 import type { SectionNode, Side, SplitNode } from './types';
 
@@ -117,25 +117,29 @@ describe('lid edge notches', () => {
       { ...panel, id: 'slot-lid', lidNotches: solveLidNotches(80, 120, ['front'], { width: 20, depth: 8, bottom: 100 }).notches },
     ];
     const cut = buildCutList({ ...solved, pieces }, project.precision);
-    const group = cut.groupOf.get('front-lid')!;
-    expect(group).toBe(cut.groupOf.get('back-lid'));
-    expect(group).toBe(cut.groupOf.get('rotated-lid'));
+    // One size, one number: the panels are cut out alike, then some are cut to one of three shapes.
+    expect(cut.groups).toHaveLength(1);
+    expect(cut.groups[0]!.pieces).toHaveLength(7);
+    expect(panelUse(cut.groups[0]!)).toBe('base, lid');
+    const shapeFor = (id: string) => shapeOf(cut, pieces.find((p) => p.id === id)!);
+    const group = shapeFor('front-lid')!;
+    expect(group).toBe(shapeFor('back-lid'));
+    expect(group).toBe(shapeFor('rotated-lid'));
     expect(group.pieces).toHaveLength(3);
-    expect(panelUse(group)).toBe('lid');
-    expect(group).not.toBe(cut.groupOf.get('plain-base'));
-    expect(group).not.toBe(cut.groupOf.get('side-lid'));
-    expect(group).not.toBe(cut.groupOf.get('slot-lid'));
-    expect(cut.groupOf.get('plain-base')).toBe(cut.groupOf.get('plain-lid'));
+    expect(shapeFor('plain-base')).toBeUndefined();
+    expect(shapeFor('plain-lid')).toBeUndefined();
+    expect(group).not.toBe(shapeFor('side-lid'));
+    expect(group).not.toBe(shapeFor('slot-lid'));
+    expect(cut.groups[0]!.shapes).toHaveLength(3);
     expect(area(lidOutline(group.length, group.height, group.lidNotches))).toBe(9600 - 120);
     for (const layout of ['strips', 'fewest', 'guillotine'] as const) {
       const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
       expect(plan.issues).toEqual([]);
       expect(plan.sheets.flatMap((s) => s.items)).toHaveLength(pieces.length);
       for (const item of plan.sheets.flatMap((s) => s.items)) {
+        // A panel is a plain rectangle of its number's size on the sheet, either way round.
         const g = item.group!;
-        const cuts = item.w === g.length ? g.lidNotches : rotateLidNotches(g.lidNotches ?? [], g.height);
-        const expected = area(lidOutline(g.length, g.height, g.lidNotches));
-        expect(area(lidOutline(item.w, item.h, cuts))).toBe(expected);
+        expect([item.w, item.h].sort()).toEqual([g.length, g.height].sort());
       }
     }
     // A square may rotate a quarter turn without changing its dimensions.
@@ -168,7 +172,7 @@ describe('lid edge notches', () => {
     const lidStep = trayInstructions(project, solved, cut, tray).find((s) => s.text.startsWith('Place lid'))!;
     expect(lidStep.notes).toEqual([]);
     const lid = solved.pieces.find((p) => p.kind === 'lid')!;
-    const patterns = groupCutPatterns(cut.groupOf.get(lid.id)!);
+    const patterns = shapeCutPatterns(shapeOf(cut, lid)!);
     expect(patterns).toHaveLength(4);
     expect(patterns.map((p) => p.edge).sort()).toEqual(['bottom', 'left', 'right', 'top']);
     for (const pattern of patterns) {

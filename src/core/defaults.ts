@@ -8,6 +8,7 @@ export const SHEET_PRESETS: SheetSpec[] = [
   { preset: 'Letter', width: 215.9, height: 279.4 },
   { preset: '50 × 70 cm', width: 500, height: 700 },
   { preset: '60 × 90 cm', width: 600, height: 900 },
+  { preset: '60 × 100 cm', width: 600, height: 1000 },
   { preset: '20 × 30 in', width: 508, height: 762 },
 ];
 
@@ -102,8 +103,8 @@ export function newProject(spec: NewProjectSpec): Project {
       ...(spec.secondaryThickness !== undefined ? { secondaryThickness: spec.secondaryThickness, secondaryLayout: 'strips' as const } : {}),
       ...(spec.secondaryThickness !== undefined && spec.secondarySheet ? { secondarySheet: { ...spec.secondarySheet } } : {}),
       sheet: { ...spec.sheet },
-      trim: 5,
-      kerf: 0.5,
+      trim: 0,
+      kerf: 1,
     },
     precision: 0.5,
     clearance: NEW_CLEARANCE,

@@ -3,11 +3,11 @@
  * the way sheet material is cut in bulk: walls and dividers of one height come from strips of that
  * width, bases are cut as rectangles, and everything is packed onto sheets.
  */
-import { mm, roundTo } from './geom';
+import { mm, roundTo, type Rect } from './geom';
 import { rotateLidNotches, type LidNotch } from './lidNotches';
 import type { Issue, Low, Notch, PieceInst, Solved } from './layout';
-import { pack, packGuillotine } from './pack';
-import type { CutLayout, MaterialKind, Mm, Project, SheetSpec } from './types';
+import { pack, packGuillotine, type PackItem, type PackResult } from './pack';
+import type { CutAlong, CutLayout, MaterialKind, Mm, Project, SheetSpec } from './types';
 
 /** Sheet packing choices, in the order they are offered. */
 export const CUT_LAYOUTS: { value: CutLayout; name: string; detail: string }[] = [
@@ -16,13 +16,27 @@ export const CUT_LAYOUTS: { value: CutLayout; name: string; detail: string }[] =
     name: 'Strips across the sheet',
     detail: 'Cut the sheet into full-length strips first, then cut each strip into lengths; trim a piece where it is narrower than its strip.',
   },
-  { value: 'fewest', name: 'Fewest sheets', detail: 'Pieces fill any free space, either way round. Some cuts stop partway across the sheet.' },
   {
     value: 'guillotine',
     name: 'Edge-to-edge cuts',
     detail: 'Every cut runs all the way across the piece of sheet in hand, so a straightedge or saw fence always reaches end to end.',
   },
+  { value: 'fewest', name: 'Fewest sheets', detail: 'Pieces fill any free space, either way round. Some cuts stop partway across the sheet.' },
 ];
+
+/** The sheet edge the longest cuts can run along, in the order offered. */
+export const CUT_ALONGS: { value: CutAlong; name: string; detail: string }[] = [
+  { value: 'short', name: 'Short edge', detail: 'The longest cuts run across the sheet, so a ruler as long as its short edge reaches them wherever the pieces allow.' },
+  { value: 'long', name: 'Long edge', detail: 'The longest cuts run the length of the sheet: fewer, longer cuts, for a ruler as long as the sheet.' },
+];
+
+/** Cuts run along the short edge unless the long one is chosen. Fewest-sheets packing has no say in it. */
+export function cutAlong(project: Project): CutAlong {
+  return project.material.cutAlong ?? 'short';
+}
+
+/** Do the full-length strips of strips packing run along x, on a sheet this wide and tall? */
+const stripsAlongX = (project: Project, w: Mm, h: Mm) => (cutAlong(project) === 'short' ? w < h : w >= h);
 
 /** The sheet a material is cut from: the secondary's own size when it has one. */
 export function sheetFor(project: Project, material: MaterialKind): SheetSpec {
@@ -41,11 +55,37 @@ export function cutPacking(project: Project, material: MaterialKind): CutLayout 
   return (material === 'secondary' ? project.material.secondaryLayout : project.material.layout) ?? 'strips';
 }
 
-/** A material label shared by the cut list, cutting plan and assembly instructions. */
-export function materialLabel(material: MaterialKind, thickness: Mm): string {
+/** Does the design have a secondary material? Without one there is no "primary" to tell apart. */
+export const twoMaterials = (project: Project) => project.material.secondaryThickness !== undefined;
+
+/**
+ * A material label shared by the cut list, cutting plan and assembly instructions. `sole`: the
+ * design's only material, named by its thickness alone.
+ */
+export function materialLabel(material: MaterialKind, thickness: Mm, sole = false): string {
+  if (sole) return `${mm(thickness)} mm material`;
   return `${material === 'secondary' ? 'Secondary' : 'Primary'} material (${mm(thickness)} mm)`;
 }
 
+/**
+ * The cuts made into some pieces of one size once they are cut out: one shape per distinct set of
+ * finger notches, lid notches and lowered stretches. Pieces left as plain rectangles have none.
+ */
+export interface PieceShape {
+  /** The size of the pieces, as their group's. */
+  length: Mm;
+  height: Mm;
+  /** Notches measured from the end that the assembly steps call the start. */
+  notches: Notch[];
+  /** Edge cuts on flat lids, in the group's orientation (long edge across). */
+  lidNotches?: LidNotch[];
+  /** Lowered stretches, measured from the same end as the notches. */
+  lows: Low[];
+  pieces: PieceInst[];
+  key: string;
+}
+
+/** Every piece of one size from one material: one number, cut out alike whatever is cut into it later. */
 export interface PieceGroup {
   number: number;
   kind: 'base' | 'strip';
@@ -55,14 +95,33 @@ export interface PieceGroup {
   /** Thickness of the material selected for these pieces. */
   thickness: Mm;
   material: MaterialKind;
-  /** Notches measured from the end that the assembly steps call the start. */
-  notches: Notch[];
-  /** Edge cuts on flat lids, in this group's orientation (long edge across). */
-  lidNotches?: LidNotch[];
-  /** Lowered stretches, measured from the same end as the notches. */
-  lows: Low[];
+  /** What is then cut into some of them; the rest stay plain. */
+  shapes: PieceShape[];
   pieces: PieceInst[];
   key: string;
+}
+
+/** The shape a piece is cut to after it is cut out, if it is not left plain. */
+export function shapeOf(cut: CutList, piece: PieceInst): PieceShape | undefined {
+  return cut.groupOf.get(piece.id)?.shapes.find((s) => s.pieces.includes(piece));
+}
+
+/**
+ * The cut list as plain text, to paste elsewhere: each material's thickness first, then one line
+ * per size with how many of it. A panel and a wall of one size are one line, being cut alike, and
+ * the materials go by thickness alone: primary and secondary mean nothing outside the design.
+ */
+export function cutListText(cut: CutList): string {
+  const blocks = new Map<MaterialKind, { thickness: Mm; sizes: Map<string, number> }>();
+  for (const g of cut.groups) {
+    const block = blocks.get(g.material) ?? { thickness: g.thickness, sizes: new Map<string, number>() };
+    const size = `${mm(g.length)} × ${mm(g.height)} mm`;
+    block.sizes.set(size, (block.sizes.get(size) ?? 0) + g.pieces.length);
+    blocks.set(g.material, block);
+  }
+  return [...blocks.values()]
+    .map((b) => [`Material thickness: ${mm(b.thickness)} mm`, ...[...b.sizes].map(([size, n]) => `${size}, ${n} ${n === 1 ? 'pc' : 'pcs'}`)].join('\n'))
+    .join('\n\n');
 }
 
 /** Uses of a group of flat rectangles: bases, lids and/or pads. Empty for strips. */
@@ -74,7 +133,7 @@ export function panelUse(g: PieceGroup): string {
 export interface CutList {
   groups: PieceGroup[];
   groupOf: Map<string, PieceGroup>;
-  /** True when the piece is used flipped end-for-end relative to its group's notch positions. */
+  /** True when the piece is used flipped end-for-end relative to its shape's notch positions. */
   flipped: Set<string>;
   hints: Issue[];
 }
@@ -137,6 +196,7 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     const L = roundTo(p.length, precision);
     const H = roundTo(p.height, precision);
     let key: string;
+    let shapeKey = '';
     let length = L;
     let height = H;
     let notches: Notch[] = [];
@@ -151,7 +211,7 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
       if (p.lidNotches?.length) {
         const shape = canonicalLid(p.lidNotches, p.length, p.height);
         lidNotches = shape.notches;
-        key += `|lid:${shape.key}`;
+        shapeKey = `lid:${shape.key}`;
       }
     } else {
       const forward = [...p.notches].sort((a, b) => a.center - b.center);
@@ -163,15 +223,24 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
       flip = (compareNotches(back, forward) || compareLows(lowsBack, lowsForward)) < 0;
       notches = flip ? back : forward;
       lows = flip ? lowsBack : lowsForward;
-      key = `strip:${p.material}:${p.thickness}:${L}x${H}|${notchKey(notches)}|${lowKey(lows)}`;
+      key = `strip:${p.material}:${p.thickness}:${L}x${H}`;
+      if (notches.length || lows.length) shapeKey = `${notchKey(notches)}|${lowKey(lows)}`;
     }
     let g = map.get(key);
     if (!g) {
-      g = { number: 0, kind: flat ? 'base' : 'strip', length, height, thickness: p.thickness, material: p.material, notches, lows, pieces: [], key };
-      if (lidNotches) g.lidNotches = lidNotches;
+      g = { number: 0, kind: flat ? 'base' : 'strip', length, height, thickness: p.thickness, material: p.material, shapes: [], pieces: [], key };
       map.set(key, g);
     }
     g.pieces.push(p);
+    if (shapeKey) {
+      let shape = g.shapes.find((s) => s.key === shapeKey);
+      if (!shape) {
+        shape = { length, height, notches, lows, pieces: [], key: shapeKey };
+        if (lidNotches) shape.lidNotches = lidNotches;
+        g.shapes.push(shape);
+      }
+      shape.pieces.push(p);
+    }
     groupOf.set(p.id, g);
     if (flip) flipped.add(p.id);
   }
@@ -181,9 +250,12 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     if (a.kind !== b.kind) return a.kind === 'base' ? -1 : 1;
     // Panels from one sheet thickness stay together.
     if (a.kind === 'base') return a.thickness - b.thickness || b.length * b.height - a.length * a.height || (a.key < b.key ? -1 : 1);
-    return b.height - a.height || b.length - a.length || a.notches.length - b.notches.length || (a.key < b.key ? -1 : 1);
+    return b.height - a.height || b.length - a.length || (a.key < b.key ? -1 : 1);
   });
-  groups.forEach((g, i) => (g.number = i + 1));
+  groups.forEach((g, i) => {
+    g.number = i + 1;
+    g.shapes.sort((a, b) => a.notches.length - b.notches.length || (a.key < b.key ? -1 : 1));
+  });
 
   const hints: Issue[] = [];
   const strips = groups.filter((g) => g.kind === 'strip');
@@ -191,7 +263,7 @@ export function buildCutList(solved: Solved, precision: Mm): CutList {
     for (let j = i + 1; j < strips.length; j++) {
       const a = strips[i];
       const b = strips[j];
-      if (a.material !== b.material || a.thickness !== b.thickness || a.notches.length || b.notches.length || a.lows.length || b.lows.length) continue;
+      if (a.material !== b.material || a.thickness !== b.thickness || a.shapes.length || b.shapes.length) continue;
       const dL = Math.abs(a.length - b.length);
       const dH = Math.abs(a.height - b.height);
       if (dH < 0.01 && dL > 0.01 && dL <= 2) {
@@ -275,42 +347,194 @@ function buildStrips(cut: CutList, limit: Mm, kerf: Mm): Strip[] {
   return strips;
 }
 
-/** "#3 285, #8 102 ×2": a strip's cuts in order, repeats of one size counted. */
+/** "#3 285 mm, #8 102 mm ×2": a strip's cuts in order, repeats of one size counted. */
 function cutsText(cuts: Strip['cuts']): string {
   const parts: string[] = [];
   for (let i = 0; i < cuts.length; ) {
     let j = i;
     while (j + 1 < cuts.length && cuts[j + 1].group === cuts[i].group && !!cuts[j + 1].turned === !!cuts[i].turned) j++;
     const n = j - i + 1;
-    parts.push(`#${cuts[i].group} ${mm(cuts[i].length)}${cuts[i].turned ? ' (turned)' : ''}${n > 1 ? ` ×${n}` : ''}`);
+    parts.push(`#${cuts[i].group} ${mm(cuts[i].length)} mm${cuts[i].turned ? ' (turned)' : ''}${n > 1 ? ` ×${n}` : ''}`);
     i = j + 1;
   }
   return parts.join(', ');
 }
 
+/** A straight cut right across the piece of sheet in hand, in sheet coordinates. */
+export interface CutLine {
+  x1: Mm;
+  y1: Mm;
+  x2: Mm;
+  y2: Mm;
+}
+
+/** A stretch of a cutting step's text. With `cuts` it is one action: make those cuts to get `area`. */
+export interface StepPart {
+  text: string;
+  cuts?: CutLine[];
+  area?: Rect;
+}
+
+/** One cutting step, with what its piece is then cut into listed under it. */
+export interface SheetStep {
+  parts: StepPart[];
+  then?: SheetStep[];
+}
+
 /**
- * What to cut on one sheet, in order. With strips packing, each line is one full-length strip:
- * cut it at its width, then cut it into the listed pieces, trimming any that are narrower than the
- * strip. Other packings list each strip and panel where it sits.
+ * What to cut on one sheet, in order. With strips packing, each step is one full-length strip:
+ * cut it at its width, then cut it into the pieces listed under it, trimming any that are narrower
+ * than the strip. Edge-to-edge packing takes one cut at a time, vertical or horizontal as drawn,
+ * each from what the step before left; a cut that frees several items lists cutting those up under
+ * it. Both name the cuts of every action, so the plan can show them; fewest sheets only lists what
+ * is on the sheet.
  */
-export function sheetSteps(sheet: PlanSheet): string[] {
-  const panel = (item: SheetItem) => `${item.group ? panelUse(item.group) : 'panel'} #${item.group?.number} ${mm(item.group?.length ?? 0)} × ${mm(item.group?.height ?? 0)}`;
-  if (!sheet.items.some((it) => it.band)) {
-    return sheet.items.map((it) =>
-      it.kind === 'base' ? `${cap(panel(it))} mm.` : `Strip ${mm(it.strip!.height)} mm wide, ${mm(it.strip!.used)} mm long → ${cutsText(it.strip!.cuts)}.`,
-    );
+export function sheetSteps(project: Project, sheet: PlanSheet): SheetStep[] {
+  const { trim, kerf } = project.material;
+  if (sheet.items.some((it) => it.band)) return bandSteps(sheet, trim, kerf, stripsAlongX(project, sheet.sheet.width, sheet.sheet.height));
+  if (cutPacking(project, sheet.material) !== 'guillotine') {
+    return sheet.items.map((it) => ({
+      parts: [{ text: it.kind === 'base' ? `${panelText(it)}.` : `Strip ${mm(it.strip!.height)} mm wide, ${mm(it.strip!.used)} mm long → ${cutsText(it.strip!.cuts)}.` }],
+    }));
   }
+  const usable = { x: trim, y: trim, w: sheet.sheet.width - 2 * trim, h: sheet.sheet.height - 2 * trim };
+  return cutOrder(sheet.items, usable, kerf).map((o, i) => offcutStep(o, i ? 'the remaining piece' : 'the sheet', kerf));
+}
+
+/** An edge-to-edge step: the cut into `piece`, then what comes off it. */
+function offcutStep(o: Offcut, piece: string, kerf: Mm): SheetStep {
+  const side = o.cut?.axis === 'x' ? 'left' : 'top';
+  const cut = o.cut && `Cut ${piece} ${o.cut.axis === 'x' ? 'vertically' : 'horizontally'}, ${mm(o.cut.at)} mm from the ${side}`;
+  if ('then' in o) {
+    const then = o.then.map((x, i) => offcutStep(x, i ? 'the remaining piece' : 'it', kerf));
+    return { parts: [{ text: cut!, cuts: [o.cut.line], area: o.area }, { text: `, then cut up the ${side} piece:` }], then };
+  }
+  const it = o.item;
+  const strip = it.strip;
+  // The cut past a strip's last piece is one of its crosscuts; only trimming its width is told apart.
+  const crosscut = (c: CutLine) => !!strip && (it.along === 'x' ? c.x1 === c.x2 : c.y1 === c.y2);
+  const trims = o.trims.filter((c) => !crosscut(c));
+  const to = strip ? `${mm(strip.height)} mm wide` : 'size';
+  const text = cut ? `${cut}${trims.length ? `, and trim it to ${to}` : ''}` : trims.length ? `Trim ${piece} to ${to}` : cap(piece);
+  const area = { x: it.x, y: it.y, w: it.w, h: it.h };
+  const head: StepPart[] = [{ text, cuts: [...(o.cut ? [o.cut.line] : []), ...trims], area }, { text: ' → ' }];
+  if (!strip) return { parts: [...head, { text: `${panelText(it)}.` }] };
+  // Crosscuts between the strip's pieces; one piece that fills its strip needs none.
+  const crosscuts = o.trims.filter(crosscut);
+  let at = (it.along === 'x' ? it.x : it.y) - kerf / 2;
+  for (const c of strip.cuts.slice(0, -1)) {
+    at += c.length + kerf;
+    crosscuts.push(it.along === 'x' ? { x1: at, y1: it.y, x2: at, y2: it.y + it.h } : { x1: it.x, y1: at, x2: it.x + it.w, y2: at });
+  }
+  return { parts: [...head, { text: cutsText(strip.cuts), ...(crosscuts.length ? { cuts: crosscuts, area } : {}) }, { text: '.' }] };
+}
+
+const panelText = (item: SheetItem) => cap(`${item.group ? panelUse(item.group) : 'panel'} #${item.group?.number} ${mm(item.group?.length ?? 0)} × ${mm(item.group?.height ?? 0)} mm`);
+
+function bandSteps(sheet: PlanSheet, trim: Mm, kerf: Mm, longX: boolean): SheetStep[] {
+  const EPS = 1e-6;
+  const full = (longX ? sheet.sheet.width >= sheet.sheet.height : sheet.sheet.height >= sheet.sheet.width) ? 'along the full length' : 'across the full width';
+  /** Far ends of the usable sheet, along the strips and across them. */
+  const end = (longX ? sheet.sheet.width : sheet.sheet.height) - trim;
+  const far = (longX ? sheet.sheet.height : sheet.sheet.width) - trim;
+  const rect = (along: Mm, across: Mm, len: Mm, wid: Mm): Rect => (longX ? { x: along, y: across, w: len, h: wid } : { x: across, y: along, w: wid, h: len });
+  const rip = (across: Mm, from: Mm, to: Mm): CutLine => (longX ? { x1: from, y1: across, x2: to, y2: across } : { x1: across, y1: from, x2: across, y2: to });
+  const cross = (along: Mm, from: Mm, to: Mm): CutLine => (longX ? { x1: along, y1: from, x2: along, y2: to } : { x1: from, y1: along, x2: to, y2: along });
+
   const bands = new Map<number, SheetItem[]>();
   for (const it of sheet.items) bands.set(it.band!.index, [...(bands.get(it.band!.index) ?? []), it]);
   return [...bands.values()].map((items, k) => {
     const width = items[0].band!.width;
-    const parts = items.map((it) => {
-      // Anything narrower than its strip is trimmed to width after it is cut off.
-      const trim = it.band!.across < width - 1e-6 ? `, trimmed to ${mm(it.band!.across)} mm wide` : '';
-      return it.kind === 'base' ? `${panel(it)}${trim}` : `${cutsText(it.strip!.cuts)}${trim}`;
+    const at = longX ? items[0].y : items[0].x;
+    const strip: StepPart = {
+      text: `Strip ${k + 1}: cut a ${mm(width)} mm wide strip ${full} of the sheet`,
+      // The last strip can end at the sheet's edge, with nothing left to cut it from.
+      cuts: at + width < far - EPS ? [rip(Math.min(at + width + kerf / 2, far), trim, end)] : [],
+      area: rect(trim, at, end - trim, width),
+    };
+    const then = items.map((it): SheetStep => {
+      const from = longX ? it.x : it.y;
+      const len = longX ? it.w : it.h;
+      const narrow = it.band!.across < width - EPS;
+      const cuts: CutLine[] = [];
+      // Cut it off the strip, unless it reaches the end; then trim what is narrower to width.
+      if (from + len < end - EPS) cuts.push(cross(from + len + kerf / 2, at, at + width));
+      if (narrow) cuts.push(rip(at + it.band!.across + kerf / 2, from, from + len));
+      let pos = from - kerf / 2;
+      for (const c of it.strip?.cuts.slice(0, -1) ?? []) {
+        pos += c.length + kerf;
+        cuts.push(cross(pos, at, at + it.band!.across));
+      }
+      const trimmed = narrow ? `, trimmed to ${mm(it.band!.across)} mm wide` : '';
+      return { parts: [{ text: `${it.kind === 'base' ? panelText(it) : cutsText(it.strip!.cuts)}${trimmed}`, cuts, area: rect(from, at, len, it.band!.across) }, { text: '.' }] };
     });
-    return `Strip ${k + 1}: cut a ${mm(width)} mm wide strip along the full length of the sheet, then cut it into ${parts.join('; then ')}.`;
+    return { parts: [strip, { text: ', then cut it into:' }], then };
   });
+}
+
+/** A cut right across the piece in hand: its line, the axis it divides, and how far in it is made. */
+type Cut = { line: CutLine; axis: 'x' | 'y'; at: Mm };
+/**
+ * What a cut frees from an edge-to-edge sheet: a strip or panel, with the cuts trimming the waste
+ * around it, or a larger piece holding several. The last one needs no cut: it is what remains.
+ */
+type Offcut = { item: SheetItem; cut?: Cut; trims: CutLine[] } | { area: Rect; cut: Cut; then: Offcut[] };
+
+/**
+ * The order to cut an edge-to-edge layout in. Each cut runs right across the piece in hand, the
+ * shorter way when it can, and takes one piece off the rest: a strip or panel, or a larger piece
+ * that is then cut up the same way.
+ */
+function cutOrder(all: SheetItem[], usable: Rect, kerf: Mm): Offcut[] {
+  const EPS = 1e-6;
+  type Axis = 'x' | 'y';
+  const hi = (o: Rect, axis: Axis) => o[axis] + (axis === 'x' ? o.w : o.h);
+  const line = (r: Rect, axis: Axis, at: Mm): CutLine => (axis === 'x' ? { x1: at, y1: r.y, x2: at, y2: r.y + r.h } : { x1: r.x, y1: at, x2: r.x + r.w, y2: at });
+  const span = (r: Rect, axis: Axis, from: Mm, to: Mm): Rect => (axis === 'x' ? { ...r, x: from, w: to - from } : { ...r, y: from, h: to - from });
+  /** Lists what `items` are cut into, given the piece `r` they are on and the `cut` that freed it. */
+  const walk = (items: SheetItem[], r: Rect, cut: Cut | undefined, out: Offcut[]) => {
+    const axes: Axis[] = r.w >= r.h ? ['x', 'y'] : ['y', 'x'];
+    for (const axis of axes) {
+      for (const c of items.map((o) => hi(o, axis)).sort((a, b) => a - b)) {
+        // A cut just past an item that goes through no other and leaves some on the far side.
+        const before = items.filter((o) => hi(o, axis) <= c + EPS);
+        if (before.length === items.length || items.some((o) => o[axis] < c - EPS && hi(o, axis) > c + EPS)) continue;
+        const off = span(r, axis, r[axis], c);
+        const freeing = { line: line(r, axis, c + kerf / 2), axis, at: c - r[axis] };
+        if (before.length === 1) walk(before, off, freeing, out);
+        else {
+          const then: Offcut[] = [];
+          walk(before, off, undefined, then);
+          out.push({ area: off, cut: freeing, then });
+        }
+        walk(items.filter((o) => hi(o, axis) > c + EPS), span(r, axis, Math.min(c + kerf, hi(r, axis)), hi(r, axis)), undefined, out);
+        return;
+      }
+    }
+    // One item left on the piece: trim the waste off each side of it.
+    const [item] = items;
+    const trims: CutLine[] = [];
+    for (const axis of items.length === 1 ? axes : []) {
+      if (item[axis] > r[axis] + EPS) {
+        trims.push(line(r, axis, item[axis] - kerf / 2));
+        r = span(r, axis, item[axis], hi(r, axis));
+      }
+      if (hi(item, axis) < hi(r, axis) - EPS) {
+        trims.push(line(r, axis, Math.min(hi(item, axis) + kerf / 2, hi(r, axis))));
+        r = span(r, axis, r[axis], hi(item, axis));
+      }
+    }
+    items.forEach((it, i) => out.push({ item: it, trims, ...(i ? {} : { cut }) }));
+  };
+  const out: Offcut[] = [];
+  walk(all, usable, undefined, out);
+  return out;
+}
+
+/** The longest cut it takes to free a piece and cut up what is on it. */
+function longestOf(o: Offcut): Mm {
+  const length = (c: CutLine) => Math.abs(c.x2 - c.x1) + Math.abs(c.y2 - c.y1);
+  return Math.max(o.cut ? length(o.cut.line) : 0, ...('then' in o ? o.then.map(longestOf) : o.trims.map(length)));
 }
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
@@ -387,19 +611,33 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout, sheet: S
   const baseItems = bases.map((b) => ({ id: b.id, w: b.g.length, h: b.g.height }));
 
   if (packing === 'strips') return { ...planBands(project, fitting, bases, usableW, usableH), issues };
-  const packer = packing === 'guillotine' ? packGuillotine : pack;
+  // Edge-to-edge cuts kept short: no strip longer than the sheet's short side, and among packings
+  // using as few sheets, the one whose longest cut is shortest.
+  const short = packing === 'guillotine' && cutAlong(project) === 'short';
+  const usable = { x: trim, y: trim, w: usableW, h: usableH };
+  const longestCut = (items: PackItem[], result: PackResult): Mm => {
+    const size = new Map(items.map((i) => [i.id, i]));
+    const sheets = Array.from({ length: result.sheetCount }, () => [] as SheetItem[]);
+    for (const pl of result.placements) {
+      const it = size.get(pl.id)!;
+      sheets[pl.sheet].push({ kind: 'base', x: trim + pl.x, y: trim + pl.y, w: pl.rotated ? it.h : it.w, h: pl.rotated ? it.w : it.h });
+    }
+    return Math.max(0, ...sheets.flatMap((s) => cutOrder(s, usable, kerf).map(longestOf)));
+  };
 
   // Long strips mean fewer cuts, but shorter ones fit the gaps beside the bases. Try full-length
   // strips, strips as long as the sheet's short side, and one piece per strip; keep the fewest sheets.
   // A strip left out loses every piece in it, so compare tries by pieces left out, then sheets.
-  let best: { strips: Strip[]; items: { id: string; w: Mm; h: Mm }[]; result: ReturnType<typeof pack>; lost: number } | undefined;
-  for (const limit of [maxLen, Math.min(usableW, usableH), 0]) {
+  let best: { strips: Strip[]; items: PackItem[]; result: PackResult; lost: number; cost: Mm } | undefined;
+  for (const limit of short ? [Math.min(usableW, usableH), 0] : [maxLen, Math.min(usableW, usableH), 0]) {
     const strips = buildStrips(fitting, limit, kerf);
     const items = [...baseItems, ...strips.map((s) => ({ id: `s${s.id}`, w: s.used, h: s.height }))];
-    const result = packer(items, usableW, usableH, kerf);
+    const result = packing !== 'guillotine' ? pack(items, usableW, usableH, kerf) : packGuillotine(items, usableW, usableH, kerf, short ? (r) => longestCut(items, r) : undefined);
     const cutsIn = new Map(strips.map((s) => [`s${s.id}`, s.cuts.length]));
     const lost = result.unplaced.reduce((n, id) => n + (cutsIn.get(id) ?? 1), 0);
-    if (!best || lost < best.lost || (lost === best.lost && result.sheetCount < best.result.sheetCount)) best = { strips, items, result, lost };
+    const cost = short ? longestCut(items, result) : 0;
+    const same = best && lost === best.lost && result.sheetCount === best.result.sheetCount;
+    if (!best || lost < best.lost || (lost === best.lost && result.sheetCount < best.result.sheetCount) || (same && cost < best.cost - 1e-6)) best = { strips, items, result, lost, cost };
   }
   const { strips, items, result } = best!;
 
@@ -431,17 +669,18 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout, sheet: S
 }
 
 /**
- * Strips across the sheet: the sheet is cut into bands running its full length, then each band is
- * cut into lengths. Pieces go tallest first into the band that fits them most tightly (first fit
- * decreasing height); one narrower than its band is trimmed after the crosscut. Every cut runs edge
- * to edge, and all first cuts are parallel.
+ * Strips across the sheet: the sheet is cut into bands running right across it, along the edge
+ * chosen for the longest cuts, then each band is cut into lengths. Pieces go tallest first into the
+ * band that fits them most tightly (first fit decreasing height); one narrower than its band is
+ * trimmed after the crosscut. Every cut runs edge to edge, and all first cuts are parallel.
  */
 function planBands(project: Project, cut: CutList, bases: { id: string; g: PieceGroup }[], usableW: Mm, usableH: Mm) {
   const { trim, kerf } = project.material;
   const EPS = 1e-6;
-  const longX = usableW >= usableH;
-  const L = Math.max(usableW, usableH);
-  const S = Math.min(usableW, usableH);
+  const longX = stripsAlongX(project, usableW, usableH);
+  /** How long a band is, and how much room there is across the sheet for bands side by side. */
+  const L = longX ? usableW : usableH;
+  const S = longX ? usableH : usableW;
   type Item = { kind: 'base' | 'piece'; g: PieceGroup; len: Mm; ht: Mm; turned?: boolean };
   const items: Item[] = [];
   // A base lies along the band when it can, so its short side sets the band's width.

@@ -1,17 +1,20 @@
 <script lang="ts">
-  import { sharedLidInstructions, trayAssemblyPieces, trayInstructions } from '../core/assembly';
+  import { sharedLidInstructions, trayAssemblyPieces, trayInstructions, type Step } from '../core/assembly';
   import { NOTCH_BOTTOM_DEFAULT } from '../core/layout';
   import { lidNotchPoints, lidNotchText, lidOutline, polygonPath } from '../core/lidNotches';
   import { sectionColor, sectionInk } from '../core/defaults';
   import { mm } from '../core/geom';
-  import type { Solved, Tray } from '../core/layout';
-  import { cutPacking, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetName, sheetSizes, sheetSteps, sheetSummary, type CutList, type CutPlan, type PieceGroup, type SheetItem } from '../core/pieces';
-  import { setCutLayout } from '../core/edit';
+  import type { PieceInst, Solved, Tray } from '../core/layout';
+  import { cutAlong, cutListText, cutPacking, CUT_ALONGS, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetName, sheetSizes, sheetSteps, sheetSummary, twoMaterials, type CutList, type CutPlan, type PieceGroup, type PieceShape, type SheetItem, type SheetStep, type StepPart } from '../core/pieces';
+  import { setCutAlong, setCutLayout } from '../core/edit';
   import { designProblems } from '../core/problems';
   import type { MaterialKind, Project } from '../core/types';
   import Markdown from './Markdown.svelte';
   import ReportOverview from './ReportOverview.svelte';
   import PieceCutting from './PieceCutting.svelte';
+  import PieceRef from './PieceRef.svelte';
+  import { PieceHighlight } from './highlight.svelte';
+  import { dimensionArrow, type Point } from './dimension';
   import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
   import { download, slug } from './state.svelte';
 
@@ -63,17 +66,17 @@
   const flatNote = (n: { width: number; bottom: number }) =>
     Math.abs(n.bottom - (n.width * (project.notch.bottom ?? NOTCH_BOTTOM_DEFAULT)) / 100) > 0.05 ? ` (${mm(n.bottom)} flat)` : '';
 
-  function notchText(g: PieceGroup): string {
-    const parts = [
-      ...g.notches.map((n) => `${mm(n.width)}×${mm(n.depth)}${flatNote(n)} at ${mm(n.center)}`),
-      ...g.lows.map((l) => `${mm(l.depth)} lower from ${mm(l.from)} to ${mm(l.to)}`),
-    ];
-    if (g.lidNotches?.length) return `Cut orientation (long edge across): ${g.lidNotches.map(lidNotchText).join('; ')}`;
-    return parts.length ? parts.join(', ') + ' mm' : '';
+  /** For the CSV: what is cut into some pieces of a size, and into how many of them. */
+  function shapeText(g: PieceGroup): string {
+    const cuts = (x: PieceShape) =>
+      x.lidNotches?.length
+        ? `lid notches, long edge across: ${x.lidNotches.map(lidNotchText).join('; ')}`
+        : [...x.notches.map((n) => `${mm(n.width)}×${mm(n.depth)}${flatNote(n)} at ${mm(n.center)}`), ...x.lows.map((l) => `${mm(l.depth)} lower from ${mm(l.from)} to ${mm(l.to)}`)].join(', ') + ' mm';
+    return g.shapes.map((x) => `${x.pieces.length} of ${g.pieces.length}: ${cuts(x)}`).join(' | ');
   }
 
-  const notchGroups = $derived(cut.groups.filter((g) => g.notches.length || g.lidNotches?.length));
-  const loweredGroups = $derived(cut.groups.filter((g) => g.lows.length));
+  const notchGroups = $derived(cut.groups.filter((g) => g.shapes.some((x) => x.notches.length || x.lidNotches?.length)));
+  const loweredGroups = $derived(cut.groups.filter((g) => g.shapes.some((x) => x.lows.length)));
 
   function segments(item: SheetItem) {
     const s = item.strip!;
@@ -84,6 +87,14 @@
       offset += c.length + project.material.kerf;
       return { ...seg, group: c.group };
     });
+  }
+
+  /**
+   * A piece number's size on a cutting sheet, in sheet millimetres. Every sheet is drawn 200 px
+   * wide whatever its size, so the number is at most `px` on screen, smaller where the piece is.
+   */
+  function labelSize(sheetWidth: number, px: number, w: number, h: number, text: string) {
+    return Math.min((px * (sheetWidth + 4)) / 200, h * 0.7, w / (0.75 * text.length));
   }
 
   function trayView(t: Tray) {
@@ -102,6 +113,8 @@
 
   /** Keep the chosen material visible throughout cutting and assembly. */
   const T = $derived(project.material.thickness);
+  /** With one material only, nothing is called primary: it is named by its thickness. */
+  const sole = $derived(!twoMaterials(project));
   const hasSecondary = $derived(cut.groups.some((g) => g.material === 'secondary'));
   const blocks = $derived([...new Set(cut.groups.map((g) => g.material))].map((material) => {
     const groups = cut.groups.filter((g) => g.material === material);
@@ -131,20 +144,105 @@
     };
   }));
 
+  /** The cut size picked, and the one under the pointer: both stand out wherever the report shows them. */
+  const highlight = new PieceHighlight();
+
+  /** The cutting step under the pointer: its cuts are drawn on its sheet. */
+  let pointed = $state.raw<{ sheet: number; part: StepPart }>();
+  const showsCuts = $derived(packings.some((p) => p.value !== 'fewest'));
+
+  /** Compare the edge the longest cuts run along, over the sheets of every material. */
+  const along = $derived(cutAlong(project));
+  const alongs = $derived(CUT_ALONGS.map((a) => ({ ...a, plan: planCuts({ ...project, material: { ...project.material, cutAlong: a.value } }, cut) })));
+
+  /** The assembly step under the pointer, and the diagram it belongs to: its pieces stand out there. */
+  let pointedStep = $state.raw<{ diagram: string; step: Step }>();
+
+  /**
+   * A divider's distance from a wall, drawn across its tray's diagram: an arrow from the wall's inner
+   * face to the divider, and its length in millimetres beside it. `px` is one screen pixel there.
+   */
+  function measureArrow(t: Tray, p: PieceInst, measure: NonNullable<Step['measure']>, px: number) {
+    const across = measure.wall === 'left' || measure.wall === 'right';
+    const mid = across ? p.footprint.y + p.footprint.h / 2 : p.footprint.x + p.footprint.w / 2;
+    const f = p.footprint;
+    const ends: Record<typeof measure.wall, [Point, Point]> = {
+      left: [[t.inner.x, mid], [f.x, mid]],
+      right: [[t.inner.x + t.inner.w, mid], [f.x + f.w, mid]],
+      back: [[mid, t.inner.y], [mid, f.y]],
+      front: [[mid, t.inner.y + t.inner.h], [mid, f.y + f.h]],
+    };
+    const [a, b] = ends[measure.wall];
+    const text = `${mm(measure.distance)} mm`;
+    const size = 11 * px;
+    const w = text.length * size * 0.62 + 10 * px;
+    const h = size + 4 * px;
+    // The number sits beside the arrow, clear of it: above one running across, right of one running
+    // down, or on the other side where that would run off the diagram.
+    const beside = across ? h / 2 + 5 * px : w / 2 + 5 * px;
+    const fits = across ? a[1] - beside - h / 2 >= t.outer.y : a[0] + beside + w / 2 <= t.outer.x + t.outer.w;
+    const x = across ? (a[0] + b[0]) / 2 : a[0] + (fits ? beside : -beside);
+    const y = across ? a[1] - (fits ? beside : -beside) : (a[1] + b[1]) / 2;
+    return { path: dimensionArrow(a, b, 6 * px), text, size, box: { x: x - w / 2, y: y - h / 2, w, h, r: 2 * px }, x, y };
+  }
+
   /** Loads three.js on demand, like the 3D view, so the report stays light until it is asked for. */
   async function exportObj() {
     const { insertObjZip } = await import('./three/obj');
     download(`${slug(project.name)}-3d.zip`, insertObjZip(project, solved, cut), 'application/zip');
   }
 
+  /** Whether the cut list was just copied, or could not be, to say so on its button for a moment. */
+  let copied = $state<'done' | 'failed'>();
+  async function copyCutList() {
+    try {
+      await navigator.clipboard.writeText(cutListText(cut));
+      copied = 'done';
+    } catch {
+      copied = 'failed';
+    }
+    setTimeout(() => (copied = undefined), 2000);
+  }
+
   function exportCsv() {
     const rows = [['#', 'Qty', 'Kind', 'Material', 'Thickness mm', 'Length mm', 'Height mm', 'Notches, lowered', 'Used in']];
-    for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', g.material, String(g.thickness), String(g.length), String(g.height), notchText(g), where(g)]);
+    for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', g.material, String(g.thickness), String(g.length), String(g.height), shapeText(g), where(g)]);
     const csv = rows.map((r) => r.map((c) => (/[",;]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
     download(`${slug(project.name)}-cut-list.csv`, csv, 'text/csv');
   }
 
 </script>
+
+<!-- Text with every piece number in it, "#12", as a button that picks that cut size. -->
+{#snippet refs(text: string)}
+  {#each text.split(/(#\d+)/) as bit, i (i)}{#if i % 2}<PieceRef n={Number(bit.slice(1))} {highlight} />{:else}{bit}{/if}{/each}
+{/snippet}
+
+<!-- An assembly step: point at it to see its pieces on the diagram; the wall a distance is from in bold. -->
+{#snippet assemblyStep(diagram: string, step: Step, lead: boolean)}
+  {@const from = step.measure ? `from the ${step.measure.wall} wall` : undefined}
+  {#snippet words()}{#if from}{#each step.text.split(from) as bit, i (i)}{#if i}<b>{from}</b>{/if}{@render refs(bit)}{/each}{:else}{@render refs(step.text)}{/if}{/snippet}
+  {#snippet sentence()}{#if step.strong}<b class="strong">{@render refs(step.strong)}</b>{' '}{/if}{#if lead || step.material === 'secondary'}<b class:secondary-material={step.material === 'secondary'}>{@render words()}</b>{:else}{@render words()}{/if}{/snippet}
+  {#if step.pieces.length}<span class="cut-step" role="presentation" onmouseenter={() => (pointedStep = { diagram, step })} onmouseleave={() => (pointedStep = undefined)}>{@render sentence()}</span>{:else}{@render sentence()}{/if}
+  {#each step.notes as n, j (j)}
+    <span class="step-note {n.kind}"><b>{@render refs(n.label)}:</b> {@render refs(n.text)}</span>
+  {/each}
+{/snippet}
+
+{#snippet stepLine(sheet: number, parts: StepPart[])}
+  {#each parts as part, i (i)}{#if part.cuts}<span class="cut-step" role="presentation" onmouseenter={() => (pointed = { sheet, part })} onmouseleave={() => (pointed = undefined)}>{@render refs(part.text)}</span>{:else}{@render refs(part.text)}{/if}{/each}
+{/snippet}
+
+{#snippet stepItem(sheet: number, step: SheetStep)}
+  {@render stepLine(sheet, step.parts)}
+  {#if step.then}
+    <ul>
+      {#each step.then as under, i (i)}
+        <li>{@render stepItem(sheet, under)}</li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
 
 <svelte:head>{@html `<style>@page { size: A4 portrait; margin: 12mm; }</style>`}</svelte:head>
 
@@ -154,7 +252,7 @@
       <div>
         <h1>{project.name}</h1>
         <p class="facts">
-          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · Primary material {mm(T)} mm{project.material.secondaryThickness !== undefined
+          Box inside {project.box.width} × {project.box.depth} × {project.box.height} mm · {sole ? 'Material' : 'Primary material'} {mm(T)} mm{project.material.secondaryThickness !== undefined
             ? `, secondary material ${mm(project.material.secondaryThickness)} mm`
             : ''} ·
           {multiLayer ? project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ') : `${project.layers[0]?.height} mm tall`} · {mm(solved.headroom)} mm headroom
@@ -174,7 +272,7 @@
       <div class="issue error">
         <b>Fix before buying or cutting: the cut list below is incomplete or wrong.</b>
         <ul>
-          {#each errors as e, i (i)}<li>{e.where ? `${e.where}: ` : ''}{e.message}</li>{/each}
+          {#each errors as e, i (i)}<li>{e.where ? `${e.where}: ` : ''}{@render refs(e.message)}</li>{/each}
         </ul>
       </div>
     {/if}
@@ -182,7 +280,7 @@
       <div class="issue warn">
         <b>Check before cutting: the design was adjusted where it did not fit.</b>
         <ul>
-          {#each warnings as w, i (i)}<li>{w.where ? `${w.where}: ` : ''}{w.message}</li>{/each}
+          {#each warnings as w, i (i)}<li>{w.where ? `${w.where}: ` : ''}{@render refs(w.message)}</li>{/each}
         </ul>
       </div>
     {/if}
@@ -244,20 +342,27 @@
     {/if}
 
     <section>
-      <h2>Cut list</h2>
+      <h2 class="with-action">
+        Cut list
+        <button class="small no-print" onclick={copyCutList} data-tip="Copy every size and how many of it as plain text, one per line">
+          {copied === 'done' ? 'Copied' : copied === 'failed' ? 'Could not copy' : 'Copy sizes and quantities'}
+        </button>
+      </h2>
       <table>
         <thead>
-          <tr><th>#</th><th>Qty</th><th>Size (mm)</th><th>Notches, lowered</th><th>Used in</th></tr>
+          <tr><th class="no-print"></th><th>#</th><th>Qty</th><th>Size (mm)</th><th>Used in</th></tr>
         </thead>
         {#each blocks as block (block.material)}
           <tbody class:own={block.material === 'secondary'}>
-            <tr class="material"><th colspan="5">From {materialLabel(block.material, block.thickness)}</th></tr>
+            <tr class="material"><th colspan="5">From {materialLabel(block.material, block.thickness, sole)}</th></tr>
             {#each block.groups as g (g.key)}
-              <tr>
-                <td class="num">#{g.number}</td>
+              <tr class:picked={highlight.picked === g.number} class:pointed={highlight.pointed === g.number}>
+                <td class="no-print">
+                  <input type="radio" name="cut-list-pick" checked={highlight.picked === g.number} onclick={() => highlight.toggle(g.number)} aria-label="Highlight #{g.number} in the cutting plan" />
+                </td>
+                <td class="num"><PieceRef n={g.number} {highlight} /></td>
                 <td class="qty">{g.pieces.length}</td>
                 <td class="size">{mm(g.length)} × {mm(g.height)}{g.kind === 'base' ? ` ${panelUse(g)}` : ''}</td>
-                <td>{notchText(g)}</td>
                 <td class="muted">{where(g)}</td>
               </tr>
             {/each}
@@ -265,7 +370,8 @@
         {/each}
       </table>
       <p class="muted small">
-        Wall and divider sizes are length × height. Notch positions are centres measured from one end; flip the piece if the other end fits.
+        Wall and divider sizes are length × height.{#if notchGroups.length || loweredGroups.length}{' '}Pieces of one size share a number, whatever is cut into them afterwards: the cutting sections below say how many of each get notches or a lowered edge.{/if}
+        <span class="no-print">Point at a piece number anywhere on this page, or at a piece in a diagram, to highlight it wherever it appears; select it, or its row here, to keep the highlight, and again to clear.</span>
       </p>
     </section>
 
@@ -273,7 +379,7 @@
       <h2>Cutting plan</h2>
       {#each packings as packing (packing.material)}
         <div class="packing-options" data-material={packing.material}>
-          <h3>{materialLabel(packing.material, packing.thickness)} · Packing</h3>
+          <h3>{sole ? '' : `${materialLabel(packing.material, packing.thickness)} · `}Packing</h3>
           <div class="packings no-print" role="group" aria-label="{packing.material === 'secondary' ? 'Secondary' : 'Primary'} material packing">
             {#each CUT_LAYOUTS as l (l.value)}
               {@const alt = packing.alternatives.get(l.value)!}
@@ -286,9 +392,24 @@
           <p class="muted small"><b>{packing.info.name}.</b> {packing.info.detail}</p>
         </div>
       {/each}
+      {#if showsCuts}
+        <div class="packing-options">
+          <h3>Longest cuts along the sheet's</h3>
+          <div class="packings no-print" role="group" aria-label="Edge the longest cuts run along">
+            {#each alongs as a (a.value)}
+              <button class="packing" class:on={along === a.value} aria-pressed={along === a.value} onclick={() => setCutAlong(project, a.value)}>
+                <b>{a.name}</b>
+                <span>{sheetSummary(project, a.plan)}, {Math.round(a.plan.efficiency * 100)}% used</span>
+              </button>
+            {/each}
+          </div>
+          <p class="muted small"><b>{alongs.find((a) => a.value === along)!.name}.</b> {alongs.find((a) => a.value === along)!.detail}</p>
+        </div>
+      {/if}
       <p class="muted small">
         Trim {project.material.trim} mm off each sheet edge first.
         Cut out and number the rectangular pieces first{#if notchGroups.length || loweredGroups.length}; complete the notch and edge cuts below before assembly{/if}.
+        <span class="no-print">{#if showsCuts}Point at a step to see its cuts on the sheet. {/if}Point at a piece to see the others like it; click it to keep them highlighted.</span>
       </p>
       {#each plan.sheets as sheet (sheet.index)}
         {@const W = sheet.sheet.width}
@@ -300,27 +421,59 @@
             <rect x={project.material.trim} y={project.material.trim} width={W - 2 * project.material.trim} height={H - 2 * project.material.trim} class="trim" />
             {#each sheet.items as item, i (i)}
               {#if item.kind === 'base'}
-                <rect x={item.x} y={item.y} width={item.w} height={item.h} class="base" class:secondary={sheet.material === 'secondary'} />
-                <text x={item.x + item.w / 2} y={item.y + item.h / 2} class="label big">#{item.group?.number}</text>
+                {@const n = item.group!.number}
+                <rect
+                  x={item.x}
+                  y={item.y}
+                  width={item.w}
+                  height={item.h}
+                  class="base"
+                  class:secondary={sheet.material === 'secondary'}
+                  class:picked={highlight.picked === n}
+                  class:pointed={highlight.pointed === n}
+                  role="presentation"
+                  onmouseenter={() => (highlight.pointed = n)}
+                  onmouseleave={() => (highlight.pointed = undefined)}
+                  onclick={() => highlight.toggle(n)}
+                />
+                <text x={item.x + item.w / 2} y={item.y + item.h / 2} class="label" font-size={labelSize(W, 12, item.w, item.h, `#${item.group?.number}`)}>#{item.group?.number}</text>
               {:else}
                 {#each segments(item) as seg, j (j)}
-                  <rect x={seg.x} y={seg.y} width={seg.w} height={seg.h} class="seg" class:secondary={sheet.material === 'secondary'} />
-                  {#if Math.max(seg.w, seg.h) > 14}
-                    <text x={seg.x + seg.w / 2} y={seg.y + seg.h / 2} class="label" font-size={Math.min(9, Math.min(seg.w, seg.h) * 0.55)}>#{seg.group}</text>
-                  {/if}
+                  <rect
+                    x={seg.x}
+                    y={seg.y}
+                    width={seg.w}
+                    height={seg.h}
+                    class="seg"
+                    class:secondary={sheet.material === 'secondary'}
+                    class:picked={highlight.picked === seg.group}
+                    class:pointed={highlight.pointed === seg.group}
+                    role="presentation"
+                    onmouseenter={() => (highlight.pointed = seg.group)}
+                    onmouseleave={() => (highlight.pointed = undefined)}
+                    onclick={() => highlight.toggle(seg.group)}
+                  />
+                  <text x={seg.x + seg.w / 2} y={seg.y + seg.h / 2} class="label" font-size={labelSize(W, 9, seg.w, seg.h, `#${seg.group}`)}>#{seg.group}</text>
                 {/each}
               {/if}
             {/each}
+            {#if pointed?.sheet === sheet.index}
+              {@const area = pointed.part.area}
+              {#if area}<rect x={area.x} y={area.y} width={area.w} height={area.h} class="cut-area" />{/if}
+              {#each pointed.part.cuts ?? [] as c, i (i)}
+                <line x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2} class="cut-line" />
+              {/each}
+            {/if}
           </svg>
           <div class="sheet-text">
             <h3>
-              Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness)}</span>
+              Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness, sole)}</span>
               · {sheetName(sheet.sheet)}
             </h3>
-            <p class="muted small">Packing: {packingInfo.name}.</p>
+            <p class="muted small">Packing: {packingInfo.name}{packingInfo.value === 'fewest' ? '' : `, longest cuts along the ${along} edge`}.</p>
             <ol>
-              {#each sheetSteps(sheet) as step, i (i)}
-                <li>{step}</li>
+              {#each sheetSteps(project, sheet) as step, i (i)}
+                <li>{@render stepItem(sheet.index, step)}</li>
               {/each}
             </ol>
           </div>
@@ -331,24 +484,24 @@
     {#if notchGroups.length}
       <section class="notch-cutting" aria-label="Finger notch cutting">
         <h2>Finger notch cutting</h2>
-        <p>Cut these notches while the numbered pieces are still flat, before gluing. Mark the two points on the opening edge and the two points inside the piece, then join them with straight cuts. All distances below are in millimetres.</p>
-        {#each notchGroups as group (group.key)}<PieceCutting {group} />{/each}
+        <p>Cut these notches while the numbered pieces are still flat, before gluing. Mark the two points on the opening edge and the two points inside the piece, then join them with straight cuts. All distances below are in millimetres. <span class="no-print">Point at a step to see its marks on the diagram.</span></p>
+        {#each notchGroups as group (group.key)}<PieceCutting {group} {highlight} {sole} />{/each}
       </section>
     {/if}
     {#if loweredGroups.length}
       <section class="lowered-cutting" aria-label="Lowered side cutting">
         <h2>Lowered side cutting</h2>
-        <p>Cut these lowered stretches before gluing, using the same four-point marking method. A line on an existing outer edge needs no additional cut.</p>
-        {#each loweredGroups as group (group.key)}<PieceCutting {group} kind="lowered" />{/each}
+        <p>Cut these lowered stretches before gluing, using the same four-point marking method. A line on an existing outer edge needs no additional cut. <span class="no-print">Point at a step to see its marks on the diagram.</span></p>
+        {#each loweredGroups as group (group.key)}<PieceCutting {group} kind="lowered" {highlight} {sole} />{/each}
       </section>
     {/if}
 
     <section>
       <h2>Assembly</h2>
-      <p class="muted small">Use the finished pieces. Match their numbered positions and orientations to each diagram, keeping notched wall and divider edges facing up.</p>
+      <p class="muted small">Use the finished pieces. Match their numbered positions and orientations to each diagram, keeping notched wall and divider edges facing up. <span class="no-print">Point at a step to see its pieces on the diagram, with a divider's distance from its wall.</span></p>
       {#if hasSecondary}
         <p class="material-note">
-          Pieces {secondaryRefs} use <b>{materialLabel('secondary', project.material.secondaryThickness ?? T)}</b>, cut from separate sheets.
+          Pieces {@render refs(secondaryRefs)} use <b>{materialLabel('secondary', project.material.secondaryThickness ?? T)}</b>, cut from separate sheets.
           All remaining pieces use {materialLabel('primary', T)}.
         </p>
       {/if}
@@ -356,6 +509,7 @@
         {@const pieces = trayAssemblyPieces(solved, t)}
         {@const topLid = t.stacked ? pieces.find((p) => p.kind === 'lid') : undefined}
         {@const comps = solved.compartments.filter((c) => c.trayId === t.id)}
+        {@const hot = pointedStep?.diagram === t.id ? pointedStep.step : undefined}
         <div class="tray">
           <h3>
             Tray {t.number}{t.stacked ? ' (make 2)' : ''}{inLayer(t.layerId)}{t.depth === 1
@@ -385,7 +539,7 @@
                 {/if}
               {/each}
               {#each pieces.filter((p) => p.kind === 'wall' || p.kind === 'divider') as p (p.id)}
-                <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="tray-piece" />
+                <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="tray-piece" class:hot={hot?.pieces.includes(p.id)} />
                 {#each p.lowFrom as l, i (i)}
                   {#if p.axis === 'x'}
                     <rect x={p.start + l.from} y={p.footprint.y} width={l.to - l.from} height={p.footprint.h} class="tray-lowered" class:custom={l.custom} />
@@ -401,34 +555,41 @@
                   {/if}
                 {/each}
               {/each}
+              {#each pieces.filter((p) => (p.kind === 'base' || p.kind === 'pad') && hot?.pieces.includes(p.id)) as p (p.id)}
+                <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="hot-panel" />
+              {/each}
               {#each pieces.filter((p) => (p.kind === 'wall' || p.kind === 'divider') && (p.axis === 'x' ? p.footprint.w : p.footprint.h) > 12) as p (p.id)}
-                <g transform="translate({p.footprint.x + p.footprint.w / 2} {p.footprint.y + p.footprint.h / 2})">
-                  <rect x={-5.5} y={-3} width={11} height={6} rx={1.5} class="tag" />
-                  <text class="tag-text">{cut.groupOf.get(p.id)?.number}</text>
+                {@const n = cut.groupOf.get(p.id)!.number}
+                <g
+                  transform="translate({p.footprint.x + p.footprint.w / 2} {p.footprint.y + p.footprint.h / 2})"
+                  class="tag-mark"
+                  role="presentation"
+                  onmouseenter={() => (highlight.pointed = n)}
+                  onmouseleave={() => (highlight.pointed = undefined)}
+                  onclick={() => highlight.toggle(n)}
+                >
+                  <rect x={-5.5} y={-3} width={11} height={6} rx={1.5} class="tag" class:picked={highlight.picked === n} class:pointed={highlight.pointed === n} />
+                  <text class="tag-text">{n}</text>
                 </g>
               {/each}
               {#each pieces.filter((p) => p.kind === 'lid') as lid (lid.id)}
-                <path d={polygonPath(lidOutline(lid.length, lid.height, lid.lidNotches), lid.footprint.x, lid.footprint.y)} class="tray-lid" />
+                <path d={polygonPath(lidOutline(lid.length, lid.height, lid.lidNotches), lid.footprint.x, lid.footprint.y)} class="tray-lid" class:hot={hot?.pieces.includes(lid.id)} />
                 {#each lid.lidNotches ?? [] as notch (notch.side)}
                   <path d={polygonPath(lidNotchPoints(lid.length, lid.height, notch), lid.footprint.x, lid.footprint.y)} class="tray-lid-notch" />
                 {/each}
                 <text x={t.outer.x + t.outer.w / 2} y={t.outer.y - 5} class="front">{t.stacked ? 'TOP LID' : 'LID'} #{cut.groupOf.get(lid.id)?.number}</text>
               {/each}
               <text x={t.outer.x + t.outer.w / 2} y={t.outer.y + t.outer.h + 8} class="front">FRONT</text>
+              {#if hot?.measure}
+                {@const arrow = measureArrow(t, pieces.find((p) => p.id === hot.pieces[0])!, hot.measure, (t.outer.w + 24) / 240)}
+                <path d={arrow.path} class="measure" />
+                <rect x={arrow.box.x} y={arrow.box.y} width={arrow.box.w} height={arrow.box.h} rx={arrow.box.r} class="measure-box" />
+                <text x={arrow.x} y={arrow.y} font-size={arrow.size} class="measure-text">{arrow.text}</text>
+              {/if}
             </svg>
             <ol class="steps">
               {#each trayInstructions(project, solved, cut, t) as step, i (i)}
-                <li>
-                  {#if step.strong}<b class="strong">{step.strong}</b>{/if}
-                  {#if i === 0 || step.material === 'secondary'}
-                    <b class:secondary-material={step.material === 'secondary'}>{step.text}</b>
-                  {:else}
-                    {step.text}
-                  {/if}
-                  {#each step.notes as n, j (j)}
-                    <span class="step-note {n.kind}"><b>{n.label}:</b> {n.text}</span>
-                  {/each}
-                </li>
+                <li>{@render assemblyStep(t.id, step, i === 0)}</li>
               {/each}
             </ol>
           </div>
@@ -450,7 +611,7 @@
                   <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.index, 90)} />
                   <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{c.label}{c.stacked ? '²' : ''}</text>
                 {/each}
-                <path d={polygonPath(lidOutline(sharedLid.length, sharedLid.height, sharedLid.lidNotches), fp.x, fp.y)} class="tray-lid" />
+                <path d={polygonPath(lidOutline(sharedLid.length, sharedLid.height, sharedLid.lidNotches), fp.x, fp.y)} class="tray-lid" class:hot={pointedStep?.diagram === `lid:${well.id}`} />
                 {#each sharedLid.lidNotches ?? [] as notch (notch.side)}
                   <path d={polygonPath(lidNotchPoints(sharedLid.length, sharedLid.height, notch), fp.x, fp.y)} class="tray-lid-notch" />
                 {/each}
@@ -459,12 +620,7 @@
               </svg>
               <ol class="steps">
                 {#each sharedLidInstructions(project, solved, cut, sharedLid) as step, i (i)}
-                  <li>
-                    {#if step.material}<b class:secondary-material={step.material === 'secondary'}>{step.text}</b>{:else}{step.text}{/if}
-                    {#each step.notes as n, j (j)}
-                      <span class="step-note {n.kind}"><b>{n.label}:</b> {n.text}</span>
-                    {/each}
-                  </li>
+                  <li>{@render assemblyStep(`lid:${well.id}`, step, !!step.material)}</li>
                 {/each}
               </ol>
             </div>
@@ -538,6 +694,15 @@
     border-bottom: 1px solid var(--line);
     padding-bottom: 4px;
   }
+  .report h2.with-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+  h2 button {
+    font-weight: 400;
+  }
   h3 {
     font-size: 13px;
     margin: 0 0 6px;
@@ -592,21 +757,28 @@
     width: 100%;
     height: auto;
   }
+  /* Outlines are in screen pixels: sheets of every size are drawn the same width. */
+  .paper,
+  .trim,
+  .base,
+  .seg {
+    vector-effect: non-scaling-stroke;
+  }
   .paper {
     fill: #f7f5f0;
     stroke: #22201c;
-    stroke-width: 1;
+    stroke-width: 1px;
   }
   .trim {
     fill: none;
     stroke: #b8b1a4;
-    stroke-width: 0.8;
+    stroke-width: 0.8px;
     stroke-dasharray: 4 3;
   }
   .base {
     fill: #d9d2c3;
     stroke: #22201c;
-    stroke-width: 0.8;
+    stroke-width: 0.8px;
   }
   .base.secondary {
     fill: #dfd6f1;
@@ -616,22 +788,64 @@
     fill: #dfd6f1;
     stroke: #60418a;
   }
+  .base,
+  .seg {
+    cursor: pointer;
+  }
+  .base.pointed,
+  .seg.pointed {
+    fill: #ffe38a;
+  }
+  .base.picked,
+  .seg.picked {
+    fill: #ffd34d;
+  }
+  tr.pointed td {
+    background: #fff9e3;
+  }
+  tr.picked td {
+    background: #fff3c4;
+  }
+  td input[type='radio'] {
+    margin: 1px 0 0;
+    cursor: pointer;
+  }
   .secondary-material {
     color: #60418a;
   }
   .seg {
     fill: #ece6da;
     stroke: #22201c;
-    stroke-width: 0.6;
+    stroke-width: 0.6px;
   }
   .label {
+    pointer-events: none;
     text-anchor: middle;
     dominant-baseline: central;
     font-weight: 700;
     fill: #22201c;
   }
-  .label.big {
-    font-size: 26px;
+  .cut-area,
+  .cut-line {
+    pointer-events: none;
+  }
+  .cut-area {
+    fill: #e0452f;
+    fill-opacity: 0.22;
+  }
+  .cut-line {
+    stroke: #e0452f;
+    stroke-width: 2.5px;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .cut-step {
+    border-bottom: 1px dotted var(--line-strong);
+    cursor: default;
+  }
+  .cut-step:hover {
+    background: #fde3dc;
+    border-bottom-color: #e0452f;
   }
   .sheet-text ol,
   .steps {
@@ -641,6 +855,10 @@
   .sheet-text li,
   .steps li {
     margin-bottom: 3px;
+  }
+  .sheet-text ul {
+    margin: 3px 0 6px;
+    padding-left: 16px;
   }
   .tray {
     margin-bottom: 20px;
@@ -673,6 +891,46 @@
   }
   .tray-piece {
     fill: #3f3b35;
+  }
+  /* The pieces of the assembly step under the pointer. */
+  .tray-piece.hot {
+    fill: #e0452f;
+  }
+  .hot-panel {
+    fill: #e0452f;
+    fill-opacity: 0.25;
+    stroke: #e0452f;
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+  .tray-lid.hot {
+    stroke: #e0452f;
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+  }
+  .measure {
+    fill: none;
+    stroke: #e0452f;
+    stroke-width: 2px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+  .measure-box {
+    fill: #fff;
+    stroke: #e0452f;
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+  }
+  .measure-text {
+    fill: #e0452f;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
   }
   .tray-notch {
     fill: #f2b233;
@@ -797,6 +1055,15 @@
     stroke: #3f3b35;
     stroke-width: 0.4;
   }
+  .tag-mark {
+    cursor: pointer;
+  }
+  .tag.pointed {
+    fill: #ffe38a;
+  }
+  .tag.picked {
+    fill: #ffd34d;
+  }
   .tag-text {
     font-size: 4.2px;
     font-weight: 700;
@@ -825,6 +1092,9 @@
     }
     .no-print {
       display: none;
+    }
+    .cut-step {
+      border-bottom: none;
     }
   }
 </style>

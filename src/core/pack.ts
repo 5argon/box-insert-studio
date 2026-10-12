@@ -199,14 +199,27 @@ function packGuillotineOrdered(items: PackItem[], W: Mm, H: Mm, gap: Mm, split: 
   return { sheetCount: bins.length, placements, unplaced };
 }
 
-/** Guillotine packing with every item order and split rule; fewest sheets wins, ties go to the earlier try. */
-export function packGuillotine(items: PackItem[], sheetW: Mm, sheetH: Mm, gap: Mm): PackResult {
+/**
+ * Guillotine packing with every item order and split rule; fewest sheets wins. Among those, the
+ * lowest `cost` wins when one is given; ties go to the earlier try.
+ */
+export function packGuillotine(items: PackItem[], sheetW: Mm, sheetH: Mm, gap: Mm, cost?: (r: PackResult) => number): PackResult {
   let best: PackResult | undefined;
+  let bestCost = 0;
   for (const order of ORDERS) {
     const sorted = [...items].sort(order);
     for (const split of SPLITS) {
       const r = packGuillotineOrdered(sorted, sheetW, sheetH, gap, split);
-      if (!best || r.unplaced.length < best.unplaced.length || (r.unplaced.length === best.unplaced.length && r.sheetCount < best.sheetCount)) best = r;
+      if (!best || r.unplaced.length < best.unplaced.length || (r.unplaced.length === best.unplaced.length && r.sheetCount < best.sheetCount)) {
+        best = r;
+        bestCost = cost?.(r) ?? 0;
+      } else if (cost && r.unplaced.length === best.unplaced.length && r.sheetCount === best.sheetCount) {
+        const c = cost(r);
+        if (c < bestCost - EPS) {
+          best = r;
+          bestCost = c;
+        }
+      }
     }
   }
   return best ?? { sheetCount: 0, placements: [], unplaced: [] };

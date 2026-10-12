@@ -41,7 +41,7 @@ There are sample designs to download in the `examples` folder. Download a JSON f
 - Item Simulation : See how many items of the same shape you could fit in a row along a given item direction, for compartment of cards or coins.
 - 3D Preview : Very useful to quickly spot physical UX problems no tools can report, such as hand reachability to grab stuff. Realizing the problem after you buy and cut up the materials seems to be number one source of money waste.
 - Maximize Shared Cut Sizes : Tool actively suggests you snap to a certain number to produce as many same dimension cut as possible in the cutting plan.
-- Assembly Steps : With some limitations baked in, it is possible to produce formulatic step by step assembly instructions like Ikea furnitures. This would tell you how many sheet of the material you should prepare upfront. You can also choose between different packing (Strips across the sheet, Fewest sheets or Edge-to-edge cuts) whether you are looking for least amount of sheets or easier time cutting them.
+- Assembly Steps : With some limitations baked in, it is possible to produce formulatic step by step assembly instructions like Ikea furnitures. This would tell you how many sheet of the material you should prepare upfront. You can also choose between different packing (Strips across the sheet, Edge-to-edge cuts or Fewest sheets) whether you are looking for least amount of sheets or easier time cutting them. The longest cuts run along the sheet's short edge by default, so a ruler shorter than the sheet still reaches them; choose the long edge for fewer, longer cuts.
 
 ## Feature Overview
 
