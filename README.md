@@ -1,7 +1,5 @@
 # Box Insert Studio
 
-**DISCLAIMER : In development. I have not finished assembling even one box insert from the output of this app yet. When I do, I'll change this into an image of it. So before then, it is possible that the program has bugs that might result in loss of money from miscutting the materials!**
-
 Free web application hosted on GitHub Pages which you can use to design a board game insert constructed from glued up sheet materials. (Foam core, MDF, etc.) The workflow is by defining the dimension of box's inside, then you can subdivide it vertically and horizontally repeatedly in sequence with dividers to create compartments. Each layer is built as one glued tray or as separate trays, and layers can be stacked. There are several traits you can configure to each compartment and the walls and dividers surrounding it, which I will list below.
 
 Aside from this README, this is mostly vibe-coded and I simply don't have resources to write high quality code for this app I'll likely use once for my Arkham Horror LCG box. I'd rather spend time gluing up my box insert and play the game. I hope this is useful to someone out there looking to plan their own dream layout. I know box insert could be highly personal depending on blings of that game you are planning to pack into that box.
@@ -26,11 +24,31 @@ Currently there is no detailed manual yet, please figure out on your own by mess
 
 There are sample designs to download in the `examples` folder. Download a JSON file, then choose **Open** in the app to load it.
 
-- [AHLCG Core Set 2026 : Utility Box Design with Stand Storage](examples/ahlcg-core-set-2026-utility-box-design-with-stand-storage.insert.json)
-- Arkham Horror LCG Small Campaign Expansion box, three layouts based on Children of Blood (each design's notes explain the idea):
-  - [Design A](examples/ahlcg-small-campaign-expansion-design-a.insert.json): two horizontal card rows instead of the original centered column. Fits one A3 sheet.
-  - [Design B](examples/ahlcg-small-campaign-expansion-design-b.insert.json): the vertical column moved to the left, with two small side slots for the shared encounter sets. Fits one A3 sheet.
-  - [Design C](examples/ahlcg-small-campaign-expansion-design-c.insert.json): Design B with the long column divided for the scenarios, plus a modular 8 cm slot for Core 2026 encounter sets. About one and a half A3 sheets.
+- [Arkham Horror: The Card Game, Core Set 2026 : Utility Box Design with Stand Storage](examples/ahlcg-core-set-2026-utility-box-design-with-stand-storage.insert.json)
+- Arkham Horror: The Card Game, Small Campaign Expansion box
+  - [Design A](examples/ahlcg-small-campaign-expansion-design-a.insert.json): two horizontal card rows instead of the original centered column.
+  - [Design B](examples/ahlcg-small-campaign-expansion-design-b.insert.json): the vertical column moved to the left, with two small side slots for shared encounter sets.
+  - [Design C](examples/ahlcg-small-campaign-expansion-design-c.insert.json): Design B with the long column divided for the scenarios, plus a modular 8 cm slot for Core 2026 encounter sets.
+
+## Demo
+
+To ensure that the calculations are correct and assembly instruction make sense (for a vibe coded app to not be 'AI slop'), I've tested assembling the "Design C" above for real with 5 mm foam board as the material. Everything checks out and I'm quite happy I was able to turn my brain off and just cut and glue as it said.
+
+<p>
+  <img src="screenshots/demo-7.webp" width="32%" alt="Layout page of Design C: the overhead plan with compartments A to E">
+  <img src="screenshots/demo-8.webp" width="32%" alt="3D view of Design C with the two stacked removable boxes highlighted">
+</p>
+
+<p>
+  <img src="screenshots/demo-1.webp" width="32%" alt="Sheets of 5 mm foam board on the shop shelf">
+  <img src="screenshots/demo-2.webp" width="32%" alt="The outer walls and first divider glued on the base, beside the empty game box">
+  <img src="screenshots/demo-3.webp" width="32%" alt="More dividers glued in, with the first removable box next to the tray">
+  <img src="screenshots/demo-4.webp" width="32%" alt="The tray in the game box, with the two small removable boxes about to go in">
+  <img src="screenshots/demo-5.webp" width="32%" alt="The finished insert in the game box, removable boxes stacked in their compartment">
+  <img src="screenshots/demo-6.webp" width="32%" alt="The insert in use: cards standing behind dividers and tokens in the removable boxes">
+</p>
+
+Though I still take no responsibility if any bug loses you money, this should be quite reassuring?
 
 ## Motivations
 
@@ -53,6 +71,7 @@ There are sample designs to download in the `examples` folder. Download a JSON f
 - Item simulation of either box or cylinder shape to see how many would fit in a row, leaving the free space you want. The item direction arrow sets which way they face; items fill from the arrow's tail toward its head.
 - Specify global clearance value that get used at the edge of the box, between separate trays, and around removable boxes.
 - Cut list of the pieces, and a cutting plan of the sheets of material you have to buy given a sheet size.
+- Sheet size, packing, edge trim and kerf are set on the Cut list & assembly page and remembered in your browser instead of saved in the design file, as they depend on the material you can get. Opening a design from someone else keeps your own sheet settings.
 - 3D view can quickly screams UX issues of your finished box.
 - Step by step cutting and assembling instructions. You can save this instruction as PDF or download cut list as CSV.
 - Save and load JSON file to your computer to keep or share your design.

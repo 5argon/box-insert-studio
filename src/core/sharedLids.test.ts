@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { sharedLidInstructions, trayInstructions } from './assembly';
 import { migrateProject } from './defaults';
 import { setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setInsertSharedLid, setJoin, setLayerBaseSecondary, setLidNotchSide, setPad, setSecondaryThickness, setStacked, splitSection } from './edit';
-import { blankProject } from './fixtures';
+import { blankProject, testSetup } from './fixtures';
 import { inset } from './geom';
 import { insertLidAllowance, maxPad, solveProject, usesSharedLid, type Solved } from './layout';
 import { buildCutList, planCuts } from './pieces';
@@ -167,7 +167,7 @@ describe('shared lids over separate boxes', () => {
       expect(group.pieces).toHaveLength(1);
       expect(group.material).toBe('secondary');
       for (const layout of ['strips', 'fewest', 'guillotine'] as const) {
-        const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
+        const plan = planCuts(project, cut, { ...testSetup(), layout, secondaryLayout: layout });
         expect(plan.issues).toEqual([]);
         expect(plan.sheets.flatMap((s) => s.items).reduce((n, i) => n + (i.kind === 'base' ? 1 : i.strip!.cuts.length), 0)).toBe(solved.pieces.length);
         const sheet = plan.sheets.find((s) => s.items.some((i) => i.group === group))!;

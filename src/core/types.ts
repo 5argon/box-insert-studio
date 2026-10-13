@@ -135,6 +135,27 @@ export interface SheetSpec {
   height: Mm;
 }
 
+/**
+ * The sheets a builder can buy and how they cut them. It is theirs rather than the design's: kept
+ * per browser, never saved with a design, and unchanged by opening another one.
+ */
+export interface CutSetup {
+  /** Sheet size for the primary material, and for the secondary unless it has its own. */
+  sheet: SheetSpec;
+  /** The secondary material's own sheet size, e.g. a bulk size of the thinner board. Unset: `sheet`. */
+  secondarySheet?: SheetSpec;
+  /** Damaged edge trimmed off every side of a sheet before cutting. */
+  trim: Mm;
+  /** Material lost per cut. */
+  kerf: Mm;
+  /** Packing for primary material sheets. */
+  layout: CutLayout;
+  /** Independent packing for secondary material sheets. */
+  secondaryLayout: CutLayout;
+  /** The edge the longest cuts run along, on sheets of both materials. */
+  cutAlong: CutAlong;
+}
+
 export interface Project {
   version: 2;
   name: string;
@@ -146,20 +167,6 @@ export interface Project {
     thickness: Mm;
     /** Optional second sheet thickness, available for bases, lids and individual dividers. */
     secondaryThickness?: Mm;
-    /** Sheet size for the primary material, and for the secondary unless it has its own. */
-    sheet: SheetSpec;
-    /** The secondary material's own sheet size, e.g. a bulk size of the thinner board. Unset: `sheet`. */
-    secondarySheet?: SheetSpec;
-    /** Damaged edge trimmed off every side of a sheet before cutting. */
-    trim: Mm;
-    /** Material lost per cut. */
-    kerf: Mm;
-    /** Packing for primary material sheets; unset is `strips`. */
-    layout?: CutLayout;
-    /** Independent packing for secondary material sheets; unset is `strips`. */
-    secondaryLayout?: CutLayout;
-    /** The edge the longest cuts run along, on sheets of both materials; unset is `short`. */
-    cutAlong?: CutAlong;
   };
   /** Piece sizes are rounded to this step, so near-identical pieces become one cut size. */
   precision: Mm;

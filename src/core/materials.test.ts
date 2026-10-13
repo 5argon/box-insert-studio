@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
 import { migrateProject } from './defaults';
-import { addSibling, removeSection, setCutLayout, setDividerSecondary, setEmptyAbove, setInsertBaseSecondary, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked, splitSection } from './edit';
-import { blankProject, doomExample } from './fixtures';
+import { addSibling, removeSection, setDividerSecondary, setEmptyAbove, setInsertBaseSecondary, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked, splitSection } from './edit';
+import { blankProject, doomExample, testSetup } from './fixtures';
 import { solveProject, type Solved } from './layout';
-import { buildCutList, cutPacking, planCuts, type CutPlan } from './pieces';
+import { buildCutList, planCuts, type CutPlan } from './pieces';
 import { buildScene, overlap } from './scene';
 import type { Dir, MaterialKind, Project, SplitNode } from './types';
 
@@ -174,7 +174,7 @@ describe('individual divider materials', () => {
       const cut = buildCutList(solved, project.precision);
       expect(cut.groupOf.get(dividers[0]!.id)).not.toBe(cut.groupOf.get(dividers[1]!.id));
       for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
-        const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
+        const plan = planCuts(project, cut, { ...testSetup(), layout, secondaryLayout: layout });
         expect(plan.issues).toEqual([]);
         expect(plan.counts.map((c) => c.material)).toEqual(['secondary', 'primary']);
         const placed = plan.sheets.flatMap((sheet) => sheet.items).reduce((n, item) => n + (item.kind === 'base' ? 1 : item.strip!.cuts.length), 0);
@@ -221,12 +221,10 @@ describe('material sheet packing', () => {
       setDividerSecondary(split, 0, true);
       const solved = solveProject(project);
       const cut = buildCutList(solved, project.precision);
-      const references = new Map(choices.map((choice) => [choice, planCuts({ ...project, material: { ...project.material, layout: choice, secondaryLayout: choice } }, cut)]));
+      const references = new Map(choices.map((choice) => [choice, planCuts(project, cut, { ...testSetup(), layout: choice, secondaryLayout: choice })]));
       expect(sheetsFor(references.get('strips')!, 'secondary')).not.toEqual(sheetsFor(references.get('fewest')!, 'secondary'));
       for (const primary of choices) for (const secondary of choices) {
-        setCutLayout(project, primary);
-        setCutLayout(project, secondary, 'secondary');
-        const mixed = planCuts(project, cut);
+        const mixed = planCuts(project, cut, { ...testSetup(), layout: primary, secondaryLayout: secondary });
         expect(sheetsFor(mixed, 'primary')).toEqual(sheetsFor(references.get(primary)!, 'primary'));
         expect(sheetsFor(mixed, 'secondary')).toEqual(sheetsFor(references.get(secondary)!, 'secondary'));
         expect(mixed.issues).toEqual([]);
@@ -237,40 +235,6 @@ describe('material sheet packing', () => {
           expect(groups.every((g) => g.material === sheet.material)).toBe(true);
         }
       }
-    }
-  });
-
-  it('defaults new secondary material to strips and remembers its own preference across toggles and saving', () => {
-    const project = blankProject();
-    setCutLayout(project, 'fewest');
-    setSecondaryThickness(project, 3);
-    expect(cutPacking(project, 'primary')).toBe('fewest');
-    expect(cutPacking(project, 'secondary')).toBe('strips');
-    setCutLayout(project, 'guillotine', 'secondary');
-    setSecondaryThickness(project, undefined);
-    setSecondaryThickness(project, 5);
-    expect(cutPacking(project, 'secondary')).toBe('guillotine');
-    setCutLayout(project, 'strips', 'secondary');
-    const saved = migrateProject(JSON.parse(JSON.stringify(project)))!;
-    expect(cutPacking(saved, 'primary')).toBe('fewest');
-    expect(cutPacking(saved, 'secondary')).toBe('strips');
-    setCutLayout(saved, 'strips');
-    expect(saved.material.layout).toBeUndefined();
-    expect(cutPacking(saved, 'secondary')).toBe('strips');
-  });
-
-  it('preserves both materials’ packing when opening a design saved before the independent setting', () => {
-    for (const layout of ['strips', 'fewest', 'guillotine'] as const) {
-      const legacy = blankProject();
-      legacy.material.secondaryThickness = 3;
-      legacy.material.layout = layout;
-      const loaded = migrateProject(JSON.parse(JSON.stringify(legacy)))!;
-      expect(cutPacking(loaded, 'primary')).toBe(layout);
-      expect(cutPacking(loaded, 'secondary')).toBe(layout);
-      setCutLayout(loaded, 'strips', 'secondary');
-      const reopened = migrateProject(JSON.parse(JSON.stringify(loaded)))!;
-      expect(cutPacking(reopened, 'primary')).toBe(layout);
-      expect(cutPacking(reopened, 'secondary')).toBe('strips');
     }
   });
 });

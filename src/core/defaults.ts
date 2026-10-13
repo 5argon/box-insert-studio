@@ -1,4 +1,4 @@
-import type { Layer, LayoutNode, Mm, Project, SectionNode, Side, SheetSpec } from './types';
+import type { CutAlong, CutLayout, CutSetup, Layer, LayoutNode, Mm, Project, SectionNode, Side, SheetSpec } from './types';
 
 export const SHEET_PRESETS: SheetSpec[] = [
   { preset: 'A4', width: 210, height: 297 },
@@ -11,6 +11,40 @@ export const SHEET_PRESETS: SheetSpec[] = [
   { preset: '60 × 100 cm', width: 600, height: 1000 },
   { preset: '20 × 30 in', width: 508, height: 762 },
 ];
+
+/** The sheets to plan on until the builder says what they have. */
+export function defaultCutSetup(): CutSetup {
+  return { sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! }, trim: 0, kerf: 1, layout: 'strips', secondaryLayout: 'strips', cutAlong: 'short' };
+}
+
+const CUT_LAYOUT_VALUES: CutLayout[] = ['strips', 'guillotine', 'fewest'];
+const CUT_ALONG_VALUES: CutAlong[] = ['short', 'long'];
+
+function sheetFrom(raw: unknown): SheetSpec | undefined {
+  const s = raw as Partial<SheetSpec> | null;
+  if (!s || typeof s.preset !== 'string' || !(Number(s.width) > 0) || !(Number(s.height) > 0)) return undefined;
+  return { preset: s.preset, width: Number(s.width), height: Number(s.height) };
+}
+
+/**
+ * A cut setup from what was stored, with the default for anything missing or unusable. Designs
+ * used to carry these settings under `material` with the same names, so one of those reads too.
+ */
+export function cutSetupFrom(raw: unknown): CutSetup {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof CutSetup, unknown>>;
+  const base = defaultCutSetup();
+  const length = (v: unknown, fallback: Mm) => (typeof v === 'number' && v >= 0 ? v : fallback);
+  const secondarySheet = sheetFrom(r.secondarySheet);
+  return {
+    sheet: sheetFrom(r.sheet) ?? base.sheet,
+    ...(secondarySheet ? { secondarySheet } : {}),
+    trim: length(r.trim, base.trim),
+    kerf: length(r.kerf, base.kerf),
+    layout: CUT_LAYOUT_VALUES.find((v) => v === r.layout) ?? base.layout,
+    secondaryLayout: CUT_LAYOUT_VALUES.find((v) => v === r.secondaryLayout) ?? base.secondaryLayout,
+    cutAlong: CUT_ALONG_VALUES.find((v) => v === r.cutAlong) ?? base.cutAlong,
+  };
+}
 
 export const THICKNESS_PRESETS = [3, 5, 10];
 export const SECONDARY_THICKNESS_PRESETS = [2, 3, 5];
@@ -67,11 +101,8 @@ export function newLayer(name: string, height: number, root: LayoutNode = newSec
 export interface NewProjectSpec {
   box: { width: Mm; depth: Mm; height: Mm };
   thickness: Mm;
-  sheet: SheetSpec;
   layerHeight: Mm;
   secondaryThickness?: Mm;
-  /** The secondary material's own sheet size, when it differs from `sheet`. */
-  secondarySheet?: SheetSpec;
   /** Use the secondary material for the first layer's base. */
   secondaryBase?: boolean;
 }
@@ -83,7 +114,6 @@ export const NEW_CLEARANCE = 2;
 export const STARTER_SPEC: NewProjectSpec = {
   box: { width: 280, depth: 280, height: 70 },
   thickness: 5,
-  sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! },
   layerHeight: 60,
 };
 
@@ -100,11 +130,7 @@ export function newProject(spec: NewProjectSpec): Project {
     box: { ...spec.box },
     material: {
       thickness: spec.thickness,
-      ...(spec.secondaryThickness !== undefined ? { secondaryThickness: spec.secondaryThickness, secondaryLayout: 'strips' as const } : {}),
-      ...(spec.secondaryThickness !== undefined && spec.secondarySheet ? { secondarySheet: { ...spec.secondarySheet } } : {}),
-      sheet: { ...spec.sheet },
-      trim: 0,
-      kerf: 1,
+      ...(spec.secondaryThickness !== undefined ? { secondaryThickness: spec.secondaryThickness } : {}),
     },
     precision: 0.5,
     clearance: NEW_CLEARANCE,
@@ -116,13 +142,27 @@ export function newProject(spec: NewProjectSpec): Project {
   };
 }
 
+/** Where a saved project keeps its material, under whichever name it was saved with. */
+type SavedProject = Project & { foam?: Project['material'] };
+
+/**
+ * The cut setup a design was saved with, from when designs carried one; undefined for a design
+ * saved without. Read it before `migrateProject`, which drops it from the design.
+ */
+export function savedCutSetup(raw: unknown): CutSetup | undefined {
+  const p = raw as SavedProject | null;
+  const material = p?.material ?? p?.foam;
+  return material && typeof material === 'object' && 'sheet' in material ? cutSetupFrom(material) : undefined;
+}
+
 /**
  * Bring a saved project up to date. Projects from before the material setting kept it under
- * `foam`; some briefly had a material name, which is no longer used. Returns undefined for
- * anything that is not a project from this app.
+ * `foam`; some briefly had a material name, which is no longer used. Sheets and cutting settings
+ * once saved with the design are dropped: they are the builder's (see `CutSetup`). Returns
+ * undefined for anything that is not a project from this app.
  */
 export function migrateProject(raw: unknown): Project | undefined {
-  const p = raw as (Project & { foam?: Project['material'] }) | null;
+  const p = raw as SavedProject | null;
   if (!p || p.version !== 2 || !Array.isArray(p.layers) || !p.box) return undefined;
   if (!p.material && p.foam) {
     p.material = { ...p.foam };
@@ -137,8 +177,8 @@ export function migrateProject(raw: unknown): Project | undefined {
     p.secondaryBase = true;
     delete material.baseThickness;
   }
-  // Older designs used the primary packing for both materials. Keep that plan on first opening;
-  // explicitly storing the secondary choice also preserves an independent `strips` preference.
-  if (material.secondaryThickness !== undefined) material.secondaryLayout ??= material.layout ?? 'strips';
+  for (const key of ['sheet', 'secondarySheet', 'trim', 'kerf', 'layout', 'secondaryLayout', 'cutAlong'] satisfies (keyof CutSetup)[]) {
+    delete (material as Partial<CutSetup>)[key];
+  }
   return p;
 }

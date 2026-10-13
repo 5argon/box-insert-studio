@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { SECONDARY_THICKNESS_PRESETS, SHEET_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
-  import { setLayerBaseSecondary, setSecondarySheet, setSecondaryThickness, setConstruction, setCutAlong, setCutLayout } from '../core/edit';
-  import { cutAlong, cutPacking, CUT_ALONGS, CUT_LAYOUTS } from '../core/pieces';
-  import type { CutAlong, CutLayout } from '../core/types';
+  import { SECONDARY_THICKNESS_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
+  import { setLayerBaseSecondary, setSecondaryThickness, setConstruction } from '../core/edit';
   import { mm } from '../core/geom';
   import { baseThickness, LOWERED_DEFAULT, type Solved } from '../core/layout';
   import type { Project } from '../core/types';
@@ -29,19 +27,6 @@
       .map((l) => l.replace(/^[#>\-*\s]+/, '').replace(/[*_`]/g, '').trim())
       .find((l) => l.length > 0) ?? '',
   );
-
-  function chooseSheet(e: Event & { currentTarget: HTMLSelectElement }) {
-    const p = SHEET_PRESETS.find((x) => x.preset === e.currentTarget.value);
-    project.material.sheet = p ? { ...p } : { ...project.material.sheet, preset: 'Custom' };
-  }
-
-  /** The secondary material's own sheet, or the primary's when "Same as primary" is chosen. */
-  function chooseSecondarySheet(e: Event & { currentTarget: HTMLSelectElement }) {
-    const value = e.currentTarget.value;
-    const p = SHEET_PRESETS.find((x) => x.preset === value);
-    if (!value) setSecondarySheet(project, undefined);
-    else setSecondarySheet(project, p ?? { ...(project.material.secondarySheet ?? project.material.sheet), preset: 'Custom' });
-  }
 
   function chooseLayer(id: string) {
     if (studio.layerId === id) return;
@@ -118,64 +103,6 @@
     </div>
     <p class="hint">Choose where to use it in Layers, Removable box or Divider materials. Each material gets its own cutting sheets.</p>
   {/if}
-  <label class="field">
-    <span>Sheet{#if secondary}<small class="packing-material">Primary</small>{/if}</span>
-    <select aria-label="Primary material sheet" value={project.material.sheet.preset} onchange={chooseSheet}>
-      {#each SHEET_PRESETS as s (s.preset)}
-        <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
-      {/each}
-      <option value="Custom">Custom</option>
-    </select>
-  </label>
-  {#if project.material.sheet.preset === 'Custom'}
-    <NumberField label="Sheet width" value={project.material.sheet.width} min={50} onchange={(v) => (project.material.sheet.width = v)} />
-    <NumberField label="Sheet height" value={project.material.sheet.height} min={50} onchange={(v) => (project.material.sheet.height = v)} />
-  {/if}
-  {#if secondary}
-    {@const own = project.material.secondarySheet}
-    <label class="field" data-tip="The secondary material's sheet size, when it comes in a different size from the primary, e.g. in bulk">
-      <span>Sheet<small class="packing-material">Secondary</small></span>
-      <select aria-label="Secondary material sheet" value={own?.preset ?? ''} onchange={chooseSecondarySheet}>
-        <option value="">Same as primary</option>
-        {#each SHEET_PRESETS as s (s.preset)}
-          <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
-        {/each}
-        <option value="Custom">Custom</option>
-      </select>
-    </label>
-    {#if own?.preset === 'Custom'}
-      <NumberField label="Secondary sheet width" value={own.width} min={50} onchange={(v) => (own.width = v)} />
-      <NumberField label="Secondary sheet height" value={own.height} min={50} onchange={(v) => (own.height = v)} />
-    {/if}
-  {/if}
-  <label class="field" data-tip="How primary material pieces are packed onto sheets. The cut list page compares each packing choice's sheet count.">
-    <span>Packing{#if secondary}<small class="packing-material">Primary</small>{/if}</span>
-    <select aria-label="Primary material packing" value={cutPacking(project, 'primary')} onchange={(e) => setCutLayout(project, e.currentTarget.value as CutLayout)}>
-      {#each CUT_LAYOUTS as l (l.value)}
-        <option value={l.value}>{l.name}</option>
-      {/each}
-    </select>
-  </label>
-  {#if secondary}
-    <label class="field" data-tip="How secondary material pieces are packed onto their own sheets; independent of primary material packing.">
-      <span>Packing<small class="packing-material">Secondary</small></span>
-      <select aria-label="Secondary material packing" value={cutPacking(project, 'secondary')} onchange={(e) => setCutLayout(project, e.currentTarget.value as CutLayout, 'secondary')}>
-        {#each CUT_LAYOUTS as l (l.value)}
-          <option value={l.value}>{l.name}</option>
-        {/each}
-      </select>
-    </label>
-  {/if}
-  <label class="field" data-tip="The sheet edge the longest cuts run along, for strips and edge-to-edge packing. Short edge keeps cuts within reach of a ruler shorter than the sheet.">
-    <span>Cut along</span>
-    <select aria-label="Edge the longest cuts run along" value={cutAlong(project)} onchange={(e) => setCutAlong(project, e.currentTarget.value as CutAlong)}>
-      {#each CUT_ALONGS as a (a.value)}
-        <option value={a.value}>{a.name}</option>
-      {/each}
-    </select>
-  </label>
-  <NumberField label="Edge trim" value={project.material.trim} min={0} hint="Unusable edge cut off each side of a sheet" onchange={(v) => (project.material.trim = v)} />
-  <NumberField label="Kerf" value={project.material.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (project.material.kerf = v)} />
   <NumberField
     label="Round sizes to"
     value={project.precision}
@@ -185,6 +112,7 @@
     hint="Pieces within this step become one cut size"
     onchange={(v) => (project.precision = v)}
   />
+  <p class="hint">Sheet size, packing, edge trim and kerf are yours rather than the design's: set them on the Cut list &amp; assembly page.</p>
 </div>
 
 <div class="panel-section">
@@ -335,11 +263,6 @@
   }
   .thick {
     width: 56px;
-  }
-  .packing-material {
-    display: block;
-    color: var(--muted);
-    font-size: 10px;
   }
   .layer-base {
     display: flex;

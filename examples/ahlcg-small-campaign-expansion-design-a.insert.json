@@ -8,14 +8,7 @@
     "height": 87
   },
   "material": {
-    "thickness": 5,
-    "sheet": {
-      "preset": "A3",
-      "width": 297,
-      "height": 420
-    },
-    "trim": 5,
-    "kerf": 0.5
+    "thickness": 5
   },
   "precision": 0.5,
   "clearance": 2,

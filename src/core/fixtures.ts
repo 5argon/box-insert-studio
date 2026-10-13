@@ -1,8 +1,8 @@
 /**
  * Test fixtures: a full reference design and an empty one built from it. Not part of the app.
  */
-import { newId, newLayer, newSection, SHEET_PRESETS } from './defaults';
-import type { Dir, LayoutNode, Project, SectionNode, SplitChild, SplitNode } from './types';
+import { defaultCutSetup, newId, newLayer, newSection } from './defaults';
+import type { CutSetup, Dir, LayoutNode, Project, SectionNode, SplitChild, SplitNode } from './types';
 
 const fixed = (mm: number, node: LayoutNode): SplitChild => ({ size: { mode: 'fixed', mm }, node });
 const flex = (node: LayoutNode, weight = 1): SplitChild => ({ size: { mode: 'flex', weight }, node });
@@ -65,7 +65,7 @@ export function doomExample(): Project {
 - Glue with thick PVA and pin the walls while it dries.
 `,
     box: { width: 286, depth: 286, height: 96 },
-    material: { thickness: 5, sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! }, trim: 5, kerf: 0.5 },
+    material: { thickness: 5 },
     precision: 0.5,
     clearance: 1,
     base: 'under',
@@ -73,6 +73,11 @@ export function doomExample(): Project {
     notch: { width: 30, depth: 15 },
     layers: [newLayer('Bottom tray', 56, bottom), newLayer('Top tray', 33, top)],
   };
+}
+
+/** The sheets the tests plan on: A2 with a damaged edge to trim and a knife's kerf. */
+export function testSetup(): CutSetup {
+  return { ...defaultCutSetup(), trim: 5, kerf: 0.5 };
 }
 
 /**

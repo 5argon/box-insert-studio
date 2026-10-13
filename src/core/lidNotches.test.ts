@@ -3,7 +3,7 @@ import { trayInstructions } from './assembly';
 import { shapeCutPatterns } from './cutting';
 import { migrateProject } from './defaults';
 import { setInsert, setInsertLid, setInsertLidSecondary, setLidNotchSide, setSecondaryThickness, setStacked, splitSection } from './edit';
-import { blankProject } from './fixtures';
+import { blankProject, testSetup } from './fixtures';
 import { solveProject, type PieceInst } from './layout';
 import { LID_NOTCH_DEFAULT, lidNotchPoints, lidOutline, rotateLidNotches, solveLidNotches } from './lidNotches';
 import { buildCutList, panelUse, planCuts, shapeOf } from './pieces';
@@ -133,7 +133,7 @@ describe('lid edge notches', () => {
     expect(cut.groups[0]!.shapes).toHaveLength(3);
     expect(area(lidOutline(group.length, group.height, group.lidNotches))).toBe(9600 - 120);
     for (const layout of ['strips', 'fewest', 'guillotine'] as const) {
-      const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
+      const plan = planCuts(project, cut, { ...testSetup(), layout, secondaryLayout: layout });
       expect(plan.issues).toEqual([]);
       expect(plan.sheets.flatMap((s) => s.items)).toHaveLength(pieces.length);
       for (const item of plan.sheets.flatMap((s) => s.items)) {

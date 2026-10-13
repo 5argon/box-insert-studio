@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { setStacked } from './edit';
-import { doomExample } from './fixtures';
+import { doomExample, testSetup } from './fixtures';
 import { solveProject } from './layout';
 import { buildCutList, planCuts } from './pieces';
 import { designProblems } from './problems';
@@ -14,7 +14,7 @@ describe('design problems', () => {
     const s = solveProject(p);
     // The boxes in G cannot be built, so none of their pieces reach the cut list...
     expect(s.trays.filter((t) => t.wellId === g.id)).toEqual([]);
-    const problems = designProblems(p, s, planCuts(p, buildCutList(s, p.precision)));
+    const problems = designProblems(p, s, planCuts(p, buildCutList(s, p.precision), testSetup()));
     // ...and the problem list says so, naming the compartment.
     expect(problems).toContainEqual(expect.objectContaining({ level: 'error', where: 'Compartment G', message: expect.stringMatching(/^Too shallow for two stacked boxes/) }));
   });
@@ -22,14 +22,14 @@ describe('design problems', () => {
   it('are empty for a design that builds as shown', () => {
     const p = doomExample();
     const s = solveProject(p);
-    expect(designProblems(p, s, planCuts(p, buildCutList(s, p.precision))).filter((i) => i.level === 'error')).toEqual([]);
+    expect(designProblems(p, s, planCuts(p, buildCutList(s, p.precision), testSetup())).filter((i) => i.level === 'error')).toEqual([]);
   });
 });
 
 describe('setting problems', () => {
   const warnings = (p: ReturnType<typeof doomExample>) => {
     const s = solveProject(p);
-    return designProblems(p, s, planCuts(p, buildCutList(s, p.precision))).filter((i) => i.level === 'warn').map((i) => i.message);
+    return designProblems(p, s, planCuts(p, buildCutList(s, p.precision), testSetup())).filter((i) => i.level === 'warn').map((i) => i.message);
   };
 
   it('warn about a rounding step coarse enough to make pieces too big', () => {

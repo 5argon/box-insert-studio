@@ -1,5 +1,5 @@
-import { migrateProject, newProject, STARTER_SPEC } from '../core/defaults';
-import type { Project } from '../core/types';
+import { cutSetupFrom, defaultCutSetup, migrateProject, newProject, savedCutSetup, STARTER_SPEC } from '../core/defaults';
+import type { CutSetup, Project } from '../core/types';
 
 const KEY = 'box-insert-studio/project-v2';
 /** Where autosaves lived before the material setting; read once, then saved under KEY. */
@@ -15,19 +15,31 @@ export type ViewStyle = 'wire' | 'glass' | 'solid';
 /** True when nothing was saved: the app opens the New dialog to set the design up. */
 export let firstRun = false;
 
-function load(): Project {
+const SETUP_KEY = 'box-insert-studio/cut-setup';
+
+function load(): { project: Project; setup: CutSetup } {
+  let setup: CutSetup | undefined;
+  try {
+    const stored = localStorage.getItem(SETUP_KEY);
+    if (stored) setup = cutSetupFrom(JSON.parse(stored));
+  } catch {
+    // Storage unavailable or corrupt: plan on the default sheets.
+  }
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
-    const p = raw ? migrateProject(JSON.parse(raw)) : undefined;
-    if (p) return p;
+    const saved = raw ? JSON.parse(raw) : undefined;
+    // An autosave from when the design carried the sheets: they become this browser's.
+    setup ??= savedCutSetup(saved);
+    const p = saved ? migrateProject(saved) : undefined;
+    if (p) return { project: p, setup: setup ?? defaultCutSetup() };
   } catch {
     // Storage unavailable or corrupt: start fresh.
   }
   firstRun = true;
-  return newProject(STARTER_SPEC);
+  return { project: newProject(STARTER_SPEC), setup: setup ?? defaultCutSetup() };
 }
 
-const initial = load();
+const { project: initial, setup: initialSetup } = load();
 
 const PREVIEW_KEY = 'box-insert-studio/preview-collapsed';
 function previewCollapsed(): boolean {
@@ -51,6 +63,8 @@ export function setPreviewCollapsed(collapsed: boolean) {
 
 export const studio = $state({
   project: initial,
+  /** The builder's sheets and how they cut: not part of the project, so not saved with it or undone. */
+  setup: initialSetup,
   layerId: initial.layers[initial.layers.length - 1]?.id ?? '',
   /** Selected compartments, or selected dividers: never a mix. */
   selection: [] as Pick[],
@@ -81,6 +95,15 @@ export function persist(project: Project) {
     localStorage.setItem(KEY, JSON.stringify(project));
   } catch {
     // Storage blocked; the in-memory project still works.
+  }
+}
+
+/** Remembered per browser, whichever design is open. */
+export function persistSetup(setup: CutSetup) {
+  try {
+    localStorage.setItem(SETUP_KEY, JSON.stringify(setup));
+  } catch {
+    // Storage blocked: the setup lasts for this page only.
   }
 }
 

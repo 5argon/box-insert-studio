@@ -76,7 +76,7 @@
 <div class="bar">
   <div class="summary">
     <h2>Cut list</h2>
-    <span><b>{total}</b> pieces in <b>{cut.groups.length}</b> cut sizes · {stripWidths} strip width{stripWidths === 1 ? '' : 's'} · {sheetSummary(project, plan)} ({Math.round(plan.efficiency * 100)}% used)</span
+    <span><b>{total}</b> pieces in <b>{cut.groups.length}</b> cut sizes · {stripWidths} strip width{stripWidths === 1 ? '' : 's'} · {sheetSummary(plan)} ({Math.round(plan.efficiency * 100)}% used)</span
     >
     <label class="toggle"><input type="checkbox" bind:checked={studio.showNumbers} /> Show piece numbers</label>
   </div>
@@ -95,9 +95,9 @@
         {/each}
       </div>
     {/if}
-    {#if cut.hints.length || plan.issues.length}
+    {#if cut.hints.length}
       <div class="hints">
-        {#each [...plan.issues, ...cut.hints] as h, i (i)}
+        {#each cut.hints as h, i (i)}
           <div class="issue {h.level}">{h.message}</div>
         {/each}
       </div>

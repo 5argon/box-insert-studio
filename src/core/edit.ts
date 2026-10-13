@@ -1,7 +1,7 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
 import { baseThickness, solveProject, type Compartment } from './layout';
-import type { CutAlong, CutLayout, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, Project, SectionNode, SheetSpec, Side, SplitNode } from './types';
+import type { Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, Side, SplitNode } from './types';
 
 export const MIN_REGION = 5;
 
@@ -328,10 +328,7 @@ function adjustLayerBases(project: Project, before: Mm) {
 export function setSecondaryThickness(project: Project, next: Mm | undefined) {
   const before = baseThickness(project);
   if (next === undefined) delete project.material.secondaryThickness;
-  else {
-    project.material.secondaryThickness = next;
-    project.material.secondaryLayout ??= 'strips';
-  }
+  else project.material.secondaryThickness = next;
   adjustLayerBases(project, before);
 }
 
@@ -378,25 +375,6 @@ export function setLidNotchSide(section: SectionNode, side: Side, on: boolean) {
   const next = on ? [...new Set([...sides, side])] : sides.filter((s) => s !== side);
   if (next.length) section.insert.lidNotches = next;
   else delete section.insert.lidNotches;
-}
-
-/** Give the secondary material its own sheet size, or `undefined` to use the primary's. */
-export function setSecondarySheet(project: Project, sheet: SheetSpec | undefined) {
-  if (sheet) project.material.secondarySheet = { ...sheet };
-  else delete project.material.secondarySheet;
-}
-
-/** Choose one material's packing without changing the other material's sheets. */
-export function setCutLayout(project: Project, layout: CutLayout, material: MaterialKind = 'primary') {
-  if (material === 'secondary') project.material.secondaryLayout = layout;
-  else if (layout === 'strips') delete project.material.layout;
-  else project.material.layout = layout;
-}
-
-/** Choose the sheet edge the longest cuts run along. */
-export function setCutAlong(project: Project, along: CutAlong) {
-  if (along === 'short') delete project.material.cutAlong;
-  else project.material.cutAlong = along;
 }
 
 /** Is a size off the project's rounding step (the step cut sizes are rounded to)? */

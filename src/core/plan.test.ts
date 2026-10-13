@@ -4,13 +4,13 @@
  * the trimmed edge, one material per sheet, and any piece left out named by an error.
  */
 import { describe, expect, it } from 'vitest';
-import { migrateProject, SHEET_PRESETS } from './defaults';
-import { setConstruction, setCutAlong, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setSecondaryThickness, setStacked } from './edit';
-import { blankProject, doomExample } from './fixtures';
+import { defaultCutSetup, migrateProject, SHEET_PRESETS } from './defaults';
+import { setConstruction, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setSecondaryThickness, setStacked } from './edit';
+import { blankProject, doomExample, testSetup } from './fixtures';
 import { roundTo, type Rect } from './geom';
 import { solveProject } from './layout';
 import { buildCutList, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem, type SheetStep, type StepPart } from './pieces';
-import type { CutAlong, CutLayout, Project, SplitNode } from './types';
+import type { CutAlong, CutLayout, CutSetup, Project, SplitNode } from './types';
 // Every design in examples/, whatever it is called: they are working files and change, so they are
 // only held to rules, never to their exact pieces.
 const exampleTexts = import.meta.glob('../../examples/*.json', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
@@ -27,8 +27,12 @@ function withSecondary(): Project {
   return p;
 }
 
-function withPacking(p: Project, layout: CutLayout, cutAlong: CutAlong = 'short'): Project {
-  return { ...p, material: { ...p.material, layout, secondaryLayout: layout, cutAlong } };
+/** A design and the sheets it is planned on: the test sheets, but for what `setup` changes. */
+type Planned = { p: Project; setup: CutSetup };
+const on = (p: Project, setup: Partial<CutSetup> = {}): Planned => ({ p, setup: { ...testSetup(), ...setup } });
+
+function withPacking(d: Planned, layout: CutLayout, cutAlong: CutAlong = 'short'): Planned {
+  return { p: d.p, setup: { ...d.setup, layout, secondaryLayout: layout, cutAlong } };
 }
 
 /** The longest of the cuts a sheet's steps show. */
@@ -37,12 +41,12 @@ function longestCut(steps: SheetStep[]): number {
 }
 
 /** Each cut of a strip as it lies on the sheet. */
-function segments(p: Project, item: SheetItem) {
+function segments(setup: CutSetup, item: SheetItem) {
   const s = item.strip!;
   let offset = 0;
   return s.cuts.map((c) => {
     const seg = item.along === 'x' ? { x: item.x + offset, y: item.y, w: c.length, h: item.h } : { x: item.x, y: item.y + offset, w: item.w, h: c.length };
-    offset += c.length + p.material.kerf;
+    offset += c.length + setup.kerf;
     return { ...seg, group: c.group };
   });
 }
@@ -53,9 +57,9 @@ const lines = (step: SheetStep): StepPart[][] => [step.parts, ...(step.then ?? [
 const text = (step: SheetStep) => lines(step).map((line) => line.map((part) => part.text).join('')).join(' ');
 
 /** Everything wrong with a plan; pieces left out are fine only when an error names them. */
-function planProblems(p: Project, cut: CutList, plan: CutPlan): string[] {
+function planProblems(setup: CutSetup, cut: CutList, plan: CutPlan): string[] {
   const out: string[] = [];
-  const { kerf, trim } = p.material;
+  const { kerf, trim } = setup;
   const counts = new Map<number, number>();
   const byNumber = new Map(cut.groups.map((g) => [g.number, g]));
   for (const s of plan.sheets) {
@@ -79,11 +83,11 @@ function planProblems(p: Project, cut: CutList, plan: CutPlan): string[] {
           if (Math.abs(c.length - len) > EPS || Math.abs(st.height - ht) > EPS) out.push(`#${g.number} cut ${c.length}×${st.height}, should be ${g.length}×${g.height}`);
           if (g.material !== s.material || g.thickness !== s.thickness) out.push(`#${g.number} on a ${s.material} sheet`);
         }
-        for (const seg of segments(p, it)) rects.push({ ...seg, what: `#${seg.group}` });
+        for (const seg of segments(setup, it)) rects.push({ ...seg, what: `#${seg.group}` });
       }
     }
     // Each sheet against its own size: the materials can come in different sheets.
-    const expected = s.material === 'secondary' ? (p.material.secondarySheet ?? p.material.sheet) : p.material.sheet;
+    const expected = s.material === 'secondary' ? (setup.secondarySheet ?? setup.sheet) : setup.sheet;
     if (s.sheet.width !== expected.width || s.sheet.height !== expected.height) out.push(`sheet ${s.index} is ${s.sheet.width}×${s.sheet.height}, its material comes in ${expected.width}×${expected.height}`);
     for (const r of rects) {
       if (r.x < trim - EPS || r.y < trim - EPS || r.x + r.w > s.sheet.width - trim + EPS || r.y + r.h > s.sheet.height - trim + EPS) out.push(`${r.what} in the trimmed edge`);
@@ -112,19 +116,19 @@ function planProblems(p: Project, cut: CutList, plan: CutPlan): string[] {
   return out;
 }
 
-function check(p: Project) {
+function check({ p, setup }: Planned) {
   const cut = buildCutList(solveProject(p), p.precision);
-  const plan = planCuts(p, cut);
-  return { cut, plan, problems: planProblems(p, cut, plan) };
+  const plan = planCuts(p, cut, setup);
+  return { cut, plan, problems: planProblems(setup, cut, plan) };
 }
 
-const designs: [string, () => Project][] = [
-  ...examples.map(([name, design]): [string, () => Project] => [`example ${name}`, design]),
-  ['the reference design', doomExample],
+const designs: [string, () => Planned][] = [
+  ...examples.map(([name, design]): [string, () => Planned] => [`example ${name}`, () => on(design())]),
+  ['the reference design', () => on(doomExample())],
   ['separate trays', () => {
     const p = doomExample();
     setConstruction(p, 'separate');
-    return p;
+    return on(p);
   }],
   ['secondary bases and shared lids over stacked boxes', () => {
     const p = doomExample();
@@ -135,26 +139,20 @@ const designs: [string, () => Project][] = [
     setInsertLid(g.node, true);
     setInsertSharedLid(g.node, true);
     setJoin(p.layers[0]!, g.node.insert!.root as SplitNode, 'trays', p.material.thickness);
-    return p;
+    return on(p);
   }],
-  ['secondary material on its own A2 sheets', () => {
-    const p = withSecondary();
-    p.material.secondarySheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! };
-    return p;
-  }],
+  ['secondary material on its own A2 sheets', () => on(withSecondary(), { secondarySheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! } })],
   ['walls taller than an A4 sheet is wide', () => {
     const p = blankProject();
-    p.material.sheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A4')! };
     p.box = { width: 150, depth: 120, height: 230 };
     p.layers[0]!.height = 220;
-    return p;
+    return on(p, { sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A4')! } });
   }],
   ['a narrow custom sheet', () => {
     const p = blankProject();
-    p.material.sheet = { preset: 'Custom', width: 120, height: 600 };
     p.box = { width: 110, depth: 300, height: 140 };
     p.layers[0]!.height = 130;
-    return p;
+    return on(p, { sheet: { preset: 'Custom', width: 120, height: 600 } });
   }],
 ];
 
@@ -190,9 +188,9 @@ describe('cutting plans', () => {
   it('describes strips packing strip by strip, its pieces listed under it, trimming what is narrower than its strip', () => {
     for (const [, design] of [...examples, ['reference', withSecondary] as const]) {
       for (const along of ['short', 'long'] as const) {
-        const p = withPacking(design(), 'strips', along);
-        const { plan, cut } = check(p);
-        const steps = plan.sheets.flatMap((s) => sheetSteps(p, s).map(text));
+        const d = withPacking(on(design()), 'strips', along);
+        const { plan, cut } = check(d);
+        const steps = plan.sheets.flatMap((s) => sheetSteps(d.setup, s).map(text));
         const full = along === 'short' ? 'across the full width' : 'along the full length';
         expect(steps.every((s) => new RegExp(`^Strip \\d+: cut a [\\d.]+ mm wide strip ${full} of the sheet, then cut it into: .+\\.$`).test(s))).toBe(true);
         // Anything narrower than the strip it comes from says so, once each.
@@ -210,49 +208,41 @@ describe('cutting plans', () => {
   it('runs the strips along the chosen edge of the sheet, the short one unless told otherwise', () => {
     for (const [, design] of [...examples, ['reference', withSecondary] as const]) {
       for (const along of ['short', 'long'] as const) {
-        const p = withPacking(design(), 'strips', along);
-        for (const s of check(p).plan.sheets) {
-          const usable = [s.sheet.width, s.sheet.height].map((v) => v - 2 * p.material.trim);
+        const d = withPacking(on(design()), 'strips', along);
+        for (const s of check(d).plan.sheets) {
+          const usable = [s.sheet.width, s.sheet.height].map((v) => v - 2 * d.setup.trim);
           const full = along === 'short' ? Math.min(...usable) : Math.max(...usable);
           // The cut that frees each strip from the sheet; the last strip may end at the sheet's edge.
-          for (const step of sheetSteps(p, s)) for (const c of step.parts[0]!.cuts!) expect(Math.abs(c.x2 - c.x1) + Math.abs(c.y2 - c.y1)).toBeCloseTo(full);
+          for (const step of sheetSteps(d.setup, s)) for (const c of step.parts[0]!.cuts!) expect(Math.abs(c.x2 - c.x1) + Math.abs(c.y2 - c.y1)).toBeCloseTo(full);
         }
       }
     }
-    const p = doomExample();
-    expect(p.material.cutAlong).toBeUndefined();
-    const cut = buildCutList(solveProject(p), p.precision);
-    expect(planCuts(p, cut)).toEqual(planCuts(withPacking(p, 'strips', 'short'), cut));
-    setCutAlong(p, 'long');
-    expect(p.material.cutAlong).toBe('long');
-    setCutAlong(p, 'short');
-    expect(p.material.cutAlong).toBeUndefined();
+    expect(defaultCutSetup().cutAlong).toBe('short');
   });
 
   it('keeps edge-to-edge cuts within the short edge of the sheet when asked to, where the long way needs longer ones', () => {
-    const p = doomExample();
-    p.material.sheet = { ...SHEET_PRESETS.find((s) => s.preset === '60 × 100 cm')! };
+    const d = on(doomExample(), { sheet: { ...SHEET_PRESETS.find((s) => s.preset === '60 × 100 cm')! } });
     const longest = (along: CutAlong) => {
-      const q = withPacking(p, 'guillotine', along);
+      const q = withPacking(d, 'guillotine', along);
       const { plan, problems } = check(q);
       expect(problems).toEqual([]);
-      return { sheets: plan.sheets.length, cut: Math.max(...plan.sheets.map((s) => longestCut(sheetSteps(q, s)))) };
+      return { sheets: plan.sheets.length, cut: Math.max(...plan.sheets.map((s) => longestCut(sheetSteps(q.setup, s)))) };
     };
     const short = longest('short');
     const long = longest('long');
     expect(short.sheets).toBe(long.sheets);
-    expect(short.cut).toBeLessThanOrEqual(600 - 2 * p.material.trim + EPS);
+    expect(short.cut).toBeLessThanOrEqual(600 - 2 * d.setup.trim + EPS);
     expect(long.cut).toBeGreaterThan(600);
   });
 
   it('shows the cuts of each step: straight, clear of every piece, and freeing the pieces it names', () => {
     for (const [, design] of [...examples, ['reference', withSecondary] as const]) {
       for (const layout of ['strips', 'guillotine'] as const) {
-        const p = withPacking(design(), layout);
-        const { plan } = check(p);
+        const d = withPacking(on(design()), layout);
+        const { plan } = check(d);
         for (const s of plan.sheets) {
-          const pieces = s.items.flatMap<Rect>((it) => (it.kind === 'base' ? [it] : segments(p, it)));
-          const steps = sheetSteps(p, s);
+          const pieces = s.items.flatMap<Rect>((it) => (it.kind === 'base' ? [it] : segments(d.setup, it)));
+          const steps = sheetSteps(d.setup, s);
           const cuts = steps.flatMap((step) => lines(step).flat().flatMap((part) => part.cuts ?? []));
           for (const c of cuts) {
             expect(Math.abs(c.x1 - c.x2) < EPS || Math.abs(c.y1 - c.y2) < EPS).toBe(true);
@@ -260,7 +250,7 @@ describe('cutting plans', () => {
             expect(through).toBe(false);
           }
           // Each piece has a cut, or the trimmed sheet's edge, along all four of its sides.
-          const { trim, kerf } = p.material;
+          const { trim, kerf } = d.setup;
           const along = (at: number, from: number, to: number, vertical: boolean) =>
             cuts.some((c) => {
               const [pos, a, b] = vertical ? [c.x1, c.y1, c.y2] : [c.y1, c.x1, c.x2];
@@ -296,9 +286,9 @@ describe('cutting plans', () => {
   });
 
   it('lists fewest-sheets packing without cuts to show', () => {
-    const p = withPacking(doomExample(), 'fewest');
-    const { plan } = check(p);
-    expect(plan.sheets.flatMap((s) => sheetSteps(p, s).flatMap(lines).flat()).some((part) => part.cuts)).toBe(false);
+    const d = withPacking(on(doomExample()), 'fewest');
+    const { plan } = check(d);
+    expect(plan.sheets.flatMap((s) => sheetSteps(d.setup, s).flatMap(lines).flat()).some((part) => part.cuts)).toBe(false);
   });
 
   it('lists the cut list as text to order from: the material thickness, then each size once with how many', async () => {
@@ -322,18 +312,16 @@ describe('cutting plans', () => {
   it('buys each material in its own sheet size', async () => {
     const { sheetSummary, sheetSizes } = await import('./pieces');
     const p = withSecondary();
-    const same = check(p).plan;
-    expect(sheetSummary(p, same)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets$/);
+    const same = check(on(p)).plan;
+    expect(sheetSummary(same)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets$/);
     expect(sheetSizes(same)).toBe('420 × 594 mm');
-    p.material.secondarySheet = { ...SHEET_PRESETS.find((s) => s.preset === 'A3')! };
-    const own = check(p).plan;
+    const own = check(on(p, { secondarySheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A3')! } })).plan;
     expect(own.sheets.filter((s) => s.material === 'secondary').every((s) => s.sheet.preset === 'A3')).toBe(true);
     expect(own.sheets.filter((s) => s.material === 'primary').every((s) => s.sheet.preset === 'A2')).toBe(true);
-    expect(sheetSummary(p, own)).toMatch(/^\d+ × 3 mm secondary A3 \+ \d+ × 5 mm primary A2 sheets$/);
+    expect(sheetSummary(own)).toMatch(/^\d+ × 3 mm secondary A3 \+ \d+ × 5 mm primary A2 sheets$/);
     expect(sheetSizes(own)).toBe('A3 297 × 420 mm, A2 420 × 594 mm');
     // A custom size is named by its dimensions.
-    p.material.secondarySheet = { preset: 'Custom', width: 600, height: 1000 };
-    expect(sheetSummary(p, check(p).plan)).toMatch(/^\d+ × 3 mm secondary 600 × 1000 mm \+ \d+ × 5 mm primary A2 sheets$/);
+    expect(sheetSummary(check(on(p, { secondarySheet: { preset: 'Custom', width: 600, height: 1000 } })).plan)).toMatch(/^\d+ × 3 mm secondary 600 × 1000 mm \+ \d+ × 5 mm primary A2 sheets$/);
   });
 
   it('rounds equal sizes alike, however they were added up', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
-import { labelFor, migrateProject, newLayer, newSection } from './defaults';
-import { blankProject, doomExample } from './fixtures';
+import { cutSetupFrom, defaultCutSetup, labelFor, migrateProject, newLayer, newSection, savedCutSetup } from './defaults';
+import { blankProject, doomExample, testSetup } from './fixtures';
 import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from './edit';
 import { allocate, solveProject } from './layout';
 import { pack } from './pack';
@@ -184,20 +184,20 @@ describe('cut list', () => {
     const p = doomExample();
     const s = solveProject(p);
     const cut = buildCutList(s, p.precision);
-    const plan = planCuts(p, cut);
+    const setup = testSetup();
+    const plan = planCuts(p, cut, setup);
     expect(plan.issues).toEqual([]);
-    const maxLen = Math.max(p.material.sheet.width, p.material.sheet.height) - 2 * p.material.trim;
+    const maxLen = Math.max(setup.sheet.width, setup.sheet.height) - 2 * setup.trim;
     for (const st of plan.strips) expect(st.used).toBeLessThanOrEqual(maxLen + 1e-6);
     const stripPieces = plan.strips.reduce((a, st) => a + st.cuts.length, 0);
     const bases = plan.sheets.flatMap((sh) => sh.items).filter((i) => i.kind === 'base').length;
     expect(stripPieces + bases).toBe(s.pieces.length);
-    expect(planCuts(p, cut)).toEqual(plan);
+    expect(planCuts(p, cut, setup)).toEqual(plan);
   });
 
   it('reports bases that do not fit the sheet', () => {
     const p = doomExample();
-    p.material.sheet = { preset: 'A4', width: 210, height: 297 };
-    const plan = planCuts(p, buildCutList(solveProject(p), p.precision));
+    const plan = planCuts(p, buildCutList(solveProject(p), p.precision), { ...testSetup(), sheet: { preset: 'A4', width: 210, height: 297 } });
     expect(plan.issues.some((i) => /does not fit/.test(i.message))).toBe(true);
   });
 });
@@ -457,7 +457,7 @@ describe('new project', () => {
     // The original is untouched.
     expect(from.layers).toHaveLength(2);
     // One base and four walls fit one A2 sheet once strips may be shorter than the sheet.
-    expect(planCuts({ ...p, material: { ...p.material, layout: 'fewest' } }, buildCutList(s, p.precision)).sheets).toHaveLength(1);
+    expect(planCuts(p, buildCutList(s, p.precision), { ...testSetup(), layout: 'fewest' }).sheets).toHaveLength(1);
   });
 });
 
@@ -617,13 +617,35 @@ describe('shared notches', () => {
 describe('material', () => {
   it('migrates projects saved with the old foam setting', () => {
     const old = JSON.parse(JSON.stringify(doomExample()));
-    const sheet = old.material.sheet;
+    const sheet = { preset: 'A3', width: 297, height: 420 };
     old.foam = { thickness: 3, sheet, trim: 5, kerf: 0.5 };
     delete old.material;
     const p = migrateProject(old)!;
-    expect(p.material).toEqual({ thickness: 3, sheet, trim: 5, kerf: 0.5 });
+    expect(p.material).toEqual({ thickness: 3 });
     expect('foam' in p).toBe(false);
     expect(solveProject(p).issues).toEqual([]);
+  });
+
+  it('keeps the sheets and cutting settings out of the design: a saved design brings none, whatever it was saved with', () => {
+    const old = JSON.parse(JSON.stringify(doomExample()));
+    const sheet = { preset: '60 × 100 cm', width: 600, height: 1000 };
+    const secondarySheet = { preset: 'Custom', width: 300, height: 500 };
+    old.material = { thickness: 5, secondaryThickness: 3, sheet, secondarySheet, trim: 5, kerf: 0.5, layout: 'guillotine', secondaryLayout: 'fewest', cutAlong: 'long' };
+    // What it was saved with can be read first, for a browser that has no setup of its own yet.
+    expect(savedCutSetup(old)).toEqual({ sheet, secondarySheet, trim: 5, kerf: 0.5, layout: 'guillotine', secondaryLayout: 'fewest', cutAlong: 'long' });
+    const p = migrateProject(old)!;
+    expect(p.material).toEqual({ thickness: 5, secondaryThickness: 3 });
+    expect(savedCutSetup(p)).toBeUndefined();
+    expect(savedCutSetup(JSON.parse(JSON.stringify(doomExample())))).toBeUndefined();
+  });
+
+  it('reads a stored cut setup, with the default for anything missing or unusable', () => {
+    expect(cutSetupFrom(undefined)).toEqual(defaultCutSetup());
+    expect(cutSetupFrom('nonsense')).toEqual(defaultCutSetup());
+    expect(defaultCutSetup()).toMatchObject({ sheet: { preset: 'A2' }, layout: 'strips', secondaryLayout: 'strips', cutAlong: 'short' });
+    const stored = { ...testSetup(), secondarySheet: { preset: 'A3', width: 297, height: 420 }, layout: 'fewest', cutAlong: 'long' };
+    expect(cutSetupFrom(JSON.parse(JSON.stringify(stored)))).toEqual(stored);
+    expect(cutSetupFrom({ sheet: { preset: 'A3' }, trim: -1, kerf: '1', layout: 'diagonal', cutAlong: 'long' })).toEqual({ ...defaultCutSetup(), cutAlong: 'long' });
   });
 
   it('rejects files that are not projects', () => {
@@ -773,7 +795,7 @@ describe('raised floors', () => {
     const tray = s.trays.find((t) => t.layerId === p.layers[1].id)!;
     const steps = trayInstructions(p, s, cut, tray);
     expect(steps.some((st) => new RegExp(`#${g.number} ×2 flat into compartment S`).test(st.text))).toBe(true);
-    expect(planCuts(p, cut).issues).toEqual([]);
+    expect(planCuts(p, cut, testSetup()).issues).toEqual([]);
   });
 
   it('lifts a removable box on a raised floor, shorter so its top stays flush', async () => {
@@ -1258,7 +1280,7 @@ describe('secondary material', () => {
     const cut = buildCutList(s, p.precision);
     expect(cut.groupOf.get(bases[0]!.id)).not.toBe(cut.groupOf.get(bases[1]!.id));
     for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
-      const plan = planCuts({ ...p, material: { ...p.material, layout, secondaryLayout: layout } }, cut);
+      const plan = planCuts(p, cut, { ...testSetup(), layout, secondaryLayout: layout });
       expect(plan.counts.map((c) => c.material)).toEqual(['secondary', 'primary']);
       for (const sheet of plan.sheets) for (const item of sheet.items) {
         const groups = item.group ? [item.group] : item.strip!.cuts.map((part) => cut.groups.find((g) => g.number === part.group)!);
@@ -1298,7 +1320,7 @@ describe('secondary material', () => {
     expect(thin.every((g) => g.kind === 'base' && g.pieces.every((x) => x.kind === 'base' && x.depth === 0))).toBe(true);
     // Numbered first, so they read as one block.
     expect(thin.map((g) => g.number)).toEqual(thin.map((_, i) => i + 1));
-    const plan = planCuts(p, cut);
+    const plan = planCuts(p, cut, testSetup());
     expect(plan.counts.map((c) => c.thickness)).toEqual([3, 5]);
     for (const sheet of plan.sheets) {
       for (const item of sheet.items) {
@@ -1306,7 +1328,7 @@ describe('secondary material', () => {
         expect(t).toBe(sheet.thickness);
       }
     }
-    expect(sheetSummary(p, plan)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets$/);
+    expect(sheetSummary(plan)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets$/);
     const tray = s.trays.find((t) => t.depth === 0)!;
     expect(trayInstructions(p, s, cut, tray)[0].text).toContain('cut from secondary material (3 mm)');
     const box = s.trays.find((t) => t.depth === 1)!;
@@ -1427,7 +1449,7 @@ describe('lowered sides', () => {
     expect(s.pieces.some((x) => x.cut)).toBe(true);
     const blocks = buildScene(p, s).trays.flatMap((t) => t.blocks);
     for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlap(blocks[i], blocks[j])).toBeLessThan(1e-6);
-    expect(planCuts(p, buildCutList(s, p.precision)).issues).toEqual([]);
+    expect(planCuts(p, buildCutList(s, p.precision), testSetup()).issues).toEqual([]);
   });
 });
 
@@ -1606,13 +1628,13 @@ describe('cutting layouts', () => {
       const cut = buildCutList(s, base.precision);
       const pieces = cut.groups.reduce((n, g) => n + g.pieces.length, 0);
       for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
-        const p = { ...base, material: { ...base.material, layout, secondaryLayout: layout } };
-        const plan = planCuts(p, cut);
+        const setup = { ...testSetup(), layout, secondaryLayout: layout };
+        const plan = planCuts(base, cut, setup);
         expect(plan.issues).toEqual([]);
         const placed = plan.sheets.flatMap((sh) => sh.items).reduce((n, it) => n + (it.kind === 'base' ? 1 : it.strip!.cuts.length), 0);
         expect(placed).toBe(pieces);
-        const { width, height } = p.material.sheet;
-        const t = p.material.trim;
+        const { width, height } = setup.sheet;
+        const t = setup.trim;
         for (const sheet of plan.sheets) {
           for (const [i, a] of sheet.items.entries()) {
             expect(a.x).toBeGreaterThanOrEqual(t - 1e-6);
@@ -1635,11 +1657,12 @@ describe('cutting layouts', () => {
       const cut = buildCutList(solveProject(base), base.precision);
       for (const layout of ['guillotine', 'strips'] as const) {
         for (const cutAlong of ['short', 'long'] as const) {
-          const plan = planCuts({ ...base, material: { ...base.material, layout, secondaryLayout: layout, cutAlong } }, cut);
+          const setup = { ...testSetup(), layout, secondaryLayout: layout, cutAlong };
+          const plan = planCuts(base, cut, setup);
           for (const sheet of plan.sheets) expect(guillotine(sheet.items)).toBe(true);
           if (layout !== 'strips') continue;
           // Bands run along the chosen edge of the sheet: across it, any two pieces share a band start or don't overlap.
-          const { width, height } = base.material.sheet;
+          const { width, height } = setup.sheet;
           const alongX = cutAlong === 'short' ? width < height : width >= height;
           for (const sheet of plan.sheets) {
             const across = sheet.items.map((it) => (alongX ? [it.y, it.y + it.h] : [it.x, it.x + it.w]));
@@ -1654,15 +1677,12 @@ describe('cutting layouts', () => {
 
   it('offers strips first and uses it as the default while keeping other layouts selectable', async () => {
     const { CUT_LAYOUTS } = await import('./pieces');
-    const { setCutLayout } = await import('./edit');
     const p = doomExample();
     const cut = buildCutList(solveProject(p), p.precision);
     expect(CUT_LAYOUTS[0]!.value).toBe('strips');
-    expect(planCuts(p, cut)).toEqual(planCuts({ ...p, material: { ...p.material, layout: 'strips' } }, cut));
-    setCutLayout(p, 'fewest');
-    expect(p.material.layout).toBe('fewest');
-    setCutLayout(p, 'strips');
-    expect(p.material.layout).toBeUndefined();
+    expect(defaultCutSetup()).toMatchObject({ layout: 'strips', secondaryLayout: 'strips' });
+    const strips = planCuts(p, cut, defaultCutSetup());
+    for (const layout of ['fewest', 'guillotine'] as const) expect(planCuts(p, cut, { ...defaultCutSetup(), layout })).not.toEqual(strips);
   });
 });
 

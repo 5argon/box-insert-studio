@@ -7,7 +7,7 @@ import { mm, roundTo, type Rect } from './geom';
 import { rotateLidNotches, type LidNotch } from './lidNotches';
 import type { Issue, Low, Notch, PieceInst, Solved } from './layout';
 import { pack, packGuillotine, type PackItem, type PackResult } from './pack';
-import type { CutAlong, CutLayout, MaterialKind, Mm, Project, SheetSpec } from './types';
+import type { CutAlong, CutLayout, CutSetup, MaterialKind, Mm, Project, SheetSpec } from './types';
 
 /** Sheet packing choices, in the order they are offered. */
 export const CUT_LAYOUTS: { value: CutLayout; name: string; detail: string }[] = [
@@ -30,17 +30,12 @@ export const CUT_ALONGS: { value: CutAlong; name: string; detail: string }[] = [
   { value: 'long', name: 'Long edge', detail: 'The longest cuts run the length of the sheet: fewer, longer cuts, for a ruler as long as the sheet.' },
 ];
 
-/** Cuts run along the short edge unless the long one is chosen. Fewest-sheets packing has no say in it. */
-export function cutAlong(project: Project): CutAlong {
-  return project.material.cutAlong ?? 'short';
-}
-
-/** Do the full-length strips of strips packing run along x, on a sheet this wide and tall? */
-const stripsAlongX = (project: Project, w: Mm, h: Mm) => (cutAlong(project) === 'short' ? w < h : w >= h);
+/** Do the full-length strips of strips packing run along x, on a sheet this wide and tall? Fewest-sheets packing has no say in it. */
+const stripsAlongX = (setup: CutSetup, w: Mm, h: Mm) => (setup.cutAlong === 'short' ? w < h : w >= h);
 
 /** The sheet a material is cut from: the secondary's own size when it has one. */
-export function sheetFor(project: Project, material: MaterialKind): SheetSpec {
-  return (material === 'secondary' ? project.material.secondarySheet : undefined) ?? project.material.sheet;
+export function sheetFor(setup: CutSetup, material: MaterialKind): SheetSpec {
+  return (material === 'secondary' ? setup.secondarySheet : undefined) ?? setup.sheet;
 }
 
 /** "A3", or the dimensions of a custom sheet. */
@@ -50,9 +45,9 @@ export function sheetName(sheet: SheetSpec): string {
 
 const sameSize = (a: SheetSpec, b: SheetSpec) => a.width === b.width && a.height === b.height;
 
-/** Each material independently defaults to strips across the sheet. */
-export function cutPacking(project: Project, material: MaterialKind): CutLayout {
-  return (material === 'secondary' ? project.material.secondaryLayout : project.material.layout) ?? 'strips';
+/** Each material has its own packing. */
+export function cutPacking(setup: CutSetup, material: MaterialKind): CutLayout {
+  return material === 'secondary' ? setup.secondaryLayout : setup.layout;
 }
 
 /** Does the design have a secondary material? Without one there is no "primary" to tell apart. */
@@ -389,10 +384,10 @@ export interface SheetStep {
  * it. Both name the cuts of every action, so the plan can show them; fewest sheets only lists what
  * is on the sheet.
  */
-export function sheetSteps(project: Project, sheet: PlanSheet): SheetStep[] {
-  const { trim, kerf } = project.material;
-  if (sheet.items.some((it) => it.band)) return bandSteps(sheet, trim, kerf, stripsAlongX(project, sheet.sheet.width, sheet.sheet.height));
-  if (cutPacking(project, sheet.material) !== 'guillotine') {
+export function sheetSteps(setup: CutSetup, sheet: PlanSheet): SheetStep[] {
+  const { trim, kerf } = setup;
+  if (sheet.items.some((it) => it.band)) return bandSteps(sheet, trim, kerf, stripsAlongX(setup, sheet.sheet.width, sheet.sheet.height));
+  if (cutPacking(setup, sheet.material) !== 'guillotine') {
     return sheet.items.map((it) => ({
       parts: [{ text: it.kind === 'base' ? `${panelText(it)}.` : `Strip ${mm(it.strip!.height)} mm wide, ${mm(it.strip!.used)} mm long → ${cutsText(it.strip!.cuts)}.` }],
     }));
@@ -543,10 +538,10 @@ const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
  * What to buy: "3 A3 sheets", "1 × 3 mm secondary + 3 × 5 mm primary A3 sheets", or, when the
  * materials come in different sizes, "1 × 3 mm secondary A2 + 3 × 5 mm primary A3 sheets".
  */
-export function sheetSummary(project: Project, plan: CutPlan): string {
+export function sheetSummary(plan: CutPlan): string {
   const total = plan.sheets.length;
   const plural = (n: number) => `sheet${n === 1 ? '' : 's'}`;
-  if (!plan.counts.length) return `${total} ${sheetName(project.material.sheet)} ${plural(total)}`;
+  if (!plan.counts.length) return `${total} ${plural(total)}`;
   if (plan.counts.length === 1) return `${total} ${sheetName(plan.counts[0]!.sheet)} ${plural(total)}`;
   if (plan.counts.every((c) => sameSize(c.sheet, plan.counts[0]!.sheet))) {
     return `${plan.counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material}`).join(' + ')} ${sheetName(plan.counts[0]!.sheet)} ${plural(total)}`;
@@ -562,7 +557,7 @@ export function sheetSizes(plan: CutPlan): string {
 }
 
 /** Each material is packed onto its own sheets, even when their thicknesses match. */
-export function planCuts(project: Project, cut: CutList): CutPlan {
+export function planCuts(project: Project, cut: CutList, setup: CutSetup): CutPlan {
   const sheets: PlanSheet[] = [];
   const strips: Strip[] = [];
   const issues: Issue[] = [];
@@ -574,8 +569,8 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
   for (const material of materials) {
     const groups = cut.groups.filter((g) => g.material === material);
     const thickness = groups[0]?.thickness ?? project.material.thickness;
-    const sheet = sheetFor(project, material);
-    const part = planSheets(project, { ...cut, groups }, cutPacking(project, material), sheet);
+    const sheet = sheetFor(setup, material);
+    const part = planSheets(setup, { ...cut, groups }, cutPacking(setup, material), sheet);
     for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, sheet, items: s.items });
     strips.push(...part.strips);
     issues.push(...part.issues);
@@ -587,8 +582,8 @@ export function planCuts(project: Project, cut: CutList): CutPlan {
   return { sheets, counts, strips, issues, efficiency };
 }
 
-function planSheets(project: Project, cut: CutList, packing: CutLayout, sheet: SheetSpec) {
-  const { trim, kerf } = project.material;
+function planSheets(setup: CutSetup, cut: CutList, packing: CutLayout, sheet: SheetSpec) {
+  const { trim, kerf } = setup;
   const usableW = sheet.width - 2 * trim;
   const usableH = sheet.height - 2 * trim;
   const maxLen = Math.max(usableW, usableH);
@@ -610,10 +605,10 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout, sheet: S
   const bases = fitting.groups.filter((g) => g.kind === 'base').flatMap((g) => g.pieces.map((p, i) => ({ id: `b${g.number}-${i}`, g })));
   const baseItems = bases.map((b) => ({ id: b.id, w: b.g.length, h: b.g.height }));
 
-  if (packing === 'strips') return { ...planBands(project, fitting, bases, usableW, usableH), issues };
+  if (packing === 'strips') return { ...planBands(setup, fitting, bases, usableW, usableH), issues };
   // Edge-to-edge cuts kept short: no strip longer than the sheet's short side, and among packings
   // using as few sheets, the one whose longest cut is shortest.
-  const short = packing === 'guillotine' && cutAlong(project) === 'short';
+  const short = packing === 'guillotine' && setup.cutAlong === 'short';
   const usable = { x: trim, y: trim, w: usableW, h: usableH };
   const longestCut = (items: PackItem[], result: PackResult): Mm => {
     const size = new Map(items.map((i) => [i.id, i]));
@@ -674,10 +669,10 @@ function planSheets(project: Project, cut: CutList, packing: CutLayout, sheet: S
  * band that fits them most tightly (first fit decreasing height); one narrower than its band is
  * trimmed after the crosscut. Every cut runs edge to edge, and all first cuts are parallel.
  */
-function planBands(project: Project, cut: CutList, bases: { id: string; g: PieceGroup }[], usableW: Mm, usableH: Mm) {
-  const { trim, kerf } = project.material;
+function planBands(setup: CutSetup, cut: CutList, bases: { id: string; g: PieceGroup }[], usableW: Mm, usableH: Mm) {
+  const { trim, kerf } = setup;
   const EPS = 1e-6;
-  const longX = stripsAlongX(project, usableW, usableH);
+  const longX = stripsAlongX(setup, usableW, usableH);
   /** How long a band is, and how much room there is across the sheet for bands side by side. */
   const L = longX ? usableW : usableH;
   const S = longX ? usableH : usableW;

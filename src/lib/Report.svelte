@@ -2,14 +2,14 @@
   import { sharedLidInstructions, trayAssemblyPieces, trayInstructions, type Step } from '../core/assembly';
   import { NOTCH_BOTTOM_DEFAULT } from '../core/layout';
   import { lidNotchPoints, lidNotchText, lidOutline, polygonPath } from '../core/lidNotches';
-  import { sectionColor, sectionInk } from '../core/defaults';
+  import { sectionColor, sectionInk, SHEET_PRESETS } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { PieceInst, Solved, Tray } from '../core/layout';
-  import { cutAlong, cutListText, cutPacking, CUT_ALONGS, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetName, sheetSizes, sheetSteps, sheetSummary, twoMaterials, type CutList, type CutPlan, type PieceGroup, type PieceShape, type SheetItem, type SheetStep, type StepPart } from '../core/pieces';
-  import { setCutAlong, setCutLayout } from '../core/edit';
+  import { cutListText, cutPacking, CUT_ALONGS, CUT_LAYOUTS, materialLabel, panelUse, planCuts, sheetName, sheetSizes, sheetSteps, sheetSummary, twoMaterials, type CutList, type CutPlan, type PieceGroup, type PieceShape, type SheetItem, type SheetStep, type StepPart } from '../core/pieces';
   import { designProblems } from '../core/problems';
-  import type { MaterialKind, Project } from '../core/types';
+  import type { CutLayout, CutSetup, MaterialKind, Project } from '../core/types';
   import Markdown from './Markdown.svelte';
+  import NumberField from './NumberField.svelte';
   import ReportOverview from './ReportOverview.svelte';
   import PieceCutting from './PieceCutting.svelte';
   import PieceRef from './PieceRef.svelte';
@@ -18,7 +18,7 @@
   import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
   import { download, slug } from './state.svelte';
 
-  let { project, solved, cut, plan }: { project: Project; solved: Solved; cut: CutList; plan: CutPlan } = $props();
+  let { project, setup = $bindable(), solved, cut, plan }: { project: Project; setup: CutSetup; solved: Solved; cut: CutList; plan: CutPlan } = $props();
 
   const trayById = $derived(new Map(solved.trays.map((t) => [t.id, t])));
   const layerName = $derived(new Map(project.layers.map((l) => [l.id, l.name])));
@@ -84,7 +84,7 @@
     let offset = 0;
     return s.cuts.map((c) => {
       const seg = horizontal ? { x: item.x + offset, y: item.y, w: c.length, h: item.h } : { x: item.x, y: item.y + offset, w: item.w, h: c.length };
-      offset += c.length + project.material.kerf;
+      offset += c.length + setup.kerf;
       return { ...seg, group: c.group };
     });
   }
@@ -130,17 +130,14 @@
   /** Compare packing choices using only that material's pieces, with separate counts and efficiency. */
   const packingMaterials = $derived<MaterialKind[]>(project.material.secondaryThickness !== undefined ? ['primary', 'secondary'] : ['primary']);
   const packings = $derived(packingMaterials.map((material) => {
-    const packing = cutPacking(project, material);
+    const packing = cutPacking(setup, material);
     const groups = cut.groups.filter((g) => g.material === material);
     return {
       material,
       thickness: material === 'secondary' ? project.material.secondaryThickness ?? T : T,
       value: packing,
       info: CUT_LAYOUTS.find((l) => l.value === packing) ?? CUT_LAYOUTS[0],
-      alternatives: new Map(CUT_LAYOUTS.map((l) => [l.value, planCuts({
-        ...project,
-        material: { ...project.material, [material === 'secondary' ? 'secondaryLayout' : 'layout']: l.value },
-      }, { ...cut, groups })])),
+      alternatives: new Map(CUT_LAYOUTS.map((l) => [l.value, planCuts(project, { ...cut, groups }, { ...setup, [material === 'secondary' ? 'secondaryLayout' : 'layout']: l.value })])),
     };
   }));
 
@@ -152,8 +149,25 @@
   const showsCuts = $derived(packings.some((p) => p.value !== 'fewest'));
 
   /** Compare the edge the longest cuts run along, over the sheets of every material. */
-  const along = $derived(cutAlong(project));
-  const alongs = $derived(CUT_ALONGS.map((a) => ({ ...a, plan: planCuts({ ...project, material: { ...project.material, cutAlong: a.value } }, cut) })));
+  const along = $derived(setup.cutAlong);
+  const alongs = $derived(CUT_ALONGS.map((a) => ({ ...a, plan: planCuts(project, cut, { ...setup, cutAlong: a.value }) })));
+
+  function setPacking(material: MaterialKind, layout: CutLayout) {
+    if (material === 'secondary') setup.secondaryLayout = layout;
+    else setup.layout = layout;
+  }
+
+  function chooseSheet(name: string) {
+    const p = SHEET_PRESETS.find((x) => x.preset === name);
+    setup.sheet = p ? { ...p } : { ...setup.sheet, preset: 'Custom' };
+  }
+
+  /** The secondary material's own sheet, or the primary's when "Same as primary" is chosen. */
+  function chooseSecondarySheet(name: string) {
+    const p = SHEET_PRESETS.find((x) => x.preset === name);
+    if (!name) delete setup.secondarySheet;
+    else setup.secondarySheet = p ? { ...p } : { ...(setup.secondarySheet ?? setup.sheet), preset: 'Custom' };
+  }
 
   /** The assembly step under the pointer, and the diagram it belongs to: its pieces stand out there. */
   let pointedStep = $state.raw<{ diagram: string; step: Step }>();
@@ -244,9 +258,107 @@
   {/if}
 {/snippet}
 
+<!-- Everything wrong or adjusted: above the page on screen, and at the top of the printout. -->
+{#snippet problemList()}
+  {#if errors.length}
+    <div class="issue error">
+      <b>Fix before buying or cutting: the cut list below is incomplete or wrong.</b>
+      <ul>
+        {#each errors as e, i (i)}<li>{e.where ? `${e.where}: ` : ''}{@render refs(e.message)}</li>{/each}
+      </ul>
+    </div>
+  {/if}
+  {#if warnings.length}
+    <div class="issue warn">
+      <b>Check before cutting: the design was adjusted where it did not fit.</b>
+      <ul>
+        {#each warnings as w, i (i)}<li>{w.where ? `${w.where}: ` : ''}{@render refs(w.message)}</li>{/each}
+      </ul>
+    </div>
+  {/if}
+{/snippet}
+
 <svelte:head>{@html `<style>@page { size: A4 portrait; margin: 12mm; }</style>`}</svelte:head>
 
 <div class="scroll">
+  <!-- What shapes the page below, and what is wrong with it: the app's, so outside the page and never printed as shown. -->
+  <aside class="controls no-print" aria-label="Your sheets and packing">
+    <div class="controls-head">
+      <h2>Your sheets and packing</h2>
+      <div class="actions">
+        <button class="primary" onclick={() => window.print()}>Print / Save PDF</button>
+        <button onclick={exportCsv}>Cut list CSV</button>
+        <button onclick={exportObj} data-tip="A zip of OBJ models in millimetres: the whole insert, plus one file per tray and removable box, for CAD, 3D printing or rendering">Download OBJ (zip)</button>
+      </div>
+    </div>
+    <p class="muted small">The sheets you can get and how you cut them. Remembered in this browser, not saved with the design: they stay as they are when you open another one.</p>
+    <div class="packing-options">
+      <div class="setup">
+        <label class="field">
+          <span>{sole ? 'Sheet' : 'Primary sheet'}</span>
+          <select aria-label="Primary material sheet" value={setup.sheet.preset} onchange={(e) => chooseSheet(e.currentTarget.value)}>
+            {#each SHEET_PRESETS as s (s.preset)}
+              <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
+            {/each}
+            <option value="Custom">Custom</option>
+          </select>
+        </label>
+        {#if setup.sheet.preset === 'Custom'}
+          <NumberField label="Sheet width" value={setup.sheet.width} min={50} onchange={(v) => (setup.sheet.width = v)} />
+          <NumberField label="Sheet height" value={setup.sheet.height} min={50} onchange={(v) => (setup.sheet.height = v)} />
+        {/if}
+        {#if !sole}
+          {@const own = setup.secondarySheet}
+          <label class="field" data-tip="The secondary material's sheet size, when it comes in a different size from the primary, e.g. in bulk">
+            <span>Secondary sheet</span>
+            <select aria-label="Secondary material sheet" value={own?.preset ?? ''} onchange={(e) => chooseSecondarySheet(e.currentTarget.value)}>
+              <option value="">Same as primary</option>
+              {#each SHEET_PRESETS as s (s.preset)}
+                <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
+              {/each}
+              <option value="Custom">Custom</option>
+            </select>
+          </label>
+          {#if own?.preset === 'Custom'}
+            <NumberField label="Secondary sheet width" value={own.width} min={50} onchange={(v) => (own.width = v)} />
+            <NumberField label="Secondary sheet height" value={own.height} min={50} onchange={(v) => (own.height = v)} />
+          {/if}
+        {/if}
+        <NumberField label="Edge trim" value={setup.trim} min={0} hint="Unusable edge cut off each side of a sheet" onchange={(v) => (setup.trim = v)} />
+        <NumberField label="Kerf" value={setup.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (setup.kerf = v)} />
+      </div>
+    </div>
+    {#each packings as packing (packing.material)}
+      <div class="packing-options" data-material={packing.material}>
+        <h3>{sole ? '' : `${materialLabel(packing.material, packing.thickness)} · `}Packing</h3>
+        <div class="packings no-print" role="group" aria-label="{packing.material === 'secondary' ? 'Secondary' : 'Primary'} material packing">
+          {#each CUT_LAYOUTS as l (l.value)}
+            {@const alt = packing.alternatives.get(l.value)!}
+            <button class="packing" class:on={packing.value === l.value} aria-pressed={packing.value === l.value} onclick={() => setPacking(packing.material, l.value)}>
+              <b>{l.name}</b>
+              <span>{sheetSummary(alt)}, {Math.round(alt.efficiency * 100)}% used</span>
+            </button>
+          {/each}
+        </div>
+        <p class="muted small"><b>{packing.info.name}.</b> {packing.info.detail}</p>
+      </div>
+    {/each}
+    {#if showsCuts}
+      <div class="packing-options">
+        <h3>Longest cuts along the sheet's</h3>
+        <div class="packings no-print" role="group" aria-label="Edge the longest cuts run along">
+          {#each alongs as a (a.value)}
+            <button class="packing" class:on={along === a.value} aria-pressed={along === a.value} onclick={() => (setup.cutAlong = a.value)}>
+              <b>{a.name}</b>
+              <span>{sheetSummary(a.plan)}, {Math.round(a.plan.efficiency * 100)}% used</span>
+            </button>
+          {/each}
+        </div>
+        <p class="muted small"><b>{alongs.find((a) => a.value === along)!.name}.</b> {alongs.find((a) => a.value === along)!.detail}</p>
+      </div>
+    {/if}
+    {@render problemList()}
+  </aside>
   <article class="report">
     <header>
       <div>
@@ -258,32 +370,12 @@
           {multiLayer ? project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ') : `${project.layers[0]?.height} mm tall`} · {mm(solved.headroom)} mm headroom
         </p>
         <p class="facts">
-          <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from {sheetSummary(project, plan)} ({sheetSizes(plan)})
+          <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from {sheetSummary(plan)} ({sheetSizes(plan)})
         </p>
-      </div>
-      <div class="actions no-print">
-        <button class="primary" onclick={() => window.print()}>Print / Save PDF</button>
-        <button onclick={exportCsv}>Cut list CSV</button>
-        <button onclick={exportObj} data-tip="A zip of OBJ models in millimetres: the whole insert, plus one file per tray and removable box, for CAD, 3D printing or rendering">Download OBJ (zip)</button>
       </div>
     </header>
 
-    {#if errors.length}
-      <div class="issue error">
-        <b>Fix before buying or cutting: the cut list below is incomplete or wrong.</b>
-        <ul>
-          {#each errors as e, i (i)}<li>{e.where ? `${e.where}: ` : ''}{@render refs(e.message)}</li>{/each}
-        </ul>
-      </div>
-    {/if}
-    {#if warnings.length}
-      <div class="issue warn">
-        <b>Check before cutting: the design was adjusted where it did not fit.</b>
-        <ul>
-          {#each warnings as w, i (i)}<li>{w.where ? `${w.where}: ` : ''}{@render refs(w.message)}</li>{/each}
-        </ul>
-      </div>
-    {/if}
+    <div class="print-only">{@render problemList()}</div>
 
     <ReportOverview {project} {solved} {cut} />
 
@@ -377,48 +469,27 @@
 
     <section>
       <h2>Cutting plan</h2>
-      {#each packings as packing (packing.material)}
-        <div class="packing-options" data-material={packing.material}>
-          <h3>{sole ? '' : `${materialLabel(packing.material, packing.thickness)} · `}Packing</h3>
-          <div class="packings no-print" role="group" aria-label="{packing.material === 'secondary' ? 'Secondary' : 'Primary'} material packing">
-            {#each CUT_LAYOUTS as l (l.value)}
-              {@const alt = packing.alternatives.get(l.value)!}
-              <button class="packing" class:on={packing.value === l.value} aria-pressed={packing.value === l.value} onclick={() => setCutLayout(project, l.value, packing.material)}>
-                <b>{l.name}</b>
-                <span>{sheetSummary(project, alt)}, {Math.round(alt.efficiency * 100)}% used</span>
-              </button>
-            {/each}
-          </div>
-          <p class="muted small"><b>{packing.info.name}.</b> {packing.info.detail}</p>
-        </div>
-      {/each}
-      {#if showsCuts}
-        <div class="packing-options">
-          <h3>Longest cuts along the sheet's</h3>
-          <div class="packings no-print" role="group" aria-label="Edge the longest cuts run along">
-            {#each alongs as a (a.value)}
-              <button class="packing" class:on={along === a.value} aria-pressed={along === a.value} onclick={() => setCutAlong(project, a.value)}>
-                <b>{a.name}</b>
-                <span>{sheetSummary(project, a.plan)}, {Math.round(a.plan.efficiency * 100)}% used</span>
-              </button>
-            {/each}
-          </div>
-          <p class="muted small"><b>{alongs.find((a) => a.value === along)!.name}.</b> {alongs.find((a) => a.value === along)!.detail}</p>
-        </div>
-      {/if}
+      <div class="print-only">
+        {#each packings as packing (packing.material)}
+          <p class="muted small"><b>{sole ? '' : `${materialLabel(packing.material, packing.thickness)} · `}{packing.info.name}.</b> {packing.info.detail}</p>
+        {/each}
+        {#if showsCuts}
+          <p class="muted small"><b>Longest cuts along the sheet's {along} edge.</b> {alongs.find((a) => a.value === along)!.detail}</p>
+        {/if}
+      </div>
       <p class="muted small">
-        Trim {project.material.trim} mm off each sheet edge first.
+        Trim {mm(setup.trim)} mm off each sheet edge first.
         Cut out and number the rectangular pieces first{#if notchGroups.length || loweredGroups.length}; complete the notch and edge cuts below before assembly{/if}.
         <span class="no-print">{#if showsCuts}Point at a step to see its cuts on the sheet. {/if}Point at a piece to see the others like it; click it to keep them highlighted.</span>
       </p>
       {#each plan.sheets as sheet (sheet.index)}
         {@const W = sheet.sheet.width}
         {@const H = sheet.sheet.height}
-        {@const packingInfo = CUT_LAYOUTS.find((l) => l.value === cutPacking(project, sheet.material)) ?? CUT_LAYOUTS[0]}
+        {@const packingInfo = CUT_LAYOUTS.find((l) => l.value === cutPacking(setup, sheet.material)) ?? CUT_LAYOUTS[0]}
         <div class="sheet">
           <svg viewBox="-2 -2 {W + 4} {H + 4}" class="sheet-svg" role="img" aria-label="Sheet {sheet.index + 1} packing">
             <rect width={W} height={H} class="paper" />
-            <rect x={project.material.trim} y={project.material.trim} width={W - 2 * project.material.trim} height={H - 2 * project.material.trim} class="trim" />
+            <rect x={setup.trim} y={setup.trim} width={W - 2 * setup.trim} height={H - 2 * setup.trim} class="trim" />
             {#each sheet.items as item, i (i)}
               {#if item.kind === 'base'}
                 {@const n = item.group!.number}
@@ -472,7 +543,7 @@
             </h3>
             <p class="muted small">Packing: {packingInfo.name}{packingInfo.value === 'fewest' ? '' : `, longest cuts along the ${along} edge`}.</p>
             <ol>
-              {#each sheetSteps(project, sheet) as step, i (i)}
+              {#each sheetSteps(setup, sheet) as step, i (i)}
                 <li>{@render stepItem(sheet.index, step)}</li>
               {/each}
             </ol>
@@ -636,7 +707,31 @@
   .scroll {
     overflow-y: auto;
     height: 100%;
-    padding: 24px 16px;
+  }
+  .controls {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 14px max(16px, calc((100% - 820px) / 2)) 16px;
+  }
+  .controls-head {
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .controls-head h2 {
+    margin: 0;
+  }
+  .controls > p {
+    margin: 0 0 10px;
+  }
+  /* Piece numbers are drawn for the page's paper; here they take the theme's colours. */
+  .controls :global(.ref:not(.pointed, .picked)) {
+    background: color-mix(in srgb, currentColor 14%, transparent);
+  }
+  .controls :global(.ref:is(.pointed, .picked)) {
+    color: #22201c;
   }
   /* A printable page: always the light palette, whatever the app theme. */
   .report {
@@ -670,7 +765,7 @@
     color: var(--text);
     background: #fff;
     max-width: 820px;
-    margin: 0 auto;
+    margin: 24px auto;
     padding: 28px 32px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
     font-size: 12.5px;
@@ -713,7 +808,7 @@
   }
   .actions {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 6px;
   }
   table {
@@ -989,6 +1084,22 @@
   .packing-options {
     margin-bottom: 14px;
   }
+  .setup {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 0 28px;
+    margin: 4px 0 6px;
+  }
+  .setup .field {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+  }
+  .print-only {
+    display: none;
+  }
   .packings {
     display: flex;
     flex-wrap: wrap;
@@ -1081,17 +1192,20 @@
 
   @media print {
     .scroll {
-      padding: 0;
       overflow: visible;
       height: auto;
     }
     .report {
       box-shadow: none;
+      margin: 0;
       padding: 0;
       max-width: none;
     }
     .no-print {
       display: none;
+    }
+    .print-only {
+      display: block;
     }
     .cut-step {
       border-bottom: none;

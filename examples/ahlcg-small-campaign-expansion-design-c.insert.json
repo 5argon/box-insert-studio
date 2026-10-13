@@ -8,17 +8,7 @@
     "height": 87
   },
   "material": {
-    "thickness": 5,
-    "sheet": {
-      "preset": "60 × 100 cm",
-      "width": 600,
-      "height": 1000
-    },
-    "trim": 0,
-    "kerf": 1,
-    "secondaryLayout": "strips",
-    "layout": "guillotine",
-    "cutAlong": "long"
+    "thickness": 5
   },
   "precision": 0.5,
   "clearance": 2,

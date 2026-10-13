@@ -19,7 +19,7 @@
   import SectionInspector from './lib/SectionInspector.svelte';
   import SplitInspector from './lib/SplitInspector.svelte';
   import { breakStep, recordProject, redo, undo, undoState } from './lib/history.svelte';
-  import { download, firstRun, persist, replaceProject, select, setPreviewCollapsed, slug, studio } from './lib/state.svelte';
+  import { download, firstRun, persist, persistSetup, replaceProject, select, setPreviewCollapsed, slug, studio } from './lib/state.svelte';
   import MultiSectionInspector from './lib/MultiSectionInspector.svelte';
   import MultiDividerInspector from './lib/MultiDividerInspector.svelte';
   import type { Compartment } from './core/layout';
@@ -28,12 +28,16 @@
   const solved = $derived(solveProject(studio.project));
   const thumbModel = $derived(buildScene(studio.project, solved, trayColors));
   const cut = $derived(buildCutList(solved, studio.project.precision));
-  const plan = $derived(planCuts(studio.project, cut));
+  const plan = $derived(planCuts(studio.project, cut, studio.setup));
 
   $effect(() => {
     const snapshot = $state.snapshot(studio.project) as Project;
     const id = setTimeout(() => persist(snapshot), 300);
     return () => clearTimeout(id);
+  });
+
+  $effect(() => {
+    persistSetup($state.snapshot(studio.setup));
   });
 
   // Every change to the project goes into the undo history.
@@ -230,7 +234,7 @@
       <p class="loading">Could not load the 3D view: {err.message}</p>
     {/await}
   {:else}
-    <Report project={studio.project} {solved} {cut} {plan} />
+    <Report project={studio.project} bind:setup={studio.setup} {solved} {cut} {plan} />
   {/if}
 </div>
 

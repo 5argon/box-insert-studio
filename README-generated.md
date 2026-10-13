@@ -109,8 +109,13 @@ With primary material thickness T, tray base thickness B and tray height H (incl
   sheets, CSV exports and assembly steps identify primary or secondary material.
 - **Packing** controls how pieces fill their material sheets. **Strips across the sheet** is the
   default; Fewest sheets and Edge-to-edge cuts remain available. Primary and secondary materials
-  have independent packing choices in Material and in the cutting plan, where each material's
-  choices show its own sheet count and usage. Saved designs retain both choices.
+  have independent packing choices, each showing its own sheet count and usage.
+- **Your sheets and packing** (sheet size per material, edge trim, kerf, packing and the edge the
+  longest cuts run along) belong to whoever builds the insert, not to the design. They are set
+  above the page on Cut list & assembly, beside the problems they cause, and follow the app's
+  theme; the page below is what prints. They are remembered in the browser and never written to
+  `.insert.json` files: opening someone else's design plans it on your sheets, and reports any
+  piece that does not fit them.
 - A raised floor of n layers stacks n pieces cut to the compartment's inside size (less the
   clearance), taking n·T from its height. Under a removable box it lifts the box, which gets
   n·T shorter so its top stays flush. A floor that no longer fits (say after switching to a

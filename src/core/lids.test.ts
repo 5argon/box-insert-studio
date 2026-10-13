@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
 import { migrateProject } from './defaults';
 import { setEmptyAbove, setInsert, setInsertBaseSecondary, setInsertLid, setInsertLidSecondary, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked, splitSection } from './edit';
-import { blankProject } from './fixtures';
+import { blankProject, testSetup } from './fixtures';
 import { fitItems } from './items';
 import { insertLidAllowance, insertLidThickness, maxPad, solveProject, type Solved } from './layout';
 import { buildCutList, panelUse, planCuts } from './pieces';
@@ -170,7 +170,7 @@ describe('removable-box lids', () => {
       expect(panelUse(group)).toBe(base === 'under' ? 'base, lid' : 'lid');
       expect(group.pieces).toHaveLength(base === 'under' ? 3 : 1);
       for (const layout of ['fewest', 'guillotine', 'strips'] as const) {
-        const plan = planCuts({ ...project, material: { ...project.material, layout, secondaryLayout: layout } }, cut);
+        const plan = planCuts(project, cut, { ...testSetup(), layout, secondaryLayout: layout });
         expect(plan.issues).toEqual([]);
         const placed = plan.sheets.flatMap((s) => s.items).reduce((n, i) => n + (i.kind === 'base' ? 1 : i.strip!.cuts.length), 0);
         expect(placed).toBe(solved.pieces.length);
