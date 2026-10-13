@@ -643,7 +643,7 @@ describe('material', () => {
     expect(cutSetupFrom(undefined)).toEqual(defaultCutSetup());
     expect(cutSetupFrom('nonsense')).toEqual(defaultCutSetup());
     expect(defaultCutSetup()).toMatchObject({ sheet: { preset: 'A2' }, layout: 'strips', secondaryLayout: 'strips', cutAlong: 'short' });
-    const stored = { ...testSetup(), secondarySheet: { preset: 'A3', width: 297, height: 420 }, layout: 'fewest', cutAlong: 'long', separateBoxes: true };
+    const stored = { ...testSetup(), secondarySheet: { preset: 'A3', width: 297, height: 420 }, layout: 'fewest', cutAlong: 'long', separateBoxes: true, boxSheet: { preset: 'Custom', width: 300, height: 400 } };
     expect(cutSetupFrom(JSON.parse(JSON.stringify(stored)))).toEqual(stored);
     expect(cutSetupFrom({ sheet: { preset: 'A3' }, trim: -1, kerf: '1', layout: 'diagonal', cutAlong: 'long' })).toEqual({ ...defaultCutSetup(), cutAlong: 'long' });
   });

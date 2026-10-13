@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { defaultCutSetup, migrateProject, SHEET_PRESETS } from './defaults';
-import { setConstruction, setInsert, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked } from './edit';
+import { setConstruction, setInsert, setInsertBaseSecondary, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked } from './edit';
 import { blankProject, doomExample, testSetup } from './fixtures';
 import { roundTo, type Rect } from './geom';
 import { solveProject } from './layout';
@@ -113,7 +113,7 @@ function planProblems(setup: CutSetup, cut: CutList, plan: CutPlan): string[] {
       }
     }
     // Each sheet against its own size: the materials can come in different sheets.
-    const expected = s.material === 'secondary' ? (setup.secondarySheet ?? setup.sheet) : setup.sheet;
+    const expected = (s.boxes ? setup.boxSheet : undefined) ?? (s.material === 'secondary' ? (setup.secondarySheet ?? setup.sheet) : setup.sheet);
     if (s.sheet.width !== expected.width || s.sheet.height !== expected.height) out.push(`sheet ${s.index} is ${s.sheet.width}×${s.sheet.height}, its material comes in ${expected.width}×${expected.height}`);
     for (const r of rects) {
       if (r.x < trim - EPS || r.y < trim - EPS || r.x + r.w > s.sheet.width - trim + EPS || r.y + r.h > s.sheet.height - trim + EPS) out.push(`${r.what} in the trimmed edge`);
@@ -158,6 +158,7 @@ const designs: [string, () => Planned][] = [
   }],
   ['secondary bases and shared lids over stacked boxes', () => on(withStackedBoxes())],
   ['removable boxes on sheets of their own', () => on(withStackedBoxes(), { separateBoxes: true })],
+  ['removable boxes on A3 sheets of their own', () => on(withStackedBoxes(), { separateBoxes: true, boxSheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A3')! } })],
   ...examples.map(([name, design]): [string, () => Planned] => [`example ${name}, removable boxes on sheets of their own`, () => on(design(), { separateBoxes: true })]),
   ['secondary material on its own A2 sheets', () => on(withSecondary(), { secondarySheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! } })],
   ['walls taller than an A4 sheet is wide', () => {
@@ -365,6 +366,16 @@ describe('cutting plans', () => {
     expect(sheetSummary(apart)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets \+ \d+ × 5 mm primary A2 sheets? for removable boxes$/);
     const one = check(on(doomExample(), { separateBoxes: true })).plan;
     expect(sheetSummary(one)).toMatch(/^\d+ A2 sheets? \+ \d+ A2 sheets? for removable boxes$/);
+    // Those sheets can come in a size of their own, in both materials; the rest keep theirs.
+    const a3 = { ...SHEET_PRESETS.find((s) => s.preset === 'A3')! };
+    const p = withStackedBoxes();
+    setInsertBaseSecondary(solveProject(p).compartments.find((c) => c.label === 'G')!.node, true);
+    const sized = check(on(p, { separateBoxes: true, boxSheet: a3 })).plan;
+    expect(new Set(sized.sheets.filter((s) => s.boxes).map((s) => s.material))).toEqual(new Set(['primary', 'secondary']));
+    for (const s of sized.sheets) expect(s.sheet.preset).toBe(s.boxes ? 'A3' : 'A2');
+    expect(sheetSummary(sized)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets \+ \d+ × 3 mm secondary \+ \d+ × 5 mm primary A3 sheets for removable boxes$/);
+    // Unused while boxes share the other sheets.
+    expect(check(on(p, { boxSheet: a3 })).plan).toEqual(check(on(p)).plan);
     // Without removable boxes there is nothing to set apart.
     const plain = blankProject();
     expect(check(on(plain, { separateBoxes: true })).plan).toEqual(check(on(plain)).plan);

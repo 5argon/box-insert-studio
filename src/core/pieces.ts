@@ -33,9 +33,12 @@ export const CUT_ALONGS: { value: CutAlong; name: string; detail: string }[] = [
 /** Do the full-length strips of strips packing run along x, on a sheet this wide and tall? Fewest-sheets packing has no say in it. */
 const stripsAlongX = (setup: CutSetup, w: Mm, h: Mm) => (setup.cutAlong === 'short' ? w < h : w >= h);
 
-/** The sheet a material is cut from: the secondary's own size when it has one. */
-export function sheetFor(setup: CutSetup, material: MaterialKind): SheetSpec {
-  return (material === 'secondary' ? setup.secondarySheet : undefined) ?? setup.sheet;
+/**
+ * The sheet a material is cut from: the secondary's own size when it has one. `boxes`: the sheets
+ * removable boxes get to themselves, in their own size when one is set.
+ */
+export function sheetFor(setup: CutSetup, material: MaterialKind, boxes = false): SheetSpec {
+  return (boxes ? setup.boxSheet : undefined) ?? (material === 'secondary' ? setup.secondarySheet : undefined) ?? setup.sheet;
 }
 
 /** "A3", or the dimensions of a custom sheet. */
@@ -589,7 +592,7 @@ export function planCuts(project: Project, cut: CutList, setup: CutSetup): CutPl
   if (!stocks.length) stocks.push({ material: 'primary', groups: [] });
   for (const { material, boxes, groups } of stocks) {
     const thickness = groups[0]?.thickness ?? project.material.thickness;
-    const sheet = sheetFor(setup, material);
+    const sheet = sheetFor(setup, material, boxes);
     const part = planSheets(setup, { ...cut, groups }, cutPacking(setup, material), sheet);
     for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, sheet, ...(boxes ? { boxes } : {}), items: s.items });
     // A material's two kinds of sheet number their strips alike; keep every strip's id its own.

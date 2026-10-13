@@ -35,6 +35,7 @@ export function cutSetupFrom(raw: unknown): CutSetup {
   const base = defaultCutSetup();
   const length = (v: unknown, fallback: Mm) => (typeof v === 'number' && v >= 0 ? v : fallback);
   const secondarySheet = sheetFrom(r.secondarySheet);
+  const boxSheet = sheetFrom(r.boxSheet);
   return {
     sheet: sheetFrom(r.sheet) ?? base.sheet,
     ...(secondarySheet ? { secondarySheet } : {}),
@@ -44,6 +45,7 @@ export function cutSetupFrom(raw: unknown): CutSetup {
     secondaryLayout: CUT_LAYOUT_VALUES.find((v) => v === r.secondaryLayout) ?? base.secondaryLayout,
     cutAlong: CUT_ALONG_VALUES.find((v) => v === r.cutAlong) ?? base.cutAlong,
     separateBoxes: r.separateBoxes === true,
+    ...(boxSheet ? { boxSheet } : {}),
   };
 }
 
@@ -178,7 +180,7 @@ export function migrateProject(raw: unknown): Project | undefined {
     p.secondaryBase = true;
     delete material.baseThickness;
   }
-  for (const key of ['sheet', 'secondarySheet', 'trim', 'kerf', 'layout', 'secondaryLayout', 'cutAlong', 'separateBoxes'] satisfies (keyof CutSetup)[]) {
+  for (const key of ['sheet', 'secondarySheet', 'trim', 'kerf', 'layout', 'secondaryLayout', 'cutAlong', 'separateBoxes', 'boxSheet'] satisfies (keyof CutSetup)[]) {
     delete (material as Partial<CutSetup>)[key];
   }
   return p;

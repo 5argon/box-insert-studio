@@ -156,6 +156,17 @@
   const along = $derived(setup.cutAlong);
   const alongs = $derived(CUT_ALONGS.map((a) => ({ ...a, plan: planCuts(project, cut, { ...setup, cutAlong: a.value }) })));
 
+  /** Sheets of their own for removable boxes start out the size of the main sheet. */
+  function setSeparateBoxes(on: boolean) {
+    setup.separateBoxes = on;
+    if (on) setup.boxSheet = { ...setup.sheet };
+  }
+
+  function chooseBoxSheet(name: string) {
+    const p = SHEET_PRESETS.find((x) => x.preset === name);
+    setup.boxSheet = p ? { ...p } : { ...(setup.boxSheet ?? setup.sheet), preset: 'Custom' };
+  }
+
   function setPacking(material: MaterialKind, layout: CutLayout) {
     if (material === 'secondary') setup.secondaryLayout = layout;
     else setup.layout = layout;
@@ -333,9 +344,27 @@
       </div>
       {#if hasBoxes}
         <label class="check" data-tip="For making the removable boxes from another kind of board of the same thickness: their pieces are packed onto sheets of their own, never beside the trays' pieces">
-          <input type="checkbox" checked={setup.separateBoxes} onchange={(e) => (setup.separateBoxes = e.currentTarget.checked)} />
+          <input type="checkbox" checked={setup.separateBoxes} onchange={(e) => setSeparateBoxes(e.currentTarget.checked)} />
           Cut removable boxes from sheets of their own
         </label>
+        {#if setup.separateBoxes}
+          {@const own = setup.boxSheet ?? setup.sheet}
+          <div class="setup">
+            <label class="field" data-tip="The sheet size of the board the removable boxes are cut from{sole ? '' : ', in both materials'}">
+              <span>Removable box sheet</span>
+              <select aria-label="Removable box sheet" value={own.preset} onchange={(e) => chooseBoxSheet(e.currentTarget.value)}>
+                {#each SHEET_PRESETS as s (s.preset)}
+                  <option value={s.preset}>{s.preset} ({s.width} × {s.height})</option>
+                {/each}
+                <option value="Custom">Custom</option>
+              </select>
+            </label>
+            {#if own.preset === 'Custom'}
+              <NumberField label="Removable box sheet width" value={own.width} min={50} onchange={(v) => (setup.boxSheet = { ...own, width: v })} />
+              <NumberField label="Removable box sheet height" value={own.height} min={50} onchange={(v) => (setup.boxSheet = { ...own, height: v })} />
+            {/if}
+          </div>
+        {/if}
       {/if}
     </div>
     {#each packings as packing (packing.material)}

@@ -159,6 +159,8 @@ export interface CutSetup {
    * them from another kind of board of the same thickness.
    */
   separateBoxes: boolean;
+  /** With `separateBoxes`: the size of those sheets, in both materials. Unset: each material's own. */
+  boxSheet?: SheetSpec;
 }
 
 export interface Project {
