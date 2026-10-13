@@ -304,14 +304,16 @@ export interface PlanSheet {
   material: MaterialKind;
   /** Its size: each material can come in its own sheet size. */
   sheet: SheetSpec;
+  /** Holds pieces of removable boxes only, when those are cut from sheets of their own. */
+  boxes?: boolean;
   items: SheetItem[];
 }
 
 export interface CutPlan {
-  /** Grouped by material, in cut-list order. */
+  /** Grouped by material, in cut-list order; sheets of their own for removable boxes come after the rest. */
   sheets: PlanSheet[];
-  /** How many sheets of each material, and their size. */
-  counts: { material: MaterialKind; thickness: Mm; sheet: SheetSpec; sheets: number }[];
+  /** How many sheets of each material, and their size; `boxes`: those for removable boxes alone. */
+  counts: { material: MaterialKind; thickness: Mm; sheet: SheetSpec; sheets: number; boxes?: boolean }[];
   strips: Strip[];
   issues: Issue[];
   /** Share of the sheets' area that ends up in pieces. */
@@ -536,17 +538,24 @@ const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 
 /**
  * What to buy: "3 A3 sheets", "1 × 3 mm secondary + 3 × 5 mm primary A3 sheets", or, when the
- * materials come in different sizes, "1 × 3 mm secondary A2 + 3 × 5 mm primary A3 sheets".
+ * materials come in different sizes, "1 × 3 mm secondary A2 + 3 × 5 mm primary A3 sheets". Sheets
+ * of their own for removable boxes are counted apart: "3 A3 sheets + 1 A3 sheet for removable boxes".
  */
 export function sheetSummary(plan: CutPlan): string {
-  const total = plan.sheets.length;
   const plural = (n: number) => `sheet${n === 1 ? '' : 's'}`;
-  if (!plan.counts.length) return `${total} ${plural(total)}`;
-  if (plan.counts.length === 1) return `${total} ${sheetName(plan.counts[0]!.sheet)} ${plural(total)}`;
-  if (plan.counts.every((c) => sameSize(c.sheet, plan.counts[0]!.sheet))) {
-    return `${plan.counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material}`).join(' + ')} ${sheetName(plan.counts[0]!.sheet)} ${plural(total)}`;
-  }
-  return `${plan.counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material} ${sheetName(c.sheet)}`).join(' + ')} ${plural(total)}`;
+  if (!plan.counts.length) return `${plan.sheets.length} ${plural(plan.sheets.length)}`;
+  const named = new Set(plan.counts.map((c) => c.material)).size > 1;
+  const list = (counts: CutPlan['counts']) => {
+    const total = counts.reduce((n, c) => n + c.sheets, 0);
+    if (!named) return `${total} ${sheetName(counts[0]!.sheet)} ${plural(total)}`;
+    if (counts.every((c) => sameSize(c.sheet, counts[0]!.sheet))) {
+      return `${counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material}`).join(' + ')} ${sheetName(counts[0]!.sheet)} ${plural(total)}`;
+    }
+    return `${counts.map((c) => `${c.sheets} × ${c.thickness} mm ${c.material} ${sheetName(c.sheet)}`).join(' + ')} ${plural(total)}`;
+  };
+  const rest = plan.counts.filter((c) => !c.boxes);
+  const boxes = plan.counts.filter((c) => c.boxes);
+  return [...(rest.length ? [list(rest)] : []), ...(boxes.length ? [`${list(boxes)} for removable boxes`] : [])].join(' + ');
 }
 
 /** The distinct sheet sizes a plan uses, e.g. "297 × 420 mm" or "A3 297 × 420 mm, A2 420 × 594 mm". */
@@ -556,7 +565,11 @@ export function sheetSizes(plan: CutPlan): string {
   return sizes.map((s) => `${s.preset === 'Custom' ? '' : `${s.preset} `}${mm(s.width)} × ${mm(s.height)} mm`).join(', ');
 }
 
-/** Each material is packed onto its own sheets, even when their thicknesses match. */
+/**
+ * Each material is packed onto its own sheets, even when their thicknesses match. Removable boxes
+ * get sheets of their own in each material when the setup asks: a cut size used by both a tray and
+ * a box keeps its number, with as many of it on each kind of sheet as each needs.
+ */
 export function planCuts(project: Project, cut: CutList, setup: CutSetup): CutPlan {
   const sheets: PlanSheet[] = [];
   const strips: Strip[] = [];
@@ -565,18 +578,27 @@ export function planCuts(project: Project, cut: CutList, setup: CutSetup): CutPl
   let usedArea = 0;
   let sheetArea = 0;
   const materials = [...new Set(cut.groups.map((g) => g.material))];
-  if (!materials.length) materials.push('primary');
-  for (const material of materials) {
-    const groups = cut.groups.filter((g) => g.material === material);
+  const stocks: { material: MaterialKind; boxes?: true; groups: PieceGroup[] }[] = [];
+  for (const boxes of setup.separateBoxes ? [false, true] : [undefined]) {
+    for (const material of materials) {
+      let groups = cut.groups.filter((g) => g.material === material);
+      if (boxes !== undefined) groups = groups.map((g) => ({ ...g, pieces: g.pieces.filter((p) => (p.depth === 1) === boxes) })).filter((g) => g.pieces.length);
+      if (groups.length) stocks.push({ material, ...(boxes ? { boxes } : {}), groups });
+    }
+  }
+  if (!stocks.length) stocks.push({ material: 'primary', groups: [] });
+  for (const { material, boxes, groups } of stocks) {
     const thickness = groups[0]?.thickness ?? project.material.thickness;
     const sheet = sheetFor(setup, material);
     const part = planSheets(setup, { ...cut, groups }, cutPacking(setup, material), sheet);
-    for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, sheet, items: s.items });
+    for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, sheet, ...(boxes ? { boxes } : {}), items: s.items });
+    // A material's two kinds of sheet number their strips alike; keep every strip's id its own.
+    if (boxes) for (const s of part.strips) s.id = `boxes:${s.id}`;
     strips.push(...part.strips);
     issues.push(...part.issues);
     usedArea += part.usedArea;
     sheetArea += part.sheets.length * sheet.width * sheet.height;
-    counts.push({ material, thickness, sheet, sheets: part.sheets.length });
+    counts.push({ material, thickness, sheet, sheets: part.sheets.length, ...(boxes ? { boxes } : {}) });
   }
   const efficiency = sheetArea ? usedArea / sheetArea : 0;
   return { sheets, counts, strips, issues, efficiency };

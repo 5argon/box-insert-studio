@@ -632,7 +632,7 @@ describe('material', () => {
     const secondarySheet = { preset: 'Custom', width: 300, height: 500 };
     old.material = { thickness: 5, secondaryThickness: 3, sheet, secondarySheet, trim: 5, kerf: 0.5, layout: 'guillotine', secondaryLayout: 'fewest', cutAlong: 'long' };
     // What it was saved with can be read first, for a browser that has no setup of its own yet.
-    expect(savedCutSetup(old)).toEqual({ sheet, secondarySheet, trim: 5, kerf: 0.5, layout: 'guillotine', secondaryLayout: 'fewest', cutAlong: 'long' });
+    expect(savedCutSetup(old)).toEqual({ sheet, secondarySheet, trim: 5, kerf: 0.5, layout: 'guillotine', secondaryLayout: 'fewest', cutAlong: 'long', separateBoxes: false });
     const p = migrateProject(old)!;
     expect(p.material).toEqual({ thickness: 5, secondaryThickness: 3 });
     expect(savedCutSetup(p)).toBeUndefined();
@@ -643,7 +643,7 @@ describe('material', () => {
     expect(cutSetupFrom(undefined)).toEqual(defaultCutSetup());
     expect(cutSetupFrom('nonsense')).toEqual(defaultCutSetup());
     expect(defaultCutSetup()).toMatchObject({ sheet: { preset: 'A2' }, layout: 'strips', secondaryLayout: 'strips', cutAlong: 'short' });
-    const stored = { ...testSetup(), secondarySheet: { preset: 'A3', width: 297, height: 420 }, layout: 'fewest', cutAlong: 'long' };
+    const stored = { ...testSetup(), secondarySheet: { preset: 'A3', width: 297, height: 420 }, layout: 'fewest', cutAlong: 'long', separateBoxes: true };
     expect(cutSetupFrom(JSON.parse(JSON.stringify(stored)))).toEqual(stored);
     expect(cutSetupFrom({ sheet: { preset: 'A3' }, trim: -1, kerf: '1', layout: 'diagonal', cutAlong: 'long' })).toEqual({ ...defaultCutSetup(), cutAlong: 'long' });
   });

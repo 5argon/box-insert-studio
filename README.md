@@ -72,6 +72,7 @@ Though I still take no responsibility if any bug loses you money, this should be
 - Specify global clearance value that get used at the edge of the box, between separate trays, and around removable boxes.
 - Cut list of the pieces, and a cutting plan of the sheets of material you have to buy given a sheet size.
 - Sheet size, packing, edge trim and kerf are set on the Cut list & assembly page and remembered in your browser instead of saved in the design file, as they depend on the material you can get. Opening a design from someone else keeps your own sheet settings.
+- Can cut all removable boxes from sheets of their own in the cutting plan, not mixed with the other pieces, in case you want to make them from a different kind of material of the same thickness.
 - 3D view can quickly screams UX issues of your finished box.
 - Step by step cutting and assembling instructions. You can save this instruction as PDF or download cut list as CSV.
 - Save and load JSON file to your computer to keep or share your design.
@@ -81,3 +82,7 @@ Though I still take no responsibility if any bug loses you money, this should be
 
 - Slanted divider
 - Removable box inside removable box (you really want that?)
+
+## Development
+
+To run the app on your own machine or continue developing it, see [development.md](development.md).

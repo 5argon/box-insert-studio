@@ -14,7 +14,7 @@ export const SHEET_PRESETS: SheetSpec[] = [
 
 /** The sheets to plan on until the builder says what they have. */
 export function defaultCutSetup(): CutSetup {
-  return { sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! }, trim: 0, kerf: 1, layout: 'strips', secondaryLayout: 'strips', cutAlong: 'short' };
+  return { sheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! }, trim: 0, kerf: 1, layout: 'strips', secondaryLayout: 'strips', cutAlong: 'short', separateBoxes: false };
 }
 
 const CUT_LAYOUT_VALUES: CutLayout[] = ['strips', 'guillotine', 'fewest'];
@@ -43,6 +43,7 @@ export function cutSetupFrom(raw: unknown): CutSetup {
     layout: CUT_LAYOUT_VALUES.find((v) => v === r.layout) ?? base.layout,
     secondaryLayout: CUT_LAYOUT_VALUES.find((v) => v === r.secondaryLayout) ?? base.secondaryLayout,
     cutAlong: CUT_ALONG_VALUES.find((v) => v === r.cutAlong) ?? base.cutAlong,
+    separateBoxes: r.separateBoxes === true,
   };
 }
 
@@ -177,7 +178,7 @@ export function migrateProject(raw: unknown): Project | undefined {
     p.secondaryBase = true;
     delete material.baseThickness;
   }
-  for (const key of ['sheet', 'secondarySheet', 'trim', 'kerf', 'layout', 'secondaryLayout', 'cutAlong'] satisfies (keyof CutSetup)[]) {
+  for (const key of ['sheet', 'secondarySheet', 'trim', 'kerf', 'layout', 'secondaryLayout', 'cutAlong', 'separateBoxes'] satisfies (keyof CutSetup)[]) {
     delete (material as Partial<CutSetup>)[key];
   }
   return p;

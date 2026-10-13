@@ -148,6 +148,10 @@
   let pointed = $state.raw<{ sheet: number; part: StepPart }>();
   const showsCuts = $derived(packings.some((p) => p.value !== 'fewest'));
 
+  /** Removable boxes can be cut from sheets of their own; offered when the design has any. */
+  const hasBoxes = $derived(solved.trays.some((t) => t.depth === 1));
+  const boxSheets = $derived(plan.sheets.some((s) => s.boxes));
+
   /** Compare the edge the longest cuts run along, over the sheets of every material. */
   const along = $derived(setup.cutAlong);
   const alongs = $derived(CUT_ALONGS.map((a) => ({ ...a, plan: planCuts(project, cut, { ...setup, cutAlong: a.value }) })));
@@ -327,6 +331,12 @@
         <NumberField label="Edge trim" value={setup.trim} min={0} hint="Unusable edge cut off each side of a sheet" onchange={(v) => (setup.trim = v)} />
         <NumberField label="Kerf" value={setup.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (setup.kerf = v)} />
       </div>
+      {#if hasBoxes}
+        <label class="check" data-tip="For making the removable boxes from another kind of board of the same thickness: their pieces are packed onto sheets of their own, never beside the trays' pieces">
+          <input type="checkbox" checked={setup.separateBoxes} onchange={(e) => (setup.separateBoxes = e.currentTarget.checked)} />
+          Cut removable boxes from sheets of their own
+        </label>
+      {/if}
     </div>
     {#each packings as packing (packing.material)}
       <div class="packing-options" data-material={packing.material}>
@@ -479,6 +489,7 @@
       </div>
       <p class="muted small">
         Trim {mm(setup.trim)} mm off each sheet edge first.
+        {#if boxSheets}Removable boxes are cut from sheets of their own, marked below: keep their pieces apart from the same sizes cut for the trays.{/if}
         Cut out and number the rectangular pieces first{#if notchGroups.length || loweredGroups.length}; complete the notch and edge cuts below before assembly{/if}.
         <span class="no-print">{#if showsCuts}Point at a step to see its cuts on the sheet. {/if}Point at a piece to see the others like it; click it to keep them highlighted.</span>
       </p>
@@ -539,7 +550,7 @@
           <div class="sheet-text">
             <h3>
               Sheet {sheet.index + 1} of {plan.sheets.length} · <span class:secondary-material={sheet.material === 'secondary'}>{materialLabel(sheet.material, sheet.thickness, sole)}</span>
-              · {sheetName(sheet.sheet)}
+              · {sheetName(sheet.sheet)}{sheet.boxes ? ' · for removable boxes' : ''}
             </h3>
             <p class="muted small">Packing: {packingInfo.name}{packingInfo.value === 'fewest' ? '' : `, longest cuts along the ${along} edge`}.</p>
             <ol>
@@ -569,7 +580,7 @@
 
     <section>
       <h2>Assembly</h2>
-      <p class="muted small">Use the finished pieces. Match their numbered positions and orientations to each diagram, keeping notched wall and divider edges facing up. <span class="no-print">Point at a step to see its pieces on the diagram, with a divider's distance from its wall.</span></p>
+      <p class="muted small">Use the finished pieces. Match their numbered positions and orientations to each diagram, keeping notched wall and divider edges facing up.{#if boxSheets}{' '}Build each removable box from the pieces cut from the sheets for removable boxes.{/if} <span class="no-print">Point at a step to see its pieces on the diagram, with a divider's distance from its wall.</span></p>
       {#if hasSecondary}
         <p class="material-note">
           Pieces {@render refs(secondaryRefs)} use <b>{materialLabel('secondary', project.material.secondaryThickness ?? T)}</b>, cut from separate sheets.
@@ -725,6 +736,12 @@
   }
   .controls > p {
     margin: 0 0 10px;
+  }
+  .check {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin: 6px 0 2px;
   }
   /* Piece numbers are drawn for the page's paper; here they take the theme's colours. */
   .controls :global(.ref:not(.pointed, .picked)) {

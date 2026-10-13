@@ -5,12 +5,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { defaultCutSetup, migrateProject, SHEET_PRESETS } from './defaults';
-import { setConstruction, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setSecondaryThickness, setStacked } from './edit';
+import { setConstruction, setInsert, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked } from './edit';
 import { blankProject, doomExample, testSetup } from './fixtures';
 import { roundTo, type Rect } from './geom';
 import { solveProject } from './layout';
 import { buildCutList, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem, type SheetStep, type StepPart } from './pieces';
-import type { CutAlong, CutLayout, CutSetup, Project, SplitNode } from './types';
+import type { CutAlong, CutLayout, CutSetup, Project, SectionNode, SplitNode } from './types';
 // Every design in examples/, whatever it is called: they are working files and change, so they are
 // only held to rules, never to their exact pieces.
 const exampleTexts = import.meta.glob('../../examples/*.json', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
@@ -18,6 +18,32 @@ const examples: [string, () => Project][] = Object.entries(exampleTexts).map(([p
 
 const LAYOUTS: CutLayout[] = ['strips', 'fewest', 'guillotine'];
 const EPS = 1e-6;
+
+/** The reference design with secondary bases, and two stacked separate boxes under a shared lid in G. */
+function withStackedBoxes(): Project {
+  const p = doomExample();
+  setSecondaryThickness(p, 3);
+  setLayerBaseSecondary(p, true);
+  const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
+  setStacked(g.node, true);
+  setInsertLid(g.node, true);
+  setInsertSharedLid(g.node, true);
+  setJoin(p.layers[0]!, g.node.insert!.root as SplitNode, 'trays', p.material.thickness);
+  return p;
+}
+
+/**
+ * One compartment with a raised floor and a removable box that fits it exactly: the floor's layer
+ * and the box's base are one cut size, used by both the tray and the box.
+ */
+function boxOnRaisedFloor(): Project {
+  const p = blankProject();
+  p.clearance = 0;
+  const layer = p.layers[0]!;
+  setInsert(layer, layer.root.id, true);
+  setPad(layer.root as SectionNode, 1);
+  return p;
+}
 
 /** The reference design with its bases and lids on a 3 mm secondary material. */
 function withSecondary(): Project {
@@ -108,7 +134,7 @@ function planProblems(setup: CutSetup, cut: CutList, plan: CutPlan): string[] {
     if (n < g.pieces.length && !new RegExp(`#${g.number}\\b`).test(errors)) out.push(`#${g.number} placed ${n} of ${g.pieces.length} with no error naming it`);
   }
   for (const c of plan.counts) {
-    if (plan.sheets.filter((s) => s.material === c.material).length !== c.sheets) out.push(`${c.material} sheet count is wrong`);
+    if (plan.sheets.filter((s) => s.material === c.material && !!s.boxes === !!c.boxes).length !== c.sheets) out.push(`${c.material} sheet count is wrong`);
   }
   const area = plan.sheets.flatMap((s) => s.items).reduce((a, it) => a + (it.kind === 'base' ? it.w * it.h : it.strip!.cuts.reduce((l, c) => l + c.length, 0) * it.strip!.height), 0);
   const sheetArea = plan.sheets.reduce((a, s) => a + s.sheet.width * s.sheet.height, 0);
@@ -130,17 +156,9 @@ const designs: [string, () => Planned][] = [
     setConstruction(p, 'separate');
     return on(p);
   }],
-  ['secondary bases and shared lids over stacked boxes', () => {
-    const p = doomExample();
-    setSecondaryThickness(p, 3);
-    setLayerBaseSecondary(p, true);
-    const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
-    setStacked(g.node, true);
-    setInsertLid(g.node, true);
-    setInsertSharedLid(g.node, true);
-    setJoin(p.layers[0]!, g.node.insert!.root as SplitNode, 'trays', p.material.thickness);
-    return on(p);
-  }],
+  ['secondary bases and shared lids over stacked boxes', () => on(withStackedBoxes())],
+  ['removable boxes on sheets of their own', () => on(withStackedBoxes(), { separateBoxes: true })],
+  ...examples.map(([name, design]): [string, () => Planned] => [`example ${name}, removable boxes on sheets of their own`, () => on(design(), { separateBoxes: true })]),
   ['secondary material on its own A2 sheets', () => on(withSecondary(), { secondarySheet: { ...SHEET_PRESETS.find((s) => s.preset === 'A2')! } })],
   ['walls taller than an A4 sheet is wide', () => {
     const p = blankProject();
@@ -307,6 +325,49 @@ describe('cutting plans', () => {
     expect(lines.some((l) => l.endsWith(', 1 pc'))).toBe(true);
     const one = doomExample();
     expect(cutListText(buildCutList(solveProject(one), one.precision)).split('\n')[0]).toBe('Material thickness: 5 mm');
+  });
+
+  it('cuts removable boxes from sheets of their own when asked, sharing none with the trays', async () => {
+    const { sheetSummary } = await import('./pieces');
+    /** How many of each cut size are on the sheets for boxes, or on the rest. */
+    const placed = (plan: CutPlan, boxes: boolean) => {
+      const n = new Map<number, number>();
+      for (const s of plan.sheets.filter((x) => !!x.boxes === boxes)) {
+        for (const it of s.items) for (const g of it.kind === 'base' ? [it.group!.number] : it.strip!.cuts.map((c) => c.group)) n.set(g, (n.get(g) ?? 0) + 1);
+      }
+      return n;
+    };
+    for (const design of [withStackedBoxes, boxOnRaisedFloor, doomExample, ...examples.map(([, d]) => d)]) {
+      for (const layout of LAYOUTS) {
+        const together = check(withPacking(on(design()), layout));
+        expect(together.plan.sheets.some((s) => s.boxes)).toBe(false);
+        const { cut, plan, problems } = check(withPacking(on(design(), { separateBoxes: true }), layout));
+        expect(problems).toEqual([]);
+        expect(plan.issues).toEqual(together.plan.issues);
+        // Each kind of sheet holds exactly its own pieces of every size, including sizes both use.
+        for (const boxes of [false, true]) {
+          const want = new Map(cut.groups.map((g) => [g.number, g.pieces.filter((p) => (p.depth === 1) === boxes).length] as const).filter(([, n]) => n));
+          expect(placed(plan, boxes)).toEqual(want);
+        }
+        // Sheets for boxes come after the rest, and no two strips share an id.
+        const kinds = plan.sheets.map((s) => !!s.boxes);
+        expect(kinds).toEqual([...kinds].sort((a, b) => Number(a) - Number(b)));
+        expect(new Set(plan.strips.map((s) => s.id)).size).toBe(plan.strips.length);
+        expect(plan.counts.filter((c) => c.boxes).reduce((n, c) => n + c.sheets, 0)).toBe(kinds.filter(Boolean).length);
+      }
+    }
+    // A size cut for both a tray and a box keeps its number, with its pieces on both kinds of sheet.
+    const both = check(on(boxOnRaisedFloor(), { separateBoxes: true }));
+    const shared = both.cut.groups.filter((g) => new Set(g.pieces.map((p) => p.depth)).size === 2);
+    expect(shared.length).toBeGreaterThan(0);
+    for (const g of shared) for (const boxes of [false, true]) expect(placed(both.plan, boxes).get(g.number)).toBeGreaterThan(0);
+    const apart = check(on(withStackedBoxes(), { separateBoxes: true })).plan;
+    expect(sheetSummary(apart)).toMatch(/^\d+ × 3 mm secondary \+ \d+ × 5 mm primary A2 sheets \+ \d+ × 5 mm primary A2 sheets? for removable boxes$/);
+    const one = check(on(doomExample(), { separateBoxes: true })).plan;
+    expect(sheetSummary(one)).toMatch(/^\d+ A2 sheets? \+ \d+ A2 sheets? for removable boxes$/);
+    // Without removable boxes there is nothing to set apart.
+    const plain = blankProject();
+    expect(check(on(plain, { separateBoxes: true })).plan).toEqual(check(on(plain)).plan);
   });
 
   it('buys each material in its own sheet size', async () => {

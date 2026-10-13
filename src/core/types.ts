@@ -154,6 +154,11 @@ export interface CutSetup {
   secondaryLayout: CutLayout;
   /** The edge the longest cuts run along, on sheets of both materials. */
   cutAlong: CutAlong;
+  /**
+   * Removable boxes are cut from sheets of their own, never sharing one with the trays: for making
+   * them from another kind of board of the same thickness.
+   */
+  separateBoxes: boolean;
 }
 
 export interface Project {
