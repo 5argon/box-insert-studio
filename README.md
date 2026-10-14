@@ -32,7 +32,7 @@ There are sample designs to download in the `examples` folder. Download a JSON f
 
 ## Demo
 
-To ensure that the calculations are correct and assembly instruction make sense (for a vibe coded app to not be 'AI slop'), I've tested assembling the "Design C" above for real with 5 mm foam board as the material. Everything checks out and I'm quite happy I was able to turn my brain off and just cut and glue as it said.
+To ensure that the calculations are correct and assembly instruction make sense (for a vibe coded app to not be 'AI slop'), I've tested assembling the "Design C" above for real with 5 mm foam board as the material. Everything checks out and I'm quite happy I was able to turn my brain off and just cut and glue as it said, like little kid assembling Lego robots (or adult just coming back from Ikea).
 
 <p>
   <img src="screenshots/demo-7.webp" width="32%" alt="Layout page of Design C: the overhead plan with compartments A to E">
@@ -52,14 +52,25 @@ Though I still take no responsibility if any bug loses you money, this should be
 
 ## Motivations
 
-- Trial and Error : It is hard to estimate whether everything fits or not until everything is in place. I want a playable UI that allow quick experimenting and discovery of new ideas / pivots of design.
-- Material Thickness : You wanted to design in terms of compartment size, but you don't want to think about adding up material's thickness whether that ended up mathematically checked out within the inside dimension of the box or not.
-  - This is not just horizontally, it also affects vertical space as well. You wanted to know how much headroom you have left for game manuals after everything stacked. When a removable box is added (a box inside a compartment), it doubles up the thickness and you often wanted to know the effective height of that box as well. (e.g. Could your hand reach the bottom of it?) More problem if you decided to stack 2 removable boxes.
-- Clearance : The outermost tray cannot be exactly fitting the inner dimension of the box as it would be too tight. Whether you'll allow 0.5 mm or 1 mm of clearance from each side, you want this accounted in the calculation automatically. A removable box will also need this clearance once again, and so do separate trays next to each other.
-- Item Simulation : See how many items of the same shape you could fit in a row along a given item direction, for compartment of cards or coins.
-- 3D Preview : Very useful to quickly spot physical UX problems no tools can report, such as hand reachability to grab stuff. Realizing the problem after you buy and cut up the materials seems to be number one source of money waste.
-- Maximize Shared Cut Sizes : Tool actively suggests you snap to a certain number to produce as many same dimension cut as possible in the cutting plan.
-- Assembly Steps : With some limitations baked in, it is possible to produce formulatic step by step assembly instructions like Ikea furnitures. This would tell you how many sheet of the material you should prepare upfront. You can also choose between different packing (Strips across the sheet, Edge-to-edge cuts or Fewest sheets) whether you are looking for least amount of sheets or easier time cutting them. The longest cuts run along the sheet's short edge by default, so a ruler shorter than the sheet still reaches them; choose the long edge for fewer, longer cuts.
+There are countless problems on even commercial card game boxes how what will or will not fit the contents. Multiple levels of sleeving puffs up the cards. The problem of in-use cards removed from the box causing the remaining contents to fall over. The 3D simulation and the items simulation could help here to iterate your designs. Sometimes an instant you see the 3D model you knew you won't be happy with it for many reasons. I find myself stuck staring and spinning the 3D model around while thinking, I think it's a good feature.
+
+Material has thickness, and this thickness is used both vertically (walls) and horizontally (bases).
+
+Vertically, board game boxes needs a specific headroom space for manuals, or walls not too high for the poked out content to be pickable by hand. It might be initially intuitive that you subtract box's height with desired headroom, then subtract the base thickness, and then you got the height of all the wall pieces you need to cut. But what if you wanted removable compartments where they also have their own base? What if you wanted to add a lid to that compartment where it must be flushed with the outer walls so it must deduct the height from the compartment's wall?
+
+Horizontally, the thickness can cause confusion while gluing which spot / side of wall you are supposed to measure from, a mistake that could cause huge problems when one wall needs to be built from others in sequence. To make it worse, you might want to use multiple thickness in one design. Now you've got a long chain of things that could be screwed up by a few millimeters then result in big trouble later.
+
+There's also clearance space, so all removable compartments (including the main tray) can slide in. I set this to 2mm by default which means 1mm from each sides. These tiny padding can eat into the space you can use more than expected, so a tool that always inform you the remaining space (or eats into only the "flex" compartments you can afford to shrink) could help.
+
+Now we get to the crafting steps, you do want to know how many sheets to buy and see beforehand the packing of pieces you need to cut in a specific sequence. You do need a large enough cutting mat and ruler that crosses those cuts too, so the packing preview might be more useful than you think. If you are working with wood-based material, then these influences how you are going to clamp your work for the sawblades.
+
+These packing also need to account for kerf, which is material lost per cut. A jigsaw blade can be 1 mm thick or more which is the same space as clearance. Getting this wrong might make the fitting too loose or too tight.
+
+There's also the same-piece advantage. Boxes that were designed on a whim might produces many differently sized pieces where they differs in only a few millimeters, which can cause inconveniece while cutting and grouping your pieces. With a proper UI, you can see these and maybe revise your design so it results in as many of the same pieces as possible in the packing.
+
+Normally if you start from cut lists it might not be obvious which one to go for first after the big base. The UI here can suggest steps such that they result in less wastes and more cutting comfort, such as an optimal first-pass rough cuts from your big sheet before you work on each one separately.
+
+Finally the assembly. The steps should tell you exactly how many millimeters from which side to stick a particular piece like it had already reverse-engineered for you that this act would result in the compartment size as designed. This might sound trivial but when you are lost in the sauce of your box working from smaller to larger area, there are many stupid mistakes such as mistaking numbers or forgetting about material thickness. (Or even the thickness of the pencil you used to mark your spot!) So I want every little bit of help here.
 
 ## Feature Overview
 
