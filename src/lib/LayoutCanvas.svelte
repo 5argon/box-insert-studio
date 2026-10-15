@@ -243,7 +243,7 @@
           y={c.rect.y}
           width={Math.max(0, c.rect.w)}
           height={Math.max(0, c.rect.h)}
-          style:fill={sectionColor(c.index, depth === 1 ? 93 : 88)}
+          style:fill={sectionColor(c.tint, depth === 1 ? 93 : 88)}
           class:sel={isSel}
           class:well={!!c.node.insert && depth === 0}
         />
@@ -286,7 +286,7 @@
       {@const dimsText = `${mm(c.rect.w)} × ${mm(c.rect.h)}`}
       {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3)))}
       {#if size > 0}
-        <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.index)} class="letter"
+        <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.tint)} class="letter"
           >{c.label}{c.stacked ? '²' : ''}{#if c.pad}<tspan dy="-0.35em" font-size="0.65em">*</tspan>{/if}</text
         >
         {#if place.arrow && c.node.arrow}
@@ -294,13 +294,13 @@
             d={arrowPath(place.arrow.len)}
             transform="translate({place.arrow.x} {place.arrow.y}) rotate({ARROW_ANGLE[c.node.arrow]})"
             class="item-arrow"
-            style:stroke={sectionInk(c.index)}
+            style:stroke={sectionInk(c.tint)}
             style:stroke-width={Math.max(0.6, size * 0.09)}
           />
         {/if}
       {/if}
       {#if !readonly && c.rect.h > 14 && readable(dims)}
-        <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} style:fill={sectionInk(c.index)} class="dims">{dimsText}</text>
+        <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} style:fill={sectionInk(c.tint)} class="dims">{dimsText}</text>
       {/if}
     {/each}
   {/each}

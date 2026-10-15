@@ -6,7 +6,6 @@
   import { isDark } from '../theme.svelte';
   import type { Preset, TrayStyle } from './meshes';
   import Viewer3D from './Viewer3D.svelte';
-  import { trayColors } from '../trayColors';
   import CompSquare from '../CompSquare.svelte';
   import LayerIcon from '../LayerIcon.svelte';
   import { layerColor } from '../../core/defaults';
@@ -14,7 +13,7 @@
   let { project, solved }: { project: Project; solved: Solved } = $props();
 
   const v = studio.view3d;
-  const model = $derived(buildScene(project, solved, trayColors));
+  const model = $derived(buildScene(project, solved));
   let hoverKey = $state<string | null>(null);
   let viewer: Viewer3D | undefined = $state();
 

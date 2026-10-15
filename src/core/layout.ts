@@ -4,7 +4,7 @@
  * dividers take up space between compartments, short walls fit between the full-length walls,
  * and walls standing on the base are one thickness shorter than the tray.
  */
-import { labelFor } from './defaults';
+import { labelFor, SECTION_HUES, type Tint } from './defaults';
 import { floorTo, inset, roundTo, type Rect } from './geom';
 import { solveLidNotches, type LidNotch } from './lidNotches';
 import type { ChildSize, Dir, Join, Layer, LayoutNode, MaterialKind, Mm, NotchSize, Project, SectionNode, Side, SplitNode } from './types';
@@ -122,8 +122,8 @@ export interface Tray {
 export interface Compartment {
   id: string;
   label: string;
-  /** Colour index; compartments inside a box share their well's. */
-  index: number;
+  /** Compartments inside a box share their well's colour. */
+  tint: Tint;
   layerId: string;
   trayId: string;
   depth: 0 | 1;
@@ -601,7 +601,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
   const compartments: Compartment[] = raw.map((r) => ({
     id: r.node.id,
     label: '',
-    index: 0,
+    tint: { hue: 0, shade: 0 },
     layerId: layer.id,
     trayId: r.trayId,
     depth: r.depth,
@@ -620,6 +620,90 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
 }
 
 const readingOrder = (a: Rect, b: Rect) => Math.round(a.y * 2) - Math.round(b.y * 2) || a.x - b.x;
+
+/** Every split outside the boxes, in every layer, in layout order. */
+function layerSplits(project: Project): SplitNode[] {
+  const splits: SplitNode[] = [];
+  const walk = (node: LayoutNode) => {
+    if (node.kind === 'section') return;
+    splits.push(node);
+    node.children.forEach((c) => walk(c.node));
+  };
+  project.layers.forEach((l) => walk(l.root));
+  return splits;
+}
+
+/** Letters kept by splits, in layout order: a letter kept twice is listed twice. */
+export function keptLetters(project: Project): string[] {
+  return layerSplits(project).flatMap((s) => s.letter ?? []);
+}
+
+/** Degrees round the colour wheel between two hues. */
+const hueDistance = (a: number, b: number) => Math.min(Math.abs(a - b) % 360, 360 - (Math.abs(a - b) % 360));
+
+/**
+ * The hues given out in sequence: those well clear of every colour kept by a split, while there
+ * are enough of them left for neighbours to differ; otherwise all of them.
+ */
+function autoHues(project: Project): number[] {
+  const kept = layerSplits(project).flatMap((s) => s.hue ?? []);
+  const clear = SECTION_HUES.filter((h) => kept.every((k) => hueDistance(h, k) > 30));
+  return clear.length >= 3 ? clear : SECTION_HUES;
+}
+
+/**
+ * Each top-level section's colour. A split keeping a colour gives its compartments shades of it,
+ * lightest first, as far down as a split inside keeping a colour of its own; the rest take the
+ * next hue in sequence.
+ */
+function sectionTints(root: LayoutNode, nextHue: () => number): Map<string, Tint> {
+  const tints = new Map<string, Tint>();
+  const walk = (node: LayoutNode, group?: string[]) => {
+    if (node.kind === 'section') return void (group ? group.push(node.id) : tints.set(node.id, { hue: nextHue(), shade: 0 }));
+    if (node.hue === undefined) return node.children.forEach((c) => walk(c.node, group));
+    const own: string[] = [];
+    node.children.forEach((c) => walk(c.node, own));
+    own.forEach((id, i) => tints.set(id, { hue: node.hue!, shade: own.length > 1 ? 1 - (2 * i) / (own.length - 1) : 0 }));
+  };
+  walk(root);
+  return tints;
+}
+
+/**
+ * Each top-level section's name. Letters come in layout order, depth first, so the compartments
+ * of one split come one after another: a column is lettered down before the next one. A split
+ * keeping a letter numbers its parts after it instead, and a split inside it numbers on.
+ */
+function sectionNames(root: LayoutNode, nextLetter: () => string): Map<string, string> {
+  const names = new Map<string, string>();
+  const walk = (node: LayoutNode, name?: string) => {
+    if (node.kind === 'section') return void names.set(node.id, name ?? nextLetter());
+    const base = node.letter ?? name;
+    if (base === undefined) return node.children.forEach((c) => walk(c.node));
+    let n = 0;
+    for (const c of node.children) walk(c.node, c.node.kind === 'split' && c.node.letter ? undefined : numbered(base, ++n));
+  };
+  walk(root);
+  return names;
+}
+
+/** B and 2 make B2; B2 and 1 make B2-1, so the numbers stay apart. */
+const numbered = (name: string, n: number) => `${name}${/\d$/.test(name) ? '-' : ''}${n}`;
+
+/**
+ * Each section's place in its layout tree, depth first, as `sectionNames` letters them. Sections
+ * in a removable box are numbered by the tree inside it.
+ */
+function treeOrder(root: LayoutNode): Map<string, number> {
+  const order = new Map<string, number>();
+  const walk = (node: LayoutNode) => {
+    if (node.kind === 'split') return node.children.forEach((c) => walk(c.node));
+    order.set(node.id, order.size);
+    if (node.insert) walk(node.insert.root);
+  };
+  walk(root);
+  return order;
+}
 
 /** Join lowered stretches that touch or overlap. */
 function mergeLows(lows: Low[]): Low[] {
@@ -671,21 +755,40 @@ export function solveProject(project: Project): Solved {
   const headroom = project.box.height - total;
   if (headroom < 0) issues.push({ level: 'error', message: `Layers are ${(-headroom).toFixed(1)} mm taller than the box.` });
 
-  let labelIndex = 0;
+  // Letters kept by splits are never given out in sequence.
+  const kept = keptLetters(project);
+  const twice = [...new Set(kept.filter((l, i) => kept.indexOf(l) !== i))];
+  if (twice.length) issues.push({ level: 'warn', message: `Letter ${twice.join(', ')} ${twice.length === 1 ? 'is' : 'are'} used by more than one split.` });
+  const reserved = new Set(kept);
+  let letterIndex = 0;
+  const nextLetter = () => {
+    let l: string;
+    do l = labelFor(letterIndex++);
+    while (reserved.has(l));
+    return l;
+  };
+  const hues = autoHues(project);
+  let hueIndex = 0;
+  const nextHue = () => hues[hueIndex++ % hues.length]!;
   let trayNumber = 0;
-  for (const sl of layers) {
-    // Letters in reading order; compartments inside a box take their well's letter plus a number.
-    const top = sl.compartments.filter((c) => c.depth === 0).sort((a, b) => readingOrder(a.rect, b.rect));
+  for (const [li, sl] of layers.entries()) {
+    // Letters in layout order; compartments inside a box take their well's letter plus a number.
+    const root = project.layers[li]!.root;
+    const order = treeOrder(root);
+    const names = sectionNames(root, nextLetter);
+    const tints = sectionTints(root, nextHue);
+    const byTree = (a: Compartment, b: Compartment) => (order.get(a.node.id) ?? 0) - (order.get(b.node.id) ?? 0) || readingOrder(a.rect, b.rect);
+    const top = sl.compartments.filter((c) => c.depth === 0).sort(byTree);
     const ordered: Compartment[] = [];
     for (const c of top) {
-      c.index = labelIndex;
-      c.label = labelFor(labelIndex);
-      labelIndex += 1;
+      c.tint = tints.get(c.node.id) ?? { hue: 0, shade: 0 };
+      c.label = names.get(c.node.id) ?? '?';
       ordered.push(c);
-      const inner = sl.compartments.filter((x) => x.wellId === c.id).sort((a, b) => readingOrder(a.rect, b.rect));
+      const inner = sl.compartments.filter((x) => x.wellId === c.id).sort(byTree);
       inner.forEach((x, i) => {
-        x.index = c.index;
-        x.label = `${c.label}${i + 1}`;
+        x.tint = c.tint;
+        // A box's only compartment needs no number of its own: C, not C1.
+        x.label = inner.length === 1 ? c.label : numbered(c.label, i + 1);
         ordered.push(x);
       });
     }

@@ -24,7 +24,12 @@ Currently there is no detailed manual yet, please figure out on your own by mess
 
 There are sample designs to download in the `examples` folder. Download a JSON file, then choose **Open** in the app to load it.
 
-- [Arkham Horror: The Card Game, Core Set 2026 : Utility Box Design with Stand Storage](examples/ahlcg-core-set-2026-utility-box-design-with-stand-storage.insert.json)
+- Arkham Horror: The Card Game, Core Set 2026 box : Starter's Insert
+  - [Design A](examples/ahlcg-core-set-2026-starter-s-insert-design-a.insert.json): three 100 mm card slots.
+  - [Design B](examples/ahlcg-core-set-2026-starter-s-insert-design-b.insert.json): Design A with the bottom row divided into 81 mm for chaos tokens or core encounter cards, and 119 mm left open.
+  - [Design C](examples/ahlcg-core-set-2026-starter-s-insert-design-c.insert.json): Design B with the 119 mm slot holding four stacked removable token trays for every punchboard token except chaos tokens.
+  - [Design D1](examples/ahlcg-core-set-2026-starter-s-insert-design-d1.insert.json): Design C with the two columns divided by product, for all Evergreen player cards.
+- [Arkham Horror: The Card Game, Core Set 2026 box : Special Insert with Stand Storage](examples/ahlcg-core-set-2026-special-insert-with-stand-storage.insert.json): the Starter's Insert reworked to also hold an act / agenda card stand.
 - Arkham Horror: The Card Game, Small Campaign Expansion box
   - [Design A](examples/ahlcg-small-campaign-expansion-design-a.insert.json): two horizontal card rows instead of the original centered column.
   - [Design B](examples/ahlcg-small-campaign-expansion-design-b.insert.json): the vertical column moved to the left, with two small side slots for shared encounter sets.

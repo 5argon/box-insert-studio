@@ -251,7 +251,15 @@ export function removeSection(layer: Layer, sectionId: string): string | undefin
   split.children.splice(index, 1);
   if (!split.children.some((c) => c.size.mode === 'flex')) split.children[split.children.length - 1].size = { mode: 'flex', weight: 1 };
   const neighbour = split.children[Math.min(index, split.children.length - 1)].node;
-  if (split.children.length === 1) replaceNode(layer, split.id, split.children[0].node);
+  if (split.children.length === 1) {
+    // A split left standing in for this one keeps its letter.
+    const only = split.children[0].node;
+    if (only.kind === 'split') {
+      if (split.letter) only.letter ??= split.letter;
+      if (split.hue !== undefined) only.hue ??= split.hue;
+    }
+    replaceNode(layer, split.id, only);
+  }
   return firstSection(neighbour)?.id;
 }
 
@@ -283,6 +291,19 @@ function dividersBelow(node: LayoutNode, thickness: Mm) {
     convertLocked(node, -2 * thickness);
   }
   node.children.forEach((c) => dividersBelow(c.node, thickness));
+}
+
+/** Keep a letter for a split's compartments; anything but letters, e.g. nothing, lets them be lettered in sequence again. */
+export function setSplitLetter(split: SplitNode, value: string) {
+  const letter = value.trim().toUpperCase();
+  if (/^[A-Z]+$/.test(letter)) split.letter = letter;
+  else delete split.letter;
+}
+
+/** Keep a colour for a split's compartments, as a hue; none lets them be coloured in sequence again. */
+export function setSplitHue(split: SplitNode, hue: number | undefined) {
+  if (hue === undefined) delete split.hue;
+  else split.hue = hue;
 }
 
 /** Switch a split between glued dividers and separate trays. Returns false if not allowed. */

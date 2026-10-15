@@ -1,0 +1,187 @@
+{
+  "version": 2,
+  "name": "AHLCG Core Set 2026 : Starter's Insert (Design B)",
+  "box": {
+    "width": 239,
+    "depth": 277,
+    "height": 74
+  },
+  "precision": 0.5,
+  "clearance": 2,
+  "base": "under",
+  "fullWalls": "x",
+  "notch": {
+    "width": 40,
+    "depth": 40,
+    "bottom": 70
+  },
+  "layers": [
+    {
+      "id": "l-lp1ed19",
+      "name": "Tray",
+      "height": 66,
+      "root": {
+        "kind": "split",
+        "id": "p-s-p7vpa25",
+        "dir": "row",
+        "join": "divider",
+        "lower": 0,
+        "children": [
+          {
+            "size": {
+              "mode": "flex",
+              "weight": 205
+            },
+            "node": {
+              "kind": "split",
+              "id": "p-s-z4sqn28",
+              "dir": "column",
+              "join": "divider",
+              "lower": 0,
+              "children": [
+                {
+                  "size": {
+                    "mode": "flex",
+                    "weight": 175.5
+                  },
+                  "node": {
+                    "kind": "split",
+                    "id": "p-s-fuy9d29",
+                    "dir": "row",
+                    "join": "divider",
+                    "lower": 0,
+                    "children": [
+                      {
+                        "size": {
+                          "mode": "flex",
+                          "weight": 1
+                        },
+                        "node": {
+                          "kind": "section",
+                          "id": "s-k1h674",
+                          "notches": [],
+                          "arrow": "front"
+                        }
+                      },
+                      {
+                        "size": {
+                          "mode": "flex",
+                          "weight": 1
+                        },
+                        "node": {
+                          "kind": "section",
+                          "id": "s-fuy9d29",
+                          "notches": [],
+                          "arrow": "front"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "size": {
+                    "mode": "fixed",
+                    "mm": 100
+                  },
+                  "node": {
+                    "kind": "split",
+                    "id": "p-s-dvbqn1",
+                    "dir": "row",
+                    "join": "divider",
+                    "lower": 0,
+                    "children": [
+                      {
+                        "size": {
+                          "mode": "fixed",
+                          "mm": 81
+                        },
+                        "node": {
+                          "kind": "section",
+                          "id": "s-z4sqn28",
+                          "notches": [],
+                          "arrow": "right"
+                        }
+                      },
+                      {
+                        "size": {
+                          "mode": "flex",
+                          "weight": 1
+                        },
+                        "node": {
+                          "kind": "section",
+                          "id": "s-dvbqn1",
+                          "notches": [],
+                          "arrow": "right"
+                        }
+                      }
+                    ],
+                    "letter": "C",
+                    "hue": 205
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "size": {
+              "mode": "fixed",
+              "mm": 17
+            },
+            "node": {
+              "kind": "split",
+              "id": "p-s-mr1tc26",
+              "dir": "column",
+              "join": "divider",
+              "lower": 0,
+              "children": [
+                {
+                  "size": {
+                    "mode": "fixed",
+                    "mm": 100
+                  },
+                  "node": {
+                    "kind": "section",
+                    "id": "s-p7vpa25",
+                    "notches": [],
+                    "arrow": "right"
+                  }
+                },
+                {
+                  "size": {
+                    "mode": "fixed",
+                    "mm": 100
+                  },
+                  "node": {
+                    "kind": "section",
+                    "id": "s-mr1tc26",
+                    "notches": [],
+                    "arrow": "right"
+                  }
+                },
+                {
+                  "size": {
+                    "mode": "flex",
+                    "weight": 0.5
+                  },
+                  "node": {
+                    "kind": "section",
+                    "id": "s-405be27",
+                    "notches": [],
+                    "pad": 5
+                  }
+                }
+              ],
+              "letter": "D",
+              "hue": 55
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "material": {
+    "thickness": 5
+  },
+  "readme": "**Author :** 5argon,  https://arkham-starter.com\n\n```\n+-------+-------+--+\n|       |       |  |\n|       |       |D1|\n|   A   |   B   |  |\n|       |       |  |\n|       |       +--+\n|       |       |  |\n+-------+-------+D2|\n|               |  |\n|       C       |  |\n|               +--+\n|               |  |\n+---------------+--+\n```\n\nThe \"Starter's Insert\" is based on the basic idea that a comfortable card slot takes 100 mm. The Core 2026 box can fit **3 such slots** (A, B, C in the diagram), assuming a material thickness of 5 mm. The two columns are aligned top-left next to each other and extend down as far as possible while still leaving 100 mm for one more row below.\n\nDoing this leaves about 20 mm of space on the right side (because the box is a bit wider than 100 + 100 mm). That space can fit 2 more very thin card slots (D1 and D2 in the diagram), which are useful for player reference cards, investigator cards, or the starting set of random basic weaknesses (15 cards). The tiny space on the bottom right (I'd call that D3) can then be padded up from the base so your finger can reach the bottom, and now you can store some numbered dices or colored wooden cubes in there. Now you have zero waste!\n\nWith this basic structure, we can subdivide it into many configurations to fit your taste and organization scheme, including storage for non-card items. I provide some of these ideas below, each built on the previous one, but feel free to make your own.\n\n- Design A : Base Edition\n- Design B : Base Plus Edition\n- Design C : Built-In Token Tray Edition\n- Design D1 : Evergreen Edition (By Product)\n- Design D2 : Evergreen Edition (By Lv.0 + Lv.1~5)\n\n# Design A : Base Edition\n\nUse the base design as-is. It has no opinion on things. It's a problem if you want to store any tokens, since there are no small compartments. (However, you can just place plastic pill boxes in here.) Storing cards is also a problem: they may stay neatly in place when the game is not being played, but fall over once some of them are taken out for a player's deck. The chaos bag with the active tokens inside, along with the inactive tokens, is also hard to find a place for.\n\nOther designs will have more compartments and opinions. But you can also use Design A as a base and place more walls wherever you want.\n\n# Design B : Base Plus Edition\n\n```\n+--------------------+\n|                    |\n|                    |\n|         C          |\n|                    |\n|                    |\n+--------------------+\n\n+--------+-----------+\n|        #           |\n|        #           |\n|   C1   U    C2     |\n|        #           |\n|        #           |\n+--------+-----------+\n|<-81mm->|<--119mm-->|\n```\n\nThis adds just one piece of material to Design A to divide the horizontal slot (**C**) into 81 mm and 119 mm. Ideally, this piece should have a finger notch.\n\nThe 81 mm **C1** slot is the space required to fit all Core 2026 encounter cards plus the 3 scenarios of Brethren of Ash. Alternatively, it fits all inactive capsuled chaos tokens, with the chaos bag containing the active chaos tokens placed on top of the pile. I prefer storing the chaos bag and chaos tokens in this slot, because I'd rather keep the core encounter cards in the box of the campaign I'm currently running, so I can set up and tear down the scenario from one box. If you are worried about inactive chaos tokens spilling over (even though the game manual blocks the top), you can add a ziplock bag to keep them together as one unit. (It basically becomes a slot for one ziplock bag and one chaos bag.)\n\nThe 119 mm **C2** slot becomes meaningful in the next design, where it will be subdivided into token storage. In this design I've left it generic, so you can do whatever you want with it.\n\n# Design C : Built-In Token Tray Edition\n\n```\n        C1            C2          C3\n+----------------+-----------------------+\n|                #+---------+ +---------+|\n|                #|         | |         ||\n|                #|  C2-1   | |         ||\n|                #|         | |         ||\n|                #|         | |         ||\n|       C1       #+---------+ |   C3    ||\n|                #|         | |         ||\n|                #|  C2-2   | |         ||\n|                #|         | |         ||\n|                #|         | |         ||\n|                #+---------+ +---------+|\n+----------------+-----------------------+\n|<-----81mm----->|<--------119mm-------->|\n```\n\nThe 119 mm slot from Design B now works its magic. It becomes **C2** and **C3**, which give you **4 removable trays** in total (2 stacked vertically in each), and the 2 trays in **C2** are further divided at the center. I've physically tested these:\n\n- The divided removable trays (**C2**, sides **C2-1** and **C2-2**): one tray fits all damage tokens on one side and all horror tokens on the other, and the other tray fits all connection arrows on one side and all 5 flashlight tokens on the other. So these 2 trays store everything except resources and doom / clues.\n- The undivided removable trays (**C3**): one fits all resources, and the other fits all doom / clues.\n\nThe lead investigator token can go on top of the pile of connection arrows. Now you've taken care of every token from the punchboard except the chaos tokens. Those can still go in **C1** with the chaos bag on top of them.\n\n# Design D1 : Evergreen Edition (By Product)\n\n```\n       A              B\n+--------------+--------------+\n|              |              |\n|      A1      |      B1      |\n|    35 mm     |    28 mm     |\n|              +--------------+\n+--------------+              |\n|              |      B2      |\n|              |    28 mm     |\n|              +--------------+\n|      A2      |              |\n|    75 mm     |      B3      |\n|              |    28 mm     |\n|              +--------------+\n|              |              |\n+--------------+      B4      |\n|              |    28 mm     |\n|              +--------------+\n|      A3      |              |\n|    40 mm     |      B5      |\n|              |    28 mm     |\n+--------------+--------------+\n|<---100 mm--->|<---100 mm--->|\n```\n\nThe next evolution divides the A and B vertical columns into something meaningful. These dividers can be lower than the surrounding walls so it's easier to pick up cards. The numbers within each cell denote its vertical dimension.\n\nDesign D1 is for when you want all Evergreen player cards inside the core box, organized **by product**.\n\n**A1+A2** fits all Core 2026 cards. **A2**'s 75 mm was measured to fit the cards of all 5 classes, and **A1**'s 35 mm fits all neutral cards. Separating the neutral cards from the rest keeps them from adding to the \"fall over\" factor when the game is in progress. (Most of this bulk is bottle, hand-crank, and emergency cache.) **A3** is empty when the game is not in progress, but can be used to store a player's deck between scenarios.\n\n**B1~B5** are for each Investigator Deck product. If you store things by product, a few cards will be taken out of these 5 slots while the game is in progress. This is why we need a per-product divider, so none of them fall over.\n\nWhen you graduate from this design by purchasing additional player card content (Deckbuilding Expansion, Investigator Expansion) and want all player cards together elsewhere, these slots can store your growing Random Basic Weakness pile, your investigator cards plus their signatures, or dice. You can also tear down the dividers to revert to Design C.\n\n# Design D2 : Evergreen Edition (By Lv.0 + Lv.1~5)\n\n(WIP)\n\nHere's an another blend of how one can divide the **A** and **B** slot. Many players prefer merging all the products and then dividing them by Lv. 0 vs. Lv. 1~5 instead, with each block divided by class. This makes it easier to find eligible cards for starting decks and to shop for upgrade cards between scenarios.\n\nThe implication is that the area storing Lv. 0 cards becomes more prone to falling over when the game is in progress, since many cards are removed from it, so we need a divider for each class. The area for Lv. 1~5 can work without any dividers, as players can only purchase a few of them over the campaign, so we get more room for cards.\n\nNo matter how we divide it, this will only fit up to the Evergreen pool (Core 2026 + 5 Investigator Decks), the same as **Design D1**.",
+  "secondaryBase": true
+}

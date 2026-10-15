@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { notchCorners } from '../../core/notches';
 import { lidOutline } from '../../core/lidNotches';
-import type { Block, Box3, SceneItems, SceneModel, SceneTray } from '../../core/scene';
+import type { Block, Box3, SceneFloor, SceneItems, SceneModel, SceneTray } from '../../core/scene';
 
 export type TrayStyle = 'wire' | 'glass' | 'solid' | 'hidden';
 
@@ -21,6 +21,8 @@ export interface TrayObjects {
   fills: THREE.Mesh[];
   lines: THREE.LineSegments[];
   materials: { line: THREE.LineBasicMaterial; glass: THREE.MeshStandardMaterial; solid: THREE.MeshStandardMaterial };
+  /** Compartment colours on the floor, drawn like the tray's panels in each style. */
+  floors: { mesh: THREE.Mesh; glass: THREE.MeshStandardMaterial; solid: THREE.MeshStandardMaterial }[];
 }
 
 export interface SceneObjects {
@@ -211,6 +213,16 @@ function itemRow(row: SceneItems, mats: ReturnType<typeof itemMaterials>): THREE
   return [mesh, new THREE.LineSegments(lineGeo, m.line)];
 }
 
+/** A compartment's colour as a sheet just above its floor, so it does not flicker against the base. */
+function floorSheet(f: SceneFloor): TrayObjects['floors'][number] {
+  const geo = new THREE.PlaneGeometry(f.w, f.d);
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(f.x + f.w / 2, f.z + 0.2, f.y + f.d / 2);
+  const glass = new THREE.MeshStandardMaterial({ color: f.color, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
+  const solid = new THREE.MeshStandardMaterial({ color: f.color, roughness: 0.9, metalness: 0, side: THREE.DoubleSide });
+  return { mesh: new THREE.Mesh(geo, solid), glass, solid };
+}
+
 /** `dark`: lines are lightened to stand out on the dark background. */
 export function buildObjects(model: SceneModel, dark = false): SceneObjects {
   const root = new THREE.Group();
@@ -235,6 +247,8 @@ export function buildObjects(model: SceneModel, dark = false): SceneObjects {
     const items = new THREE.Group();
     for (const row of t.items) items.add(...itemRow(row, itemMats));
     group.add(items);
+    const floors = t.floors.map(floorSheet);
+    for (const f of floors) group.add(f.mesh);
     const color = new THREE.Color(t.color);
     const materials = {
       line: new THREE.LineBasicMaterial({ color: dark ? color.clone().lerp(new THREE.Color(0xffffff), 0.25) : color }),
@@ -268,7 +282,7 @@ export function buildObjects(model: SceneModel, dark = false): SceneObjects {
       group.add(fill, line);
     }
     root.add(group);
-    return { key: t.key, layerId: t.layerId, group, items, fills, lines, materials };
+    return { key: t.key, layerId: t.layerId, group, items, fills, lines, materials, floors };
   });
 
   return { root, outer, trays };
@@ -283,6 +297,12 @@ export function applyStyle(t: TrayObjects, style: TrayStyle, items = true, glass
     f.visible = style === 'glass' || style === 'solid';
     f.material = style === 'glass' ? t.materials.glass : t.materials.solid;
     f.renderOrder = style === 'glass' ? 1 : 0;
+  }
+  for (const f of t.floors) {
+    if (glass !== undefined) f.glass.opacity = glass;
+    f.mesh.visible = style === 'glass' || style === 'solid';
+    f.mesh.material = style === 'glass' ? f.glass : f.solid;
+    f.mesh.renderOrder = style === 'glass' ? 1 : 0;
   }
 }
 
@@ -303,6 +323,15 @@ export function exportMeshes(model: SceneModel, nameOf: (block: Block, tray: Sce
 }
 
 export function disposeObjects(objects: SceneObjects) {
+  // Materials switched by style may not be on a mesh right now.
+  for (const t of objects.trays) {
+    t.materials.glass.dispose();
+    t.materials.solid.dispose();
+    for (const f of t.floors) {
+      f.glass.dispose();
+      f.solid.dispose();
+    }
+  }
   objects.root.traverse((o) => {
     if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) {
       o.geometry.dispose();

@@ -59,20 +59,45 @@ export function layerColor(index: number): string {
   return LAYER_COLORS[index % LAYER_COLORS.length];
 }
 
-/** Compartment colours, indexed by label order. Hues spaced so neighbours differ. */
+/** Compartment colours, given out in label order. Hues spaced so neighbours differ. */
 export const SECTION_HUES = [205, 28, 140, 330, 262, 55, 180, 0, 95, 300, 230, 15];
+
+/** The colours a split can keep for its compartments, round the colour wheel. */
+export const HUE_CHOICES = [
+  { name: 'Red', hue: 0 },
+  { name: 'Coral', hue: 15 },
+  { name: 'Orange', hue: 28 },
+  { name: 'Yellow', hue: 55 },
+  { name: 'Lime', hue: 95 },
+  { name: 'Green', hue: 140 },
+  { name: 'Teal', hue: 180 },
+  { name: 'Sky', hue: 205 },
+  { name: 'Blue', hue: 230 },
+  { name: 'Violet', hue: 262 },
+  { name: 'Purple', hue: 300 },
+  { name: 'Pink', hue: 330 },
+];
+
+/** A compartment's colour: its hue, and a shade from -1 (darker) to 1 (lighter) than usual. */
+export interface Tint {
+  hue: number;
+  shade: number;
+}
+
+/** How far one shade step moves a fill's lightness, in percent. */
+const SHADE = 7;
 
 /**
  * Compartment fill. `lightness` is for the light theme; the dark theme maps it to a deep tint
  * through CSS variables (see app.css), so use it as a CSS value (style), not an SVG attribute.
  */
-export function sectionColor(index: number, lightness = 88): string {
-  return `hsl(${SECTION_HUES[index % SECTION_HUES.length]} var(--sec-sat, 70%) calc(var(--sec-a, 0%) + var(--sec-b, 1) * ${lightness}%))`;
+export function sectionColor(tint: Tint, lightness = 88): string {
+  return `hsl(${tint.hue} var(--sec-sat, 70%) calc(var(--sec-a, 0%) + var(--sec-b, 1) * ${Math.min(100, lightness + tint.shade * SHADE)}%))`;
 }
 
 /** Text and outline colour on a compartment fill: dark ink in light mode, light ink in dark mode. */
-export function sectionInk(index: number): string {
-  return `hsl(${SECTION_HUES[index % SECTION_HUES.length]} 60% var(--sec-ink, 30%))`;
+export function sectionInk(tint: Tint): string {
+  return `hsl(${tint.hue} 60% var(--sec-ink, 30%))`;
 }
 
 /** A, B, …, Z, AA, AB, … */

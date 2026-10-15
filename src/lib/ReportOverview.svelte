@@ -5,10 +5,9 @@
   import type { Project } from '../core/types';
   import { mm } from '../core/geom';
   import LayoutCanvas from './LayoutCanvas.svelte';
-  import { trayColors } from './trayColors';
 
   let { project, solved, cut }: { project: Project; solved: Solved; cut: CutList } = $props();
-  const model = $derived(buildScene(project, solved, trayColors));
+  const model = $derived(buildScene(project, solved));
 </script>
 
 <section class="overview" aria-label="Design overview">
@@ -33,7 +32,7 @@
       <figcaption><b>Whole insert · 3D view</b></figcaption>
     </figure>
   </div>
-  <p class="legend">Overhead plans show compartment letters with FRONT at the bottom. Diagonal stripes mark lids, spanning each box or the whole group according to its lid coverage. ² marks two stacked boxes; * marks a raised floor.</p>
+  <p class="legend">Viewed from above, front at the bottom. Stripes: lids. ²: two stacked boxes. *: raised floor.</p>
 </section>
 
 <style>

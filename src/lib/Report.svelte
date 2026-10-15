@@ -18,16 +18,42 @@
   import { ARROW_ANGLE, arrowPath, labelLayout } from './itemArrow';
   import { download, slug } from './state.svelte';
 
-  let { project, setup = $bindable(), solved, cut, plan }: { project: Project; setup: CutSetup; solved: Solved; cut: CutList; plan: CutPlan } = $props();
+  let { project, setup = $bindable(), solved, cut: fullCut, plan: fullPlan }: { project: Project; setup: CutSetup; solved: Solved; cut: CutList; plan: CutPlan } = $props();
+
+  /**
+   * Cutting only some sizes for now, e.g. from an offcut: the sizes left unticked in the cut list
+   * are left off the packing and the cutting below. Assembly still uses every piece. Starts with
+   * every size ticked each time it is turned on.
+   */
+  let selecting = $state(false);
+  let unselected = $state.raw(new Set<string>());
+  function setSelecting(on: boolean) {
+    selecting = on;
+    unselected = new Set();
+  }
+  function setSelected(key: string, on: boolean) {
+    const next = new Set(unselected);
+    if (on) next.delete(key);
+    else next.add(key);
+    unselected = next;
+  }
+  const leftOut = $derived(selecting ? fullCut.groups.filter((g) => unselected.has(g.key)) : []);
+  /** The header box: ticks every size, or unticks them all once every one is ticked. */
+  function setAllSelected(on: boolean) {
+    unselected = on ? new Set() : new Set(fullCut.groups.map((g) => g.key));
+  }
+  /** The pieces being cut now: every piece, or only the sizes ticked in the cut list. */
+  const cut = $derived(leftOut.length ? { ...fullCut, groups: fullCut.groups.filter((g) => !unselected.has(g.key)) } : fullCut);
+  const plan = $derived(leftOut.length ? planCuts(project, cut, setup) : fullPlan);
 
   const trayById = $derived(new Map(solved.trays.map((t) => [t.id, t])));
   const layerName = $derived(new Map(project.layers.map((l) => [l.id, l.name])));
   /** Layers are named only when there are several; with one, "Layer 1" means nothing to a builder. */
   const multiLayer = $derived(project.layers.length > 1);
   const inLayer = (id: string) => (multiLayer ? ` · ${layerName.get(id)}` : '');
-  const total = $derived(cut.groups.reduce((a, g) => a + g.pieces.length, 0));
+  const total = $derived(fullCut.groups.reduce((a, g) => a + g.pieces.length, 0));
   /** Everything wrong or adjusted, so nobody buys material for a design that will not build as shown. */
-  const problems = $derived(designProblems(project, solved, plan));
+  const problems = $derived(designProblems(project, solved, fullPlan));
   const errors = $derived(problems.filter((i) => i.level === 'error'));
   const warnings = $derived(problems.filter((i) => i.level === 'warn'));
 
@@ -97,6 +123,11 @@
     return Math.min((px * (sheetWidth + 4)) / 200, h * 0.7, w / (0.75 * text.length));
   }
 
+  /** Assembly diagrams are drawn 240 px wide, and no taller than this: a long box is scaled down to fit. */
+  const DIAGRAM_MAX_HEIGHT = 320;
+  /** One screen pixel on a tray's diagram, in millimetres. */
+  const diagramPx = (t: Tray) => Math.max((t.outer.w + 24) / 240, (t.outer.h + 30) / DIAGRAM_MAX_HEIGHT);
+
   function trayView(t: Tray) {
     const pad = 12;
     return `${t.outer.x - pad} ${t.outer.y - pad} ${t.outer.w + 2 * pad} ${t.outer.h + 2 * pad + 6}`;
@@ -115,13 +146,13 @@
   const T = $derived(project.material.thickness);
   /** With one material only, nothing is called primary: it is named by its thickness. */
   const sole = $derived(!twoMaterials(project));
-  const hasSecondary = $derived(cut.groups.some((g) => g.material === 'secondary'));
-  const blocks = $derived([...new Set(cut.groups.map((g) => g.material))].map((material) => {
-    const groups = cut.groups.filter((g) => g.material === material);
+  const hasSecondary = $derived(fullCut.groups.some((g) => g.material === 'secondary'));
+  const blocks = $derived([...new Set(fullCut.groups.map((g) => g.material))].map((material) => {
+    const groups = fullCut.groups.filter((g) => g.material === material);
     return { material, thickness: groups[0]!.thickness, groups };
   }));
   const secondaryRefs = $derived(
-    cut.groups
+    fullCut.groups
       .filter((g) => g.material === 'secondary')
       .map((g) => `#${g.number}`)
       .join(', '),
@@ -151,6 +182,8 @@
   /** Removable boxes can be cut from sheets of their own; offered when the design has any. */
   const hasBoxes = $derived(solved.trays.some((t) => t.depth === 1));
   const boxSheets = $derived(plan.sheets.some((s) => s.boxes));
+  /** Assembly speaks of every piece, so it names the box sheets from the whole plan. */
+  const boxSheetsAll = $derived(fullPlan.sheets.some((s) => s.boxes));
 
   /** Compare the edge the longest cuts run along, over the sheets of every material. */
   const along = $derived(setup.cutAlong);
@@ -218,14 +251,14 @@
   /** Loads three.js on demand, like the 3D view, so the report stays light until it is asked for. */
   async function exportObj() {
     const { insertObjZip } = await import('./three/obj');
-    download(`${slug(project.name)}-3d.zip`, insertObjZip(project, solved, cut), 'application/zip');
+    download(`${slug(project.name)}-3d.zip`, insertObjZip(project, solved, fullCut), 'application/zip');
   }
 
   /** Whether the cut list was just copied, or could not be, to say so on its button for a moment. */
   let copied = $state<'done' | 'failed'>();
   async function copyCutList() {
     try {
-      await navigator.clipboard.writeText(cutListText(cut));
+      await navigator.clipboard.writeText(cutListText(fullCut));
       copied = 'done';
     } catch {
       copied = 'failed';
@@ -235,7 +268,7 @@
 
   function exportCsv() {
     const rows = [['#', 'Qty', 'Kind', 'Material', 'Thickness mm', 'Length mm', 'Height mm', 'Notches, lowered', 'Used in']];
-    for (const g of cut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', g.material, String(g.thickness), String(g.length), String(g.height), shapeText(g), where(g)]);
+    for (const g of fullCut.groups) rows.push([String(g.number), String(g.pieces.length), g.kind === 'base' ? panelUse(g) : 'strip', g.material, String(g.thickness), String(g.length), String(g.height), shapeText(g), where(g)]);
     const csv = rows.map((r) => r.map((c) => (/[",;]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\n');
     download(`${slug(project.name)}-cut-list.csv`, csv, 'text/csv');
   }
@@ -303,10 +336,9 @@
       <div class="actions">
         <button class="primary" onclick={() => window.print()}>Print / Save PDF</button>
         <button onclick={exportCsv}>Cut list CSV</button>
-        <button onclick={exportObj} data-tip="A zip of OBJ models in millimetres: the whole insert, plus one file per tray and removable box, for CAD, 3D printing or rendering">Download OBJ (zip)</button>
+        <button onclick={exportObj} data-tip="The whole insert plus one model per tray and box, in millimetres">Download OBJ (zip)</button>
       </div>
     </div>
-    <p class="muted small">The sheets you can get and how you cut them. Remembered in this browser, not saved with the design: they stay as they are when you open another one.</p>
     <div class="packing-options">
       <div class="setup">
         <label class="field">
@@ -324,7 +356,7 @@
         {/if}
         {#if !sole}
           {@const own = setup.secondarySheet}
-          <label class="field" data-tip="The secondary material's sheet size, when it comes in a different size from the primary, e.g. in bulk">
+          <label class="field" data-tip="Sheet size for the secondary material">
             <span>Secondary sheet</span>
             <select aria-label="Secondary material sheet" value={own?.preset ?? ''} onchange={(e) => chooseSecondarySheet(e.currentTarget.value)}>
               <option value="">Same as primary</option>
@@ -343,14 +375,14 @@
         <NumberField label="Kerf" value={setup.kerf} min={0} step={0.1} hint="Material lost per cut" onchange={(v) => (setup.kerf = v)} />
       </div>
       {#if hasBoxes}
-        <label class="check" data-tip="For making the removable boxes from another kind of board of the same thickness: their pieces are packed onto sheets of their own, never beside the trays' pieces">
+        <label class="check" data-tip="Pack removable box pieces onto separate sheets">
           <input type="checkbox" checked={setup.separateBoxes} onchange={(e) => setSeparateBoxes(e.currentTarget.checked)} />
           Cut removable boxes from sheets of their own
         </label>
         {#if setup.separateBoxes}
           {@const own = setup.boxSheet ?? setup.sheet}
           <div class="setup">
-            <label class="field" data-tip="The sheet size of the board the removable boxes are cut from{sole ? '' : ', in both materials'}">
+            <label class="field" data-tip="Sheet size for the removable boxes">
               <span>Removable box sheet</span>
               <select aria-label="Removable box sheet" value={own.preset} onchange={(e) => chooseBoxSheet(e.currentTarget.value)}>
                 {#each SHEET_PRESETS as s (s.preset)}
@@ -409,14 +441,14 @@
           {multiLayer ? project.layers.map((l) => `${l.name} ${l.height} mm`).join(', ') : `${project.layers[0]?.height} mm tall`} · {mm(solved.headroom)} mm headroom
         </p>
         <p class="facts">
-          <b>{total}</b> pieces in <b>{cut.groups.length}</b> sizes from {sheetSummary(plan)} ({sheetSizes(plan)})
+          <b>{total}</b> pieces in <b>{fullCut.groups.length}</b> sizes from {sheetSummary(fullPlan)} ({sheetSizes(fullPlan)})
         </p>
       </div>
     </header>
 
     <div class="print-only">{@render problemList()}</div>
 
-    <ReportOverview {project} {solved} {cut} />
+    <ReportOverview {project} {solved} cut={fullCut} />
 
     {#if project.readme?.trim()}
       <section class="notes">
@@ -448,7 +480,7 @@
                 {/each}
                 {#each solved.compartments.filter((c) => c.layerId === layer.id && !c.node.insert) as c (c.id)}
                   {@const size = Math.max(3, Math.min(6 * scale, Math.min(c.rect.w, c.rect.h) * 0.4))}
-                  <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{c.label}</text>
+                  <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.tint)} font-size={size}>{c.label}</text>
                 {/each}
                 {#each topTrays(layer.id) as t (t.id)}
                   {@const r = Math.max(2.5, Math.min(3.2 * scale, Math.min(t.outer.w, t.outer.h) * 0.16))}
@@ -475,19 +507,38 @@
     <section>
       <h2 class="with-action">
         Cut list
-        <button class="small no-print" onclick={copyCutList} data-tip="Copy every size and how many of it as plain text, one per line">
-          {copied === 'done' ? 'Copied' : copied === 'failed' ? 'Could not copy' : 'Copy sizes and quantities'}
-        </button>
+        <span class="cut-actions no-print">
+          <label class="check small" data-tip="Untick sizes to leave them out of the cutting plan">
+            <input type="checkbox" checked={selecting} onchange={(e) => setSelecting(e.currentTarget.checked)} />
+            Select pieces
+          </label>
+          <button class="small" onclick={copyCutList} data-tip="As plain text, one size per line">
+            {copied === 'done' ? 'Copied' : copied === 'failed' ? 'Could not copy' : 'Copy sizes and quantities'}
+          </button>
+        </span>
       </h2>
       <table>
         <thead>
-          <tr><th class="no-print"></th><th>#</th><th>Qty</th><th>Size (mm)</th><th>Used in</th></tr>
+          <tr>{#if selecting}<th class="no-print"
+              ><input
+                type="checkbox"
+                checked={leftOut.length === 0}
+                indeterminate={leftOut.length > 0 && leftOut.length < fullCut.groups.length}
+                onchange={(e) => setAllSelected(e.currentTarget.checked)}
+                aria-label="Select all pieces"
+              /></th
+            >{/if}<th class="no-print"></th><th>#</th><th>Qty</th><th>Size (mm)</th><th>Used in</th></tr>
         </thead>
         {#each blocks as block (block.material)}
           <tbody class:own={block.material === 'secondary'}>
-            <tr class="material"><th colspan="5">From {materialLabel(block.material, block.thickness, sole)}</th></tr>
+            <tr class="material"><th colspan={selecting ? 6 : 5}>From {materialLabel(block.material, block.thickness, sole)}</th></tr>
             {#each block.groups as g (g.key)}
-              <tr class:picked={highlight.picked === g.number} class:pointed={highlight.pointed === g.number}>
+              <tr class:picked={highlight.picked === g.number} class:pointed={highlight.pointed === g.number} class:left-out={selecting && unselected.has(g.key)}>
+                {#if selecting}
+                  <td class="no-print">
+                    <input type="checkbox" checked={!unselected.has(g.key)} onchange={(e) => setSelected(g.key, e.currentTarget.checked)} aria-label="Cut #{g.number} now" />
+                  </td>
+                {/if}
                 <td class="no-print">
                   <input type="radio" name="cut-list-pick" checked={highlight.picked === g.number} onclick={() => highlight.toggle(g.number)} aria-label="Highlight #{g.number} in the cutting plan" />
                 </td>
@@ -500,10 +551,7 @@
           </tbody>
         {/each}
       </table>
-      <p class="muted small">
-        Wall and divider sizes are length × height.{#if notchGroups.length || loweredGroups.length}{' '}Pieces of one size share a number, whatever is cut into them afterwards: the cutting sections below say how many of each get notches or a lowered edge.{/if}
-        <span class="no-print">Point at a piece number anywhere on this page, or at a piece in a diagram, to highlight it wherever it appears; select it, or its row here, to keep the highlight, and again to clear.</span>
-      </p>
+      <p class="muted small">Wall and divider sizes are length × height.</p>
     </section>
 
     <section>
@@ -517,10 +565,10 @@
         {/if}
       </div>
       <p class="muted small">
-        Trim {mm(setup.trim)} mm off each sheet edge first.
-        {#if boxSheets}Removable boxes are cut from sheets of their own, marked below: keep their pieces apart from the same sizes cut for the trays.{/if}
-        Cut out and number the rectangular pieces first{#if notchGroups.length || loweredGroups.length}; complete the notch and edge cuts below before assembly{/if}.
-        <span class="no-print">{#if showsCuts}Point at a step to see its cuts on the sheet. {/if}Point at a piece to see the others like it; click it to keep them highlighted.</span>
+        {#if setup.trim > 0}Trim {mm(setup.trim)} mm off each sheet edge first.{/if}
+        {#if boxSheets}Keep pieces from the removable box sheets separate.{/if}
+        {#if leftOut.length}<b>Left out: {@render refs(leftOut.map((g) => `#${g.number}`).join(', '))}.</b>{/if}
+        Number each piece as you cut it{#if notchGroups.length || loweredGroups.length}, then make the notch and edge cuts below{/if}.
       </p>
       {#each plan.sheets as sheet (sheet.index)}
         {@const W = sheet.sheet.width}
@@ -595,21 +643,21 @@
     {#if notchGroups.length}
       <section class="notch-cutting" aria-label="Finger notch cutting">
         <h2>Finger notch cutting</h2>
-        <p>Cut these notches while the numbered pieces are still flat, before gluing. Mark the two points on the opening edge and the two points inside the piece, then join them with straight cuts. All distances below are in millimetres. <span class="no-print">Point at a step to see its marks on the diagram.</span></p>
+        <p>Cut these notches while the numbered pieces are still flat, before gluing. Mark the two points on the opening edge and the two points inside the piece, then join them with straight cuts. All distances below are in millimetres.</p>
         {#each notchGroups as group (group.key)}<PieceCutting {group} {highlight} {sole} />{/each}
       </section>
     {/if}
     {#if loweredGroups.length}
       <section class="lowered-cutting" aria-label="Lowered side cutting">
         <h2>Lowered side cutting</h2>
-        <p>Cut these lowered stretches before gluing, using the same four-point marking method. A line on an existing outer edge needs no additional cut. <span class="no-print">Point at a step to see its marks on the diagram.</span></p>
+        <p>Cut these lowered stretches before gluing, using the same four-point marking method. A line on an existing outer edge needs no additional cut.</p>
         {#each loweredGroups as group (group.key)}<PieceCutting {group} kind="lowered" {highlight} {sole} />{/each}
       </section>
     {/if}
 
     <section>
       <h2>Assembly</h2>
-      <p class="muted small">Use the finished pieces. Match their numbered positions and orientations to each diagram, keeping notched wall and divider edges facing up.{#if boxSheets}{' '}Build each removable box from the pieces cut from the sheets for removable boxes.{/if} <span class="no-print">Point at a step to see its pieces on the diagram, with a divider's distance from its wall.</span></p>
+      <p class="muted small">Use the finished pieces. Match their numbered positions and orientations to each diagram, keeping notched wall and divider edges facing up.{#if boxSheetsAll}{' '}Build the removable boxes from the pieces cut from their own sheets.{/if}</p>
       {#if hasSecondary}
         <p class="material-note">
           Pieces {@render refs(secondaryRefs)} use <b>{materialLabel('secondary', project.material.secondaryThickness ?? T)}</b>, cut from separate sheets.
@@ -634,17 +682,17 @@
                 <rect x={b.footprint.x} y={b.footprint.y} width={b.footprint.w} height={b.footprint.h} class="tray-base" />
               {/each}
               {#each comps as c (c.id)}
-                <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.index, 90)} />
+                <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.tint, 90)} />
                 {@const label = `${c.label}${c.stacked ? '²' : ''}${c.pad ? '*' : ''}`}
                 {@const place = labelLayout(c.rect, Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3)), label.length, !!c.node.arrow)}
                 {@const size = place.size}
-                <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{label}</text>
+                <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} class="comp" style:fill={sectionInk(c.tint)} font-size={size}>{label}</text>
                 {#if place.arrow && c.node.arrow}
                   <path
                     d={arrowPath(place.arrow.len)}
                     transform="translate({place.arrow.x} {place.arrow.y}) rotate({ARROW_ANGLE[c.node.arrow]})"
                     class="item-arrow"
-                    style:stroke={sectionInk(c.index)}
+                    style:stroke={sectionInk(c.tint)}
                     style:stroke-width={Math.max(0.6, size * 0.09)}
                   />
                 {/if}
@@ -670,7 +718,7 @@
                 <rect x={p.footprint.x} y={p.footprint.y} width={p.footprint.w} height={p.footprint.h} class="hot-panel" />
               {/each}
               {#each pieces.filter((p) => (p.kind === 'wall' || p.kind === 'divider') && (p.axis === 'x' ? p.footprint.w : p.footprint.h) > 12) as p (p.id)}
-                {@const n = cut.groupOf.get(p.id)!.number}
+                {@const n = fullCut.groupOf.get(p.id)!.number}
                 <g
                   transform="translate({p.footprint.x + p.footprint.w / 2} {p.footprint.y + p.footprint.h / 2})"
                   class="tag-mark"
@@ -688,18 +736,18 @@
                 {#each lid.lidNotches ?? [] as notch (notch.side)}
                   <path d={polygonPath(lidNotchPoints(lid.length, lid.height, notch), lid.footprint.x, lid.footprint.y)} class="tray-lid-notch" />
                 {/each}
-                <text x={t.outer.x + t.outer.w / 2} y={t.outer.y - 5} class="front">{t.stacked ? 'TOP LID' : 'LID'} #{cut.groupOf.get(lid.id)?.number}</text>
+                <text x={t.outer.x + t.outer.w / 2} y={t.outer.y - 5} class="front">{t.stacked ? 'TOP LID' : 'LID'} #{fullCut.groupOf.get(lid.id)?.number}</text>
               {/each}
               <text x={t.outer.x + t.outer.w / 2} y={t.outer.y + t.outer.h + 8} class="front">FRONT</text>
               {#if hot?.measure}
-                {@const arrow = measureArrow(t, pieces.find((p) => p.id === hot.pieces[0])!, hot.measure, (t.outer.w + 24) / 240)}
+                {@const arrow = measureArrow(t, pieces.find((p) => p.id === hot.pieces[0])!, hot.measure, diagramPx(t))}
                 <path d={arrow.path} class="measure" />
                 <rect x={arrow.box.x} y={arrow.box.y} width={arrow.box.w} height={arrow.box.h} rx={arrow.box.r} class="measure-box" />
                 <text x={arrow.x} y={arrow.y} font-size={arrow.size} class="measure-text">{arrow.text}</text>
               {/if}
             </svg>
             <ol class="steps">
-              {#each trayInstructions(project, solved, cut, t) as step, i (i)}
+              {#each trayInstructions(project, solved, fullCut, t) as step, i (i)}
                 <li>{@render assemblyStep(t.id, step, i === 0)}</li>
               {/each}
             </ol>
@@ -719,18 +767,18 @@
                 {/each}
                 {#each solved.compartments.filter((c) => c.wellId === well.id) as c (c.id)}
                   {@const size = Math.max(5, Math.min(18, Math.min(c.rect.w, c.rect.h) * 0.3))}
-                  <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.index, 90)} />
-                  <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.index)} font-size={size}>{c.label}{c.stacked ? '²' : ''}</text>
+                  <rect x={c.rect.x} y={c.rect.y} width={c.rect.w} height={c.rect.h} style:fill={sectionColor(c.tint, 90)} />
+                  <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2} class="comp" style:fill={sectionInk(c.tint)} font-size={size}>{c.label}{c.stacked ? '²' : ''}</text>
                 {/each}
                 <path d={polygonPath(lidOutline(sharedLid.length, sharedLid.height, sharedLid.lidNotches), fp.x, fp.y)} class="tray-lid" class:hot={pointedStep?.diagram === `lid:${well.id}`} />
                 {#each sharedLid.lidNotches ?? [] as notch (notch.side)}
                   <path d={polygonPath(lidNotchPoints(sharedLid.length, sharedLid.height, notch), fp.x, fp.y)} class="tray-lid-notch" />
                 {/each}
-                <text x={fp.x + fp.w / 2} y={fp.y - 5} class="front">SHARED LID #{cut.groupOf.get(sharedLid.id)?.number}</text>
+                <text x={fp.x + fp.w / 2} y={fp.y - 5} class="front">SHARED LID #{fullCut.groupOf.get(sharedLid.id)?.number}</text>
                 <text x={fp.x + fp.w / 2} y={fp.y + fp.h + 8} class="front">FRONT</text>
               </svg>
               <ol class="steps">
-                {#each sharedLidInstructions(project, solved, cut, sharedLid) as step, i (i)}
+                {#each sharedLidInstructions(project, solved, fullCut, sharedLid) as step, i (i)}
                   <li>{@render assemblyStep(`lid:${well.id}`, step, !!step.material)}</li>
                 {/each}
               </ol>
@@ -947,6 +995,24 @@
   tr.picked td {
     background: #fff3c4;
   }
+  .cut-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .cut-actions .check {
+    margin: 0;
+    font-weight: 400;
+    color: var(--text);
+  }
+  tr.left-out td:not(.no-print) {
+    opacity: 0.4;
+  }
+  td input[type='checkbox'],
+  th input[type='checkbox'] {
+    margin: 1px 0 0;
+    cursor: pointer;
+  }
   td input[type='radio'] {
     margin: 1px 0 0;
     cursor: pointer;
@@ -1010,6 +1076,9 @@
     grid-template-columns: 240px 1fr;
     gap: 16px;
     align-items: start;
+  }
+  .tray-body .tray-svg {
+    max-height: 320px;
   }
   .tray-svg {
     width: 100%;

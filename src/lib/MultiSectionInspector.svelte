@@ -85,7 +85,7 @@
     {/each}
     <button class="link" onclick={() => select(null)}>Clear</button>
   </div>
-  <p class="hint">Cmd or Ctrl-click to add or remove compartments. A field shown as “—” or with a dashed outline differs between them; changing it sets them all.</p>
+  <p class="hint">“—” or a dashed outline means the values differ.</p>
 </div>
 
 <div class="panel-section">
@@ -156,7 +156,7 @@
       </ul>
     {/if}
   {:else if arrow !== null}
-    <p class="hint">To simulate items together, give every selected compartment a direction; compartments holding a box simulate items in the box instead.</p>
+    <p class="hint">Give every selected compartment a direction to simulate items.</p>
   {/if}
 </div>
 
@@ -170,10 +170,10 @@
     min={0}
     step={1}
     decimals={0}
-    hint="Raised-floor layers in every selected compartment; each stops at what it can take"
+    hint="Raised-floor layers in each selected compartment"
     onchange={(v) => setPads(project, comps, v)}
   />
-  <p class="hint">Up to {padMax} layer{padMax === 1 ? '' : 's'} fit in all of them; ones with more room can take more on their own.</p>
+  <p class="hint">Up to {padMax} layer{padMax === 1 ? '' : 's'} fit in all of them.</p>
 </div>
 
 <div class="panel-section">
@@ -224,7 +224,7 @@
       <input type="checkbox" checked={lid === true} indeterminate={lid === MIXED} onchange={() => setLidAll(comps, lid !== true)} />
       Lid
     </label>
-    <p class="hint">Box layouts, materials and lid notches are set one compartment at a time.</p>
+    <p class="hint">Edit boxes one compartment at a time.</p>
   </div>
 {/if}
 

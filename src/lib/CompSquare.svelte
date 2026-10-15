@@ -4,10 +4,10 @@
   import CompLabel from './CompLabel.svelte';
 
   /** A compartment's colour square with its letter, in three sizes. */
-  let { c, size = 'md' }: { c: Pick<Compartment, 'label' | 'stacked' | 'pad' | 'index'>; size?: 'sm' | 'md' | 'lg' } = $props();
+  let { c, size = 'md' }: { c: Pick<Compartment, 'label' | 'stacked' | 'pad' | 'tint'>; size?: 'sm' | 'md' | 'lg' } = $props();
 </script>
 
-<span class="sq {size}" style:background={sectionColor(c.index)} style:border-color={sectionInk(c.index)} style:color={sectionInk(c.index)}
+<span class="sq {size}" style:background={sectionColor(c.tint)} style:border-color={sectionInk(c.tint)} style:color={sectionInk(c.tint)}
   ><CompLabel {c} /></span
 >
 

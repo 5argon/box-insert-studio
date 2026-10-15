@@ -1,6 +1,6 @@
 <script lang="ts">
   import { BOX_PRESETS } from '../core/boxPresets';
-  import { NEW_CLEARANCE, newProject, SECONDARY_THICKNESS_PRESETS, STARTER_SPEC, THICKNESS_PRESETS, type NewProjectSpec } from '../core/defaults';
+  import { newProject, SECONDARY_THICKNESS_PRESETS, STARTER_SPEC, THICKNESS_PRESETS, type NewProjectSpec } from '../core/defaults';
   import { mm } from '../core/geom';
   import type { Project } from '../core/types';
   import NumberField from './NumberField.svelte';
@@ -86,7 +86,7 @@
   >
     <header>
       <h2>New design</h2>
-      <p class="hint">The box, the material and the first layer. Everything else can be changed later in the side panel.</p>
+      <p class="hint">Everything can be changed later.</p>
     </header>
 
     <section>
@@ -110,7 +110,7 @@
       <NumberField label="Depth" value={spec.box.depth} min={20} onchange={(v) => (spec.box.depth = v)} />
       <NumberField label="Height" value={spec.box.height} min={5} onchange={(v) => (spec.box.height = v)} />
       <p class="hint">Width runs across the upright cover, depth runs top to bottom, and height is box thickness.</p>
-      <p class="hint">Measured inside the box bottom. Trays get {NEW_CLEARANCE} mm of clearance ({NEW_CLEARANCE / 2} mm each side); change it later under Box inside.</p>
+      <p class="hint">Measured inside the box bottom.</p>
     </section>
 
     <section>
@@ -140,7 +140,7 @@
             <span class="unit">mm</span>
           </span>
         </div>
-        <p class="hint">Available for bases, removable-box lids and individual dividers, including dividers inside removable boxes. Each material gets its own cutting sheets.</p>
+        <p class="hint">For bases, box lids or individual dividers.</p>
       {/if}
     </section>
 
@@ -152,22 +152,19 @@
       </div>
       {#if layerSizing === 'headroom'}
         <NumberField label="Headroom" value={requestedHeadroom} min={0}
-          hint="Space above the layer for the board and rulebook; stays fixed when the box height changes"
+          hint="Space above the layer"
           onchange={(v) => (requestedHeadroom = v)} />
-        <p class="hint">Keep this space above the layer when changing box presets or the box height.</p>
       {:else}
         <NumberField label="Height" value={spec.layerHeight} min={5}
           hint="From the bottom of its base to the top of its walls"
           onchange={(v) => (spec.layerHeight = v)} />
-        <p class="hint">Keep this layer height when changing box presets or the box height.</p>
       {/if}
-      <p class="hint">Layer height includes the {mm(base)} mm base. Finger notches start {mm(layerHeight / 4)} mm wide and deep, a quarter of the layer height.</p>
+      <p class="hint">Includes the {mm(base)} mm base.</p>
       {#if secondary}
         <label class="check">
           <input type="checkbox" bind:checked={secondaryBase} />
           Use secondary material for base
         </label>
-        <p class="hint">The base uses {secondaryBase ? 'secondary' : 'primary'} material ({mm(base)} mm); walls and dividers use primary material ({mm(spec.thickness)} mm).</p>
       {/if}
       <p class="headroom" class:bad={!!problem} data-tip={layerSizing === 'headroom' ? 'From the bottom of its base to the top of its walls' : 'Space left above the layer, for the board and rulebook'}>
         {layerSizing === 'headroom' ? 'Layer height' : 'Headroom'}: <b>{mm(layerSizing === 'headroom' ? layerHeight : headroom)} mm</b>
@@ -178,7 +175,7 @@
       {#if problem}
         <span class="problem">{problem}</span>
       {:else if replacing}
-        <span class="hint">Replaces the current design; save it first to keep it.</span>
+        <span class="hint">Replaces the current design.</span>
       {:else}
         <span></span>
       {/if}

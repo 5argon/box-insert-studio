@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { trayInstructions } from './assembly';
-import { cutSetupFrom, defaultCutSetup, labelFor, migrateProject, newLayer, newSection, savedCutSetup } from './defaults';
+import { cutSetupFrom, defaultCutSetup, labelFor, migrateProject, newId, newLayer, newSection, savedCutSetup } from './defaults';
 import { blankProject, doomExample, testSetup } from './fixtures';
-import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, setStacked, splitSection } from './edit';
+import { canUseTrays, distributeEqually, dragBar, insertMode, lockChild, removeSection, setInsert, setJoin, setSplitLetter, setStacked, splitSection } from './edit';
 import { allocate, solveProject } from './layout';
 import { pack } from './pack';
 import { buildCutList, planCuts, shapeOf } from './pieces';
-import type { LayoutNode, Project, SectionNode } from './types';
+import type { LayoutNode, Project, SectionNode, SplitNode } from './types';
 
 function clearNotches(n: LayoutNode) {
   if (n.kind === 'section') n.notches = [];
@@ -32,6 +32,109 @@ describe('allocate', () => {
 describe('labels', () => {
   it('counts past Z', () => {
     expect([0, 25, 26, 27].map(labelFor)).toEqual(['A', 'Z', 'AA', 'AB']);
+  });
+
+  const split = (dir: 'row' | 'column', ...nodes: LayoutNode[]): SplitNode => ({
+    kind: 'split',
+    id: newId('n'),
+    dir,
+    join: 'divider',
+    lower: 0,
+    children: nodes.map((node) => ({ size: { mode: 'flex', weight: 1 }, node })),
+  });
+  const sections = (n: number) => Array.from({ length: n }, () => newSection());
+  const kept = (letter: string, dir: 'row' | 'column', ...nodes: LayoutNode[]): SplitNode => ({ ...split(dir, ...nodes), letter });
+  const labels = (p: Project) => new Map(solveProject(p).compartments.map((c) => [c.node.id, c.label]));
+
+  it('letters the compartments of one split one after another', () => {
+    // Two columns over a row, beside a full-height column: each column reads top to bottom.
+    const [left, middle, bottom, right] = [sections(3), sections(5), sections(3), sections(3)];
+    const p = blankProject();
+    p.layers[0]!.root = split('row', split('column', split('row', split('column', ...left), split('column', ...middle)), split('row', ...bottom)), split('column', ...right));
+    const label = labels(p);
+    expect([left, middle, bottom, right].map((g) => g.map((n) => label.get(n.id)).join(''))).toEqual(['ABC', 'DEFGH', 'IJK', 'LMN']);
+  });
+
+  it('names a split keeping a letter after it, and keeps the letter from the rest', () => {
+    const [left, middle, [right]] = [sections(2), sections(5), sections(1)];
+    const p = blankProject();
+    p.layers[0]!.root = split('row', split('column', ...left), kept('B', 'column', ...middle), right!);
+    const label = labels(p);
+    expect([...left, ...middle, right!].map((n) => label.get(n.id))).toEqual(['A', 'C', 'B1', 'B2', 'B3', 'B4', 'B5', 'D']);
+  });
+
+  it('numbers on inside a kept split, and inside a box in it', () => {
+    const [i, j, k] = sections(3);
+    const p = blankProject();
+    const layer = p.layers[0]!;
+    layer.root = kept('C', 'row', i!, j!, k!);
+    splitSection(layer, j!.id, 'column', p.clearance);
+    expect(setInsert(layer, k!.id, true)).toBe(true);
+    const s = solveProject(p);
+    expect(s.compartments.map((c) => c.label)).toEqual(['C1', 'C2-1', 'C2-2', 'C3', 'C3']);
+    // Divided, the box's compartments are numbered after all.
+    splitSection(layer, s.compartments[4]!.id, 'column', p.clearance);
+    expect(solveProject(p).compartments.map((c) => c.label)).toEqual(['C1', 'C2-1', 'C2-2', 'C3', 'C3-1', 'C3-2']);
+    expect(s.issues).toEqual([]);
+  });
+
+  it('lets a split inside a kept one keep a letter of its own', () => {
+    const [a, b, c] = sections(3);
+    const p = blankProject();
+    p.layers[0]!.root = kept('C', 'row', a!, kept('X', 'column', b!, c!));
+    expect(solveProject(p).compartments.map((x) => x.label)).toEqual(['C1', 'X1', 'X2']);
+  });
+
+  it('warns when two splits keep one letter', () => {
+    const p = blankProject();
+    p.layers[0]!.root = split('row', kept('B', 'column', ...sections(2)), kept('B', 'column', ...sections(2)));
+    expect(solveProject(p).issues.map((i) => i.message)).toEqual(['Letter B is used by more than one split.']);
+  });
+
+  it('shades the compartments of a split keeping a colour, and keeps other colours away from it', () => {
+    const [kept5, rest] = [sections(5), sections(8)];
+    const p = blankProject();
+    const red = { ...kept('A', 'column', ...kept5), hue: 0 };
+    p.layers[0]!.root = split('row', red, ...rest);
+    const tint = new Map(solveProject(p).compartments.map((c) => [c.node.id, c.tint]));
+    expect(kept5.map((n) => tint.get(n.id))).toEqual([1, 0.5, 0, -0.5, -1].map((shade) => ({ hue: 0, shade })));
+    // Red, coral, orange and pink are too close to red to be given out.
+    const others = rest.map((n) => tint.get(n.id)!.hue);
+    expect(others.every((h) => ![0, 15, 28, 330].includes(h))).toBe(true);
+    expect(new Set(others).size).toBe(8);
+  });
+
+  it('gives a split inside a coloured one its own colour, and every hue back once too few are left', () => {
+    const [a, b, c, d] = sections(4);
+    const p = blankProject();
+    p.layers[0]!.root = { ...split('row', a!, { ...split('column', b!, c!), hue: 140 }, d!), hue: 230 };
+    const tint = new Map(solveProject(p).compartments.map((x) => [x.node.id, x.tint]));
+    expect([a, b, c, d].map((n) => tint.get(n!.id))).toEqual([
+      { hue: 230, shade: 1 },
+      { hue: 140, shade: 1 },
+      { hue: 140, shade: -1 },
+      { hue: 230, shade: -1 },
+    ]);
+    // Every other hue kept: the sequence starts from the first one again.
+    const q = blankProject();
+    const [x, y] = sections(2);
+    q.layers[0]!.root = split('row', ...[0, 55, 95, 180, 230, 262, 300].map((hue) => ({ ...split('column', ...sections(2)), hue })), split('column', x!, y!));
+    const auto = solveProject(q).compartments.filter((c) => c.node.id === x!.id || c.node.id === y!.id);
+    expect(auto.map((c) => c.tint.hue)).toEqual([205, 28]);
+  });
+
+  it('takes and clears a letter, and keeps it when its split is replaced by the one inside', () => {
+    const [a, b, c] = sections(3);
+    const p = blankProject();
+    const layer = p.layers[0]!;
+    const root = split('row', a!, split('column', b!, c!));
+    layer.root = root;
+    setSplitLetter(root, ' e ');
+    expect(root.letter).toBe('E');
+    removeSection(layer, a!.id);
+    expect(solveProject(p).compartments.map((x) => x.label)).toEqual(['E1', 'E2']);
+    setSplitLetter(layer.root as SplitNode, '');
+    expect(solveProject(p).compartments.map((x) => x.label)).toEqual(['A', 'B']);
   });
 });
 
@@ -397,7 +500,7 @@ describe('boxes inside compartments', () => {
     const { s, g } = boxedProject();
     const inner = s.compartments.filter((c) => c.wellId === g.id);
     expect(inner.map((c) => c.label)).toEqual(['G1', 'G2']);
-    expect(inner.every((c) => c.index === g.index)).toBe(true);
+    expect(inner.every((c) => c.tint === g.tint)).toBe(true);
     const i = s.compartments.indexOf(g);
     expect(s.compartments.slice(i + 1, i + 3)).toEqual(inner);
   });
@@ -705,19 +808,38 @@ describe('3D scene', () => {
     expect(model.trays.filter((t) => t.depth === 0 && t.layerId === p.layers[1].id)).toHaveLength(2);
   });
 
-  it('draws layer trays grey, and keeps box colours distinct and stable when another box is added', async () => {
+  it('draws layer trays grey, and boxes in the colour of the compartment they stand in', async () => {
     const { buildScene, LAYER_TRAY_COLOR } = await import('./scene');
     const p = doomExample();
-    const colors = new Map<string, number>();
-    const before = new Map(buildScene(p, solveProject(p), colors).trays.map((t) => [t.key, t.color]));
     const g = solveProject(p).compartments.find((c) => c.label === 'G')!;
     setStacked(g.node, true);
-    const after = buildScene(p, solveProject(p), colors).trays;
-    for (const t of after) if (before.has(t.key)) expect(t.color).toBe(before.get(t.key));
-    expect(after.filter((t) => t.depth === 0).every((t) => t.color === LAYER_TRAY_COLOR)).toBe(true);
-    const boxes = after.filter((t) => t.depth === 1);
-    expect(boxes.length).toBeGreaterThan(1);
-    expect(new Set([...boxes.map((t) => t.color), LAYER_TRAY_COLOR]).size).toBe(boxes.length + 1);
+    const s = solveProject(p);
+    const trays = buildScene(p, s).trays;
+    expect(trays.filter((t) => t.depth === 0).every((t) => t.color === LAYER_TRAY_COLOR)).toBe(true);
+    const hue = (color: string) => Number(/^hsl\((\d+)/.exec(color)![1]);
+    const boxes = trays.filter((t) => t.depth === 1);
+    for (const b of boxes) expect(hue(b.color)).toBe(s.compartments.find((c) => c.id === s.trays.find((t) => t.id === b.id)!.wellId)!.tint.hue);
+    // The stacked pair in G share its hue, a shade apart.
+    const pair = boxes.filter((b) => s.trays.find((t) => t.id === b.id)!.wellId === g.id);
+    expect(pair).toHaveLength(2);
+    expect(pair[0]!.color).not.toBe(pair[1]!.color);
+  });
+
+  it('lays each compartment\'s colour on its floor where no box stands, on any raised floor', async () => {
+    const { buildScene } = await import('./scene');
+    const p = doomExample();
+    const s = solveProject(p);
+    const floors = buildScene(p, s).trays.flatMap((t) => t.floors);
+    const open = s.compartments.filter((c) => c.depth === 0 && !c.node.insert);
+    expect(floors.map((f) => f.compartmentId).sort()).toEqual(open.map((c) => c.id).sort());
+    expect(s.compartments.some((c) => c.node.insert)).toBe(true);
+    const hue = (color: string) => Number(/^hsl\((\d+)/.exec(color)![1]);
+    for (const f of floors) expect(hue(f.color)).toBe(s.compartments.find((c) => c.id === f.compartmentId)!.tint.hue);
+    const raised = open[0]!;
+    const before = floors.find((f) => f.compartmentId === raised.id)!.z;
+    raised.node.pad = 2;
+    const after = buildScene(p, solveProject(p)).trays.flatMap((t) => t.floors).find((f) => f.compartmentId === raised.id)!.z;
+    expect(after - before).toBeCloseTo(2 * p.material.thickness, 6);
   });
 
   it('gives trays keys that survive unrelated edits', async () => {
@@ -1111,7 +1233,9 @@ describe('separate construction', () => {
     expect(p.construction).toBeUndefined();
     const back = solveProject(p);
     expect(back.trays.filter((t) => t.depth === 0)).toHaveLength(p.layers.length);
-    expect(back.compartments.find((c) => c.label === 'B')!.rect.w).toBeCloseTo(before.compartments.find((c) => c.label === 'B')!.rect.w, 6);
+    // By id: splitting A gave the compartments after it new letters.
+    const b = before.compartments.find((c) => c.label === 'B')!;
+    expect(back.compartments.find((c) => c.id === b.id)!.rect.w).toBeCloseTo(b.rect.w, 6);
   });
 
   it('places every separate tray and the boxes inside them without overlaps', async () => {

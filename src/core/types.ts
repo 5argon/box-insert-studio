@@ -29,6 +29,16 @@ export interface SplitNode {
   join: Join;
   /** Dividers of this split stand this much lower than the walls, for finger access. */
   lower: Mm;
+  /**
+   * A letter kept for this split: its compartments are named after it, B1, B2, …, those of a
+   * split inside it B2-1, B2-2, …, and no other compartment is lettered B. Not inside a box.
+   */
+  letter?: string;
+  /**
+   * A colour kept for this split, as a hue: its compartments take shades of it, and automatic
+   * colours keep away from it where enough others are left. Not inside a box.
+   */
+  hue?: number;
   children: SplitChild[];
 }
 

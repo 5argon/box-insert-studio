@@ -9,6 +9,7 @@
 import { fitItems } from './items';
 import { mm } from './geom';
 import type { LidNotch } from './lidNotches';
+import type { Tint } from './defaults';
 import type { Low, Notch, PieceKind, Solved, Tray } from './layout';
 import type { Mm, Project } from './types';
 
@@ -55,6 +56,18 @@ export interface SceneItems {
   items: Box3[];
 }
 
+/** A compartment's colour laid on its floor, for one with no box in it: shown, never cut. */
+export interface SceneFloor {
+  compartmentId: string;
+  color: string;
+  /** The floor's top, on any raised floor; `z` is its height. */
+  x: Mm;
+  y: Mm;
+  z: Mm;
+  w: Mm;
+  d: Mm;
+}
+
 export interface SceneTray {
   /** Stable across edits: layer, source layout node and stack level. */
   key: string;
@@ -69,6 +82,7 @@ export interface SceneTray {
   color: string;
   blocks: Block[];
   items: SceneItems[];
+  floors: SceneFloor[];
 }
 
 export interface SceneLayer {
@@ -89,22 +103,18 @@ export interface SceneModel {
  * Tray line colours: a categorical palette (Tableau 10 without its grey) chosen so that any two
  * trays are easy to tell apart, readable on both the light and the dark background.
  */
-const TRAY_PALETTE = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1', '#edc948', '#76b7b2', '#ff9da7', '#9c755f'];
-
-/** Trays standing in a layer are a neutral grey, so the palette picks out the boxes inside them. */
+/** Trays standing in a layer are a neutral grey, so the colours pick out the boxes inside them. */
 export const LAYER_TRAY_COLOR = '#8c877f';
 
-/** Colour for palette slot `index`; the same colour marks the tray in the viewer's tray list. */
-export function trayColor(index: number): string {
-  return TRAY_PALETTE[index % TRAY_PALETTE.length];
+/**
+ * A box's colour: the hue and shade of the compartment it stands in, a step lighter or darker
+ * for each further box there (`step` from -1 to 1), and lighter again for a shared lid.
+ */
+function boxColor(tint: Tint, step = 0, lid = false): string {
+  return `hsl(${tint.hue}, 55%, ${Math.round(55 + tint.shade * 8 + step * 8 + (lid ? 14 : 0))}%)`;
 }
 
-/**
- * `colors` remembers which hue each tray key got. Pass the same map on every build (the viewer
- * keeps one for the session) and a tray keeps its colour for as long as it exists; new trays
- * take a hue no current tray uses.
- */
-export function buildScene(project: Project, solved: Solved, colors: Map<string, number> = new Map()): SceneModel {
+export function buildScene(project: Project, solved: Solved): SceneModel {
   const T = project.material.thickness;
   const layers: SceneLayer[] = [];
   let z = 0;
@@ -130,22 +140,17 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
   const keyOf = (t: Tray) => `${t.layerId}:${t.nodeId}:${t.copyOf ? 1 : 0}`;
   const sharedCovers = solved.pieces.filter((p) => p.sharedLidFor);
   const coverKey = (p: (typeof sharedCovers)[number]) => `${p.layerId}:shared-lid:${p.sharedLidFor}`;
-  const taken = new Set(
-    [...solved.trays.filter((t) => t.depth === 1).map(keyOf), ...sharedCovers.map(coverKey)]
-      .filter((k) => colors.has(k))
-      .map((k) => colors.get(k)!),
-  );
-  const hueFor = (key: string) => {
-    const known = colors.get(key);
-    if (known !== undefined) return known;
-    let hash = 0;
-    for (const ch of key) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-    let i = hash % TRAY_PALETTE.length;
-    for (let n = 0; n < TRAY_PALETTE.length && taken.has(i); n++) i = (i + 1) % TRAY_PALETTE.length;
-    taken.add(i);
-    colors.set(key, i);
-    return i;
-  };
+  const tintOf = new Map(solved.compartments.map((c) => [c.id, c.tint]));
+  const noTint = { hue: 0, shade: 0 };
+  /** The boxes standing in each compartment, in order, to step their colours apart. */
+  const boxesIn = new Map<string, Tray[]>();
+  for (const t of solved.trays) if (t.depth === 1) boxesIn.set(t.wellId ?? '', [...(boxesIn.get(t.wellId ?? '') ?? []), t]);
+  function colorOf(t: Tray): string {
+    if (t.depth === 0) return LAYER_TRAY_COLOR;
+    const boxes = boxesIn.get(t.wellId ?? '') ?? [t];
+    const step = boxes.length > 1 ? (2 * boxes.indexOf(t)) / (boxes.length - 1) - 1 : 0;
+    return boxColor(tintOf.get(t.wellId ?? '') ?? noTint, step);
+  }
 
   /** Rows of simulated items in a tray's compartments; the upper box of a stack holds the same as the lower. */
   function itemsIn(t: Tray, bottom: Mm): SceneItems[] {
@@ -170,6 +175,14 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       const fits = fit.faceW <= fit.across + 1e-9 && fit.faceH <= fit.up + 1e-9;
       return [{ compartmentId: c.id, shape: spec.shape, axis, thickness: spec.thickness, fits, items }];
     });
+  }
+
+  /** The colour of each compartment in a layer's tray that holds no box. */
+  function floorsIn(t: Tray, bottom: Mm): SceneFloor[] {
+    if (t.depth !== 0) return [];
+    return solved.compartments
+      .filter((c) => c.trayId === t.id && !c.node.insert)
+      .map((c) => ({ compartmentId: c.id, color: boxColor(c.tint), x: c.rect.x, y: c.rect.y, z: bottom + t.base + c.padHeight, w: c.rect.w, d: c.rect.h }));
   }
 
   const trays: SceneTray[] = solved.trays.map((t) => {
@@ -204,9 +217,10 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
       layerId: t.layerId,
       depth: t.depth,
       level,
-      color: t.depth === 0 ? LAYER_TRAY_COLOR : trayColor(hueFor(key)),
+      color: colorOf(t),
       blocks,
       items: itemsIn(t, bottom),
+      floors: floorsIn(t, bottom),
     };
   });
 
@@ -223,7 +237,7 @@ export function buildScene(project: Project, solved: Solved, colors: Map<string,
     trays.push({
       key, id: p.id, number: anchor.number, label: `Shared lid in ${well}`,
       detail: `${mm(p.thickness)} mm`, layerId: p.layerId, depth: 1, level: anchor.copyOf ? 1 : 0,
-      color: trayColor(hueFor(key)), blocks: [block], items: [],
+      color: boxColor(tintOf.get(p.sharedLidFor!) ?? noTint, 0, true), blocks: [block], items: [], floors: [],
     });
   }
 

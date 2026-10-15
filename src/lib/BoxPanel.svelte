@@ -53,7 +53,7 @@
   <h2>Project</h2>
   <input class="name" bind:value={project.name} aria-label="Project name" />
   <div class="readme-row">
-    <button class="small" onclick={() => readme?.open()} data-tip="Notes for this project in Markdown, printed at the top of the export">
+    <button class="small" onclick={() => readme?.open()} data-tip="Notes in Markdown, printed with the cut list">
       {readmeTitle ? 'Edit readme' : 'Add readme'}
     </button>
     {#if readmeTitle}<span class="hint readme-peek">{readmeTitle}</span>{/if}
@@ -71,7 +71,7 @@
     value={project.clearance}
     min={0}
     step={0.5}
-    hint="Total gap between a tray and the box or its neighbours, so it drops in without jamming"
+    hint="Total gap between a tray and the box or its neighbours"
     onchange={(v) => (project.clearance = v)}
   />
 </div>
@@ -101,7 +101,7 @@
         <span class="thick"><NumberInput value={project.material.secondaryThickness ?? T} min={0.5} max={20} label="Secondary material thickness" onchange={(v) => setSecondaryThickness(project, v)} /></span>
       </span>
     </div>
-    <p class="hint">Choose where to use it in Layers, Removable box or Divider materials. Each material gets its own cutting sheets.</p>
+    <p class="hint">For bases, box parts or individual dividers.</p>
   {/if}
   <NumberField
     label="Round sizes to"
@@ -112,7 +112,6 @@
     hint="Pieces within this step become one cut size"
     onchange={(v) => (project.precision = v)}
   />
-  <p class="hint">Sheet size, packing, edge trim and kerf are yours rather than the design's: set them on the Cut list &amp; assembly page.</p>
 </div>
 
 <div class="panel-section">
@@ -157,13 +156,10 @@
       <input type="checkbox" checked={!!project.secondaryBase} onchange={(e) => setLayerBaseSecondary(project, e.currentTarget.checked)} />
       Use secondary material for bases
     </label>
-    <p class="hint">
-      Bases use {project.secondaryBase ? 'secondary' : 'primary'} material ({mm(B)} mm). Changing their thickness moves each layer's height by the difference,
-      so compartments keep their depth and the headroom changes instead.
-    </p>
+    <p class="hint">Bases: {mm(B)} mm.</p>
   {/if}
   <button class="small add" onclick={addLayer}>Add layer on top</button>
-  <p class="headroom" class:bad={solved.headroom < 0} data-tip="Space left above the trays, for the board and rulebook">
+  <p class="headroom" class:bad={solved.headroom < 0} data-tip="Space left above the trays">
     {#if solved.headroom >= 0}
       Headroom: <b>{mm(solved.headroom)} mm</b>
     {:else}
@@ -177,21 +173,13 @@
   <div class="choice">
     <span>Compartments</span>
     <div class="row">
-      <button class="small" class:on={!separate} onclick={() => setConstruction(project, 'glued')} data-tip="Each layer is one tray; splitting a compartment adds a glued divider"
+      <button class="small" class:on={!separate} onclick={() => setConstruction(project, 'glued')} data-tip="Each layer is one tray with glued dividers"
         >Glued tray</button
       >
-      <button class="small" class:on={separate} onclick={() => setConstruction(project, 'separate')} data-tip="Every compartment is its own tray that lifts out on its own"
+      <button class="small" class:on={separate} onclick={() => setConstruction(project, 'separate')} data-tip="Every compartment is its own tray"
         >Separate trays</button
       >
     </div>
-    <p class="hint">
-      {#if separate}
-        Every compartment is its own tray, {mm(project.clearance)} mm apart, so each lifts out on its own. They only fit back one way: the printout's Placement page
-        shows it. A compartment can still hold a removable box.
-      {:else}
-        Each layer is one glued tray. You can still make any split separate trays.
-      {/if}
-    </p>
   </div>
   <div class="choice">
     <span>Base</span>

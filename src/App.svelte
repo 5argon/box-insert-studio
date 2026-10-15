@@ -5,7 +5,6 @@
   import { buildCutList, planCuts } from './core/pieces';
   import { designProblems } from './core/problems';
   import { buildScene } from './core/scene';
-  import { trayColors } from './lib/trayColors';
   import type { Project } from './core/types';
   import BoxPanel from './lib/BoxPanel.svelte';
   import NewDialog from './lib/NewDialog.svelte';
@@ -26,7 +25,7 @@
   import { isDark, setTheme, theme, type ThemePref } from './lib/theme.svelte';
 
   const solved = $derived(solveProject(studio.project));
-  const thumbModel = $derived(buildScene(studio.project, solved, trayColors));
+  const thumbModel = $derived(buildScene(studio.project, solved));
   const cut = $derived(buildCutList(solved, studio.project.precision));
   const plan = $derived(planCuts(studio.project, cut, studio.setup));
 
@@ -129,7 +128,7 @@
     </div>
     <label class="theme">
       <span class="sr-only">Theme</span>
-      <select value={theme.pref} onchange={(e) => setTheme(e.currentTarget.value as ThemePref)} aria-label="Theme" data-tip="Light or dark appearance; System follows your computer">
+      <select value={theme.pref} onchange={(e) => setTheme(e.currentTarget.value as ThemePref)} aria-label="Theme" data-tip="Theme">
         <option value="system">System theme</option>
         <option value="light">Light</option>
         <option value="dark">Dark</option>
@@ -137,7 +136,7 @@
     </label>
     <div class="file">
       <a class="credit" href="https://github.com/5argon/box-insert-studio" target="_blank" rel="noopener">Source · CC BY 4.0</a>
-      <button class="small" onclick={() => newDialog?.open()} data-tip="Start a new design: box, material and first layer">New</button>
+      <button class="small" onclick={() => newDialog?.open()} data-tip="Start a new design">New</button>
       <label class="small open">Open<input type="file" accept=".json,application/json" onchange={open} /></label>
       <button class="small" onclick={save}>Save</button>
     </div>
@@ -155,7 +154,7 @@
             <b>{layer.name}</b>
             <span class="hint">·</span>
           {/if}
-          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - baseThickness(studio.project)} mm tall{#if solvedLayer.pieces.some((p) => p.kind === 'lid')} · Diagonal stripes mark lids{/if}</span>
+          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - baseThickness(studio.project)} mm tall</span>
         </div>
         <div class="canvas-wrap">
           <!-- A fixed 3/4 preview of the whole insert; loads three.js after the editor is up. -->
@@ -206,7 +205,7 @@
                 Compartments
               {/if}
             </h2>
-            <p class="hint">Click a compartment to size it, add dividers or finger notches. Click or drag a divider to resize; it snaps to sizes already in use. Cmd or Ctrl-click to select several and edit them together.</p>
+            <p class="hint">Click a compartment or divider to edit it. Cmd or Ctrl-click to select several.</p>
             {#each solvedLayer.issues as issue, i (i)}
               <div class="issue {issue.level}">{issue.message}</div>
             {/each}

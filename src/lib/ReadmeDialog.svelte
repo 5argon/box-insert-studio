@@ -6,7 +6,6 @@
   import type { Project } from '../core/types';
   import LayoutCanvas from './LayoutCanvas.svelte';
   import { isDark } from './theme.svelte';
-  import { trayColors } from './trayColors';
 
   /**
    * The project's Markdown readme, written beside the design it describes: the overhead plan of
@@ -20,7 +19,7 @@
   let shown = $state(false);
 
   const cut = $derived(shown ? buildCutList(solved, project.precision) : undefined);
-  const model = $derived(shown ? buildScene(project, solved, trayColors) : undefined);
+  const model = $derived(shown ? buildScene(project, solved) : undefined);
   const multi = $derived(solved.layers.length > 1);
 
   export function open() {

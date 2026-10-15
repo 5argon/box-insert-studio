@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "AHLCG Core Set 2026 : Utility Box Design with Stand Storage",
+  "name": "AHLCG Core Set 2026 : Special Insert with Stand Storage",
   "box": {
     "width": 239,
     "depth": 277,
@@ -19,7 +19,7 @@
     {
       "id": "l-lp1ed19",
       "name": "Tray",
-      "height": 64,
+      "height": 66,
       "root": {
         "kind": "split",
         "id": "p-s-l7r7021",
@@ -62,7 +62,7 @@
                           "notches": [],
                           "arrow": "right",
                           "items": {
-                            "on": true,
+                            "on": false,
                             "shape": "box",
                             "width": 93,
                             "height": 67,
@@ -82,7 +82,7 @@
                           "notches": [],
                           "arrow": "right",
                           "items": {
-                            "on": true,
+                            "on": false,
                             "shape": "box",
                             "width": 93,
                             "height": 67,
@@ -91,7 +91,9 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "letter": "A",
+                    "hue": 0
                   }
                 },
                 {
@@ -109,7 +111,7 @@
                       {
                         "size": {
                           "mode": "flex",
-                          "weight": 1
+                          "weight": 68
                         },
                         "node": {
                           "kind": "section",
@@ -119,9 +121,35 @@
                           ],
                           "insert": {
                             "root": {
-                              "kind": "section",
-                              "id": "s-qr83r10",
-                              "notches": []
+                              "kind": "split",
+                              "id": "p-s-dd0nd2",
+                              "dir": "column",
+                              "join": "divider",
+                              "lower": 0,
+                              "children": [
+                                {
+                                  "size": {
+                                    "mode": "flex",
+                                    "weight": 1
+                                  },
+                                  "node": {
+                                    "kind": "section",
+                                    "id": "s-qr83r10",
+                                    "notches": []
+                                  }
+                                },
+                                {
+                                  "size": {
+                                    "mode": "flex",
+                                    "weight": 1
+                                  },
+                                  "node": {
+                                    "kind": "section",
+                                    "id": "s-dd0nd2",
+                                    "notches": []
+                                  }
+                                }
+                              ]
                             },
                             "stacked": true,
                             "lid": true,
@@ -140,7 +168,7 @@
                       {
                         "size": {
                           "mode": "flex",
-                          "weight": 1
+                          "weight": 68
                         },
                         "node": {
                           "kind": "section",
@@ -184,13 +212,15 @@
                           }
                         }
                       }
-                    ]
+                    ],
+                    "letter": "B",
+                    "hue": 205
                   }
                 },
                 {
                   "size": {
                     "mode": "fixed",
-                    "mm": 45
+                    "mm": 44
                   },
                   "node": {
                     "kind": "section",
@@ -284,9 +314,8 @@
     }
   ],
   "material": {
-    "thickness": 5,
-    "secondaryThickness": 3
+    "thickness": 5
   },
-  "readme": "**Author :** 5argon,  https://arkham-starter.com\n\nThis Core 2026 box is designed for players with this storage scheme, bringing 3 boxes to each session : \n\n- **1. Core 2026** : All owned Basic Weakness, inactive chaos tokens, chaos bag with active chaos tokens, \n- **2. Small / Big Campaign Expansion Box** : The active campaign you are running, in addition to all scenarios of this campaign and the campaign-specific shared encounter cards, also Core 2026 encounter cards are in here so setup and teardown can entirely be done with one box. (However you will need to move this block of core encounter cards to the next campaign you are playing, leaving this space empty.)\n- **3. Deck Box** : Deck and Side Deck (upgrade cards planned to be purchased) of all 4 players. There's no space for them in either boxes. Personal favorite is \"Gamegenic Fourtress 320+\".\n- (Inactive player cards in a separated storage and not brought to play.)\n\nWith a special requirement of... having somewhere to store **act / agenda stand**! So the longest thing we got is the long edge of Core 2026 box. As long as the stand isn't wider than 4 cm, it should fit. This requirement throws a huge wrench in the design, but I think I've found a decent solution here. Headroom is 1 cm, the same as the original.\n\n## What goes where\n\n- **A** : All Basic Weakness you own for beginning and mid-campaign randomization. I've went back to measure the stack of full Chapter 1 collection (including Return To) and it fits in ~8 cm. This probably could handle more than 5 years onwards of Chapter 2 contents. The 5 player reference cards should also be here.\n- **B** : Free space for big things. For me this would be numbered dices and some colored utility wooden blocks.\n- **C1, C2** : A padding to bring the act / agenda stand up to be in reach. The padding are 2 removable boxes which you can store damage and horror tokens. The long shape might be a bit weird but better than not using this space for anything.\n- **D1, D2, E1, E2** : Four identical removable shallow boxes stacked, with lid on top to prevent spill in storage. It should be : resources, clue/doom, lead investigator token / connection arrows / flashlight tokens, and a free container.\n- **F** : This slot is so narrow your hand can't reach the bottom, but is perfect to tuck in active chaos bag with chaos tokens still inside.\n- **G1** : Storage for inactive chaos tokens. Given token diameter of ~30 mm (that is the token with 25~26 mm coin capsule) and 5 mm thick, this box should be able to store 5 stacks of 10 tokens each, adding up to 50 tokens. This game comes with 44 tokens so you can store everything and have an empty bag in **F**, but if Bless and Curse are added to the game, you would have 64 tokens which will not fit. In that case, you must always have some tokens left in the bag in slot **F**.\n\n## Materials\n\nThis design use **two different thickness**, one A3 sheet of 3 mm thick material, and 3 A3 sheets of 5 mm material.\n\nThe 3 mm thickness material is used for the tray's main base and all spill guard lids on the removable boxes. (Except the lid of G1, for reason that it'll ended up using more than one A3 sheet in that case.)  This saves you material cost as they are not required to be durable, and also improve the box's headroom. Crucially this allows 10 chaos tokens to be stacked inside the **G1** box if we still want the same headroom as the original.",
+  "readme": "**Author :** 5argon,  https://arkham-starter.com\n\nI'm pretty content with the \"Starter's Insert\" design for Core 2026 as a generic template for most beginners. But there's one thing it can't do: It can't store an act / agenda stand (not longer than the long edge of A4 paper). I've been playing with the slitted wooden block card stand for years and I can't left it out of my setup. (It holds act, agenda, and the vertical scenario reference card in one block.)\n\nSo I tried adding that and it's a wrench that ruins everything in the \"Starter's Insert\" design! That insert was based on the box was able to hold 2x 100 mm wide columns side by side with a little leftover column. With that column now widened to contain the card stand, it is now impossible to have 2 columns. I had to give up something.\n\nNaturally I went sideways instead. In this design, there are only 2 card storage **A1 and A2** divided equally. Each one can fit all Core 2026 encounter cards plus 3 Brethren of Ash scenarios, or large amount of random basic weakness. (Fits all basic weakness in complete Chapter 1 collection.) And so deck building player cards shall be somewhere else. Personally I'd also not store Core 2026 encounter cards here as I prefer them in the campaign box instead. I can use the space for dices and other custom things, or maybe the active player's decks.\n\nThe 4 stacked removable token trays in \"Starter's Insert\" design makes their comeback in a slightly larger size in **B1 and B2**. Since a smaller one in Starter's Insert was proven to be able to store every tokens except chaos tokens, this one is strictly better. The **B3** narrow slot is for tucking in your active chaos bag with active chaos tokens inside. This slot your hand can't reach the bottom so I think this is the best use of it.\n\nThe **C** slot stores all remaining inactive chaos tokens. This is also a removable box so you can take it out and pour the contents. You can also not make the removable box, but you'd have to dig inside the core box.\n\nLastly **D1 and D2** are removable box that serve as a padding for the card stand to sit above them and press down their shared lid. The inner height is 2 cm so you can store some dices up to that size.",
   "secondaryBase": true
 }

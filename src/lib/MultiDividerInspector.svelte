@@ -37,7 +37,7 @@
     {/each}
   </ul>
   <button class="link clear" onclick={() => select(null)}>Clear selection</button>
-  <p class="hint">Cmd or Ctrl-click to add or remove dividers. A field shown as “—” differs between them; changing it sets them all.</p>
+  <p class="hint">“—” means the values differ.</p>
 </div>
 
 {#if dividers.length}
@@ -70,14 +70,14 @@
       value={lower === MIXED || lower === undefined ? 0 : lower}
       mixed={lower === MIXED}
       min={0}
-      hint="How far below the walls; applies to every divider in the selected dividers' rows"
+      hint="How far below the walls"
       onchange={(v) => setDividersLower(project, layer, solvedLayer, dividers, v)}
     />
-    <p class="hint">Up to {Math.round(maxLower * 10) / 10} mm for all of them. A row of dividers is lowered together, including any not selected.</p>
+    <p class="hint">Up to {Math.round(maxLower * 10) / 10} mm. Lowers each whole row.</p>
   </div>
 {:else}
   <div class="panel-section">
-    <p class="hint">These are gaps between separate trays: there is nothing to edit together.</p>
+    <p class="hint">Gaps between separate trays: nothing to edit.</p>
   </div>
 {/if}
 

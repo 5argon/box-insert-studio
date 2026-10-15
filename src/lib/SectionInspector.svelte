@@ -235,7 +235,7 @@
         <div class="reuse">
           <span class="hint">Reuse</span>
           {#each used as u (u.v)}
-            <button class="chip" onclick={() => setSize(a.dir, u.v)} data-tip="{u.uses} other compartment{u.uses === 1 ? '' : 's'} use {u.v} mm; matching it shares cut sizes"
+            <button class="chip" onclick={() => setSize(a.dir, u.v)} data-tip="Used by {u.uses} other compartment{u.uses === 1 ? '' : 's'}"
               >{u.v}&thinsp;<small>mm</small> <small class="uses">({u.uses})</small></button
             >
           {/each}
@@ -310,11 +310,11 @@
           <NumberField label="Items in it" value={stack.count} min={1} step={1} decimals={0} unit="" onchange={(v) => fromStack(stack.length, v)} />
           <p class="hint">
             {#if stack.length > 0}{mm(stack.length)} mm ÷ {stack.count} = {Number((stack.length / stack.count).toFixed(4))} mm each, set as the thickness.
-            {:else}Measure a stack of items and count them; the thickness is the length divided by the count.{/if}
+            {/if}
           </p>
         </div>
       {/if}
-      <NumberField label="Free space" value={spec.spare} min={0} onchange={(v) => (spec.spare = v)} hint="Left empty at the arrow's head, e.g. finger room" />
+      <NumberField label="Free space" value={spec.spare} min={0} onchange={(v) => (spec.spare = v)} hint="Left empty at the arrow's head" />
       <div class="fit" class:bad={fit.warnings.length}>
         <div class="count">
           <b>{fit.count}</b>
@@ -346,22 +346,12 @@
     >
   </div>
   <p class="hint">
-    {#if c.pad && boxesHere && c.node.insert?.emptyAbove}
-      Floor raised {mm(c.padHeight)} mm; the box stands on it, {mm(sharedLid ? boxBody : boxHeight)} mm tall{sharedLid ? ' beneath its shared lid' : ''}, half the height left, with the rest above it empty. Marked
-      <CompLabel {c} /> in the layout.
-    {:else if c.pad && boxesHere}
-      Floor raised {mm(c.padHeight)} mm; the {boxesHere === 2 ? 'stacked box bodies stand' : 'box stands'} on it, {mm(sharedLid || pair ? boxBody : boxHeight)} mm tall{boxesHere === 2 ? ' each' : ''}, so the
-      top stays flush{sharedLid ? ' with the shared lid on' : pair && hasLid ? ' with the upper lid on' : ''}. Marked <CompLabel {c} /> in the layout.
+    {#if c.pad && boxesHere}
+      Floor raised {mm(c.padHeight)} mm; {boxesHere === 2 ? 'each box body' : 'box'} {mm(sharedLid || pair ? boxBody : boxHeight)} mm tall.
     {:else if c.pad}
-      Floor raised {mm(c.padHeight)} mm, leaving {mm(c.height)} mm of the {mm(c.fullHeight)} mm{c.stacked ? ' in each box' : ''}. Marked <CompLabel {c} /> in the layout.
-    {:else if boxesHere && c.node.insert?.emptyAbove}
-      Raise the floor under the box to make it shallower; it stays half the height left above the raised floor, with the rest empty. Up to {padMax}
-      layer{padMax === 1 ? '' : 's'} fit here.
-    {:else if boxesHere}
-      Raise the floor under the {boxesHere === 2 ? 'stacked boxes' : 'box'} to make {boxesHere === 2 ? 'them' : 'it'} shallower; {boxesHere === 2 ? 'they get' : 'it gets'} shorter
-      so the top stays flush. Up to {padMax} layer{padMax === 1 ? '' : 's'} fit here.
+      Floor raised {mm(c.padHeight)} mm, {mm(c.height)} mm deep.
     {:else}
-      Stack layers of material on the floor to bring a few flat tokens up within reach. Up to {padMax} layer{padMax === 1 ? '' : 's'} fit here.
+      Up to {padMax} layer{padMax === 1 ? '' : 's'} fit.
     {/if}
   </p>
 </div>
@@ -369,10 +359,7 @@
 <div class="panel-section">
   <h2>Removable box</h2>
   {#if !well}
-    <p class="hint">
-      Put a lift-out box in this compartment. It stands on the {c.pad ? 'raised floor' : 'base'}, so it is {mm(boxHeight)} mm tall with {mm(boxWall)} mm walls and its top sits
-      flush. You can then divide the inside.
-    </p>
+    <p class="hint">{mm(boxHeight)} mm tall, {mm(boxWall)} mm walls.</p>
     <button class="small add-box" onclick={() => setInsert(layer, c.id, true)} disabled={c.depth === 1} data-tip={c.depth === 1 ? 'A box cannot hold another box' : ''}
       >Add a box inside</button
     >
@@ -393,30 +380,17 @@
       {/each}
     {:else}
       <p class="hint">
-        {#if mode === 'multiple'}Each part is its own box with four walls and {project.clearance} mm between them.{/if}
-        {#if sharedLid}
-          {boxes.length} separate boxes{pair ? ' on each stack level' : ''}: each box body is {mm(boxBody)} mm tall with {mm(boxWall)} mm walls and {mm(boxBody - boxBase)} mm inside.
-          One {mm(boxLid)} mm lid covers the whole group{pair ? ', above both stack levels' : ''}{emptyAbove ? '; the half above stays empty' : ', keeping the top flush'}.
-        {:else if emptyAbove}
-          {boxes.length === 1 ? 'One box' : `${boxes.length} boxes`}, {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} (half the height) with {mm(boxWall)} mm walls, {mm(boxBody - boxBase)} mm inside. The
-          {mm(boxHeight)} mm above {boxes.length === 1 ? 'it' : 'them'} stays empty.
-        {:else if pair}
-          Stacked two high{boxes.length > 1 ? `, ${boxes.length} boxes on each level` : ''}: each box body is {mm(boxBody)} mm tall with {mm(boxWall)} mm walls and its own floor,
-          {mm(boxBody - boxBase)} mm inside.{hasLid ? ` Only the upper box has a ${mm(boxLid)} mm lid; the upper base covers the lower box.` : ''} Together they sit flush.
-        {:else}
-          {boxes.length === 1 ? 'The box is' : `${boxes.length} boxes,`} {mm(boxHeight)} mm tall{hasLid ? ' including its lid' : ''} with {mm(boxWall)} mm walls, {mm(boxBody - boxBase)} mm inside, standing on
-          the {well.pad ? 'raised floor' : 'base'} so the top sits flush.
-        {/if}
+        {boxes.length === 1 ? 'Box' : `${boxes.length} boxes`}{pair ? ' per level' : ''}: {mm(sharedLid || pair ? boxBody : boxHeight)} mm tall, {mm(boxBody - boxBase)} mm inside, {mm(boxWall)} mm walls.
+        {#if emptyAbove}{mm(boxHeight)} mm above stays empty.{/if}
       </p>
     {/if}
     {#if project.material.secondaryThickness !== undefined}
-      <label class="check" data-tip="Use the secondary material for every base of this removable box, including both boxes when stacked">
+      <label class="check" data-tip="Bases from the secondary material">
         <input type="checkbox" checked={!!well.node.insert?.secondaryBase} onchange={(e) => setInsertBaseSecondary(well.node, e.currentTarget.checked)} />
         Use secondary material for bases
       </label>
-      <p class="hint">Bases are {mm(boxBase)} mm; thinner bases give each box more space inside while keeping its total height.</p>
     {/if}
-    <label class="check" data-tip="Add a loose lid; shorten the walls and dividers so the closed top stays flush">
+    <label class="check" data-tip="A loose lid on top; the box gets shorter to fit it">
       <input type="checkbox" checked={hasLid} onchange={(e) => setInsertLid(well.node, e.currentTarget.checked)} />
       Add a lid
     </label>
@@ -428,18 +402,12 @@
         </div>
       {/if}
       {#if project.material.secondaryThickness !== undefined}
-        <label class="check nested lid-material" data-tip={sharedLid ? 'Use the secondary material for the shared lid' : pair ? 'Use the secondary material for each upper-box lid; lower boxes need no lid' : 'Use the secondary material for each lid'}>
+        <label class="check nested lid-material" data-tip="Lids from the secondary material">
           <input type="checkbox" checked={!!well.node.insert?.secondaryLid} onchange={(e) => setInsertLidSecondary(well.node, e.currentTarget.checked)} />
           Use secondary material for {sharedLid ? 'the lid' : 'lids'}
         </label>
       {/if}
-      {#if sharedLid}
-        <p class="hint">The shared lid covers all the separate boxes and the gaps between them. Build and position every box first, then place the lid on top{pair ? ' of the entire stack' : ''}. Its {mm(boxLid)} mm thickness comes out of the height{pair ? ' before the two equal box bodies are divided' : ''}{emptyAbove ? '; the half above stays empty' : ' so the closed group stays flush'}.</p>
-      {:else if pair}
-        <p class="hint">Only the upper box needs a lid; its base covers the lower box in storage. Reserve {mm(boxLid)} mm for the top lid, then divide the remaining height into two equal {mm(boxBody)} mm box bodies. Adding or removing the lid keeps the stack flush.</p>
-      {:else}
-        <p class="hint">Each {mm(boxLid)} mm lid rests on the walls. The box beneath it is {mm(boxBody)} mm tall; adding or removing a lid keeps the total height at {mm(boxHeight)} mm{emptyAbove ? ', with the half above still empty' : ' so the top stays flush'}.</p>
-      {/if}
+      <p class="hint">{mm(boxLid)} mm lid{pair && !sharedLid ? ', on the upper box only' : ''}.</p>
       <div class="lid-notches">
         <h3>Lid finger notches</h3>
         <div class="notches" role="group" aria-label="Lid finger notch sides">
@@ -449,7 +417,6 @@
               onclick={() => setLidNotchSide(well.node, side, !selected)} data-tip="Cut a finger notch through the lid on its {side} edge">{cap(side)}</button>
           {/each}
         </div>
-        <p class="hint">Select edges to lift the lid from above. Width runs along each edge; depth goes inward across the lid. This lid's shape is independent of the wall notch settings.</p>
         <NotchFields size={well.node.insert?.lidNotchSize ?? LID_NOTCH_DEFAULT} plane="lid"
           onchange={(size) => { if (well.node.insert) well.node.insert.lidNotchSize = size; }} />
         {#each solvedLayer.issues.filter((i) => solved.trays.some((box) => box.wellId === well.id && box.id === i.trayId)) as issue, i (i)}
@@ -544,23 +511,18 @@
           >{cap(side)}</button>
         {/each}
       </div>
-      <p class="hint override-hint">Select notched sides to use this size and shape. Other sides use the project default.</p>
       <NotchFields {size} />
     {:else}
       <span class="hint"
-        >Size {mm(project.notch.width)} × {mm(project.notch.depth)} mm with a {project.notch.bottom ?? NOTCH_BOTTOM_DEFAULT}% flat bottom, the project default</span
+        >{mm(project.notch.width)} × {mm(project.notch.depth)} mm, {project.notch.bottom ?? NOTCH_BOTTOM_DEFAULT}% flat bottom (default)</span
       >
       <button
         class="small"
         onclick={() => (c.node.notchSize = { ...project.notch, sides: [...c.node.notches] })}
-        data-tip="Choose which notched sides use their own size and shape; they are drawn in a different colour">Override</button
+        data-tip="Use a different size on some sides">Override</button
       >
     {/if}
   </div>
-  <p class="hint">
-    The notch is cut into the wall or divider on that side, centred on this compartment: two straight slants down to a flat bottom. It goes through the board, so the compartment across a divider gets it too.
-    {#if c.node.insert}Notches here help lift the box out.{/if}
-  </p>
   {#each c.issues as issue, i (i)}
     <div class="issue {issue.level}">{issue.message}</div>
   {/each}
@@ -628,25 +590,21 @@
         max={95}
         step={5}
         decimals={0}
-        hint="How tall the selected lowered sides stand, as a share of this compartment's depth"
+        hint="Share of the compartment's depth"
         onchange={(v) => (own.percent = v)}
       />
       <p class="hint override-hint">
-        Selected sides stand {own.percent}% of the {mm(c.fullHeight)} mm depth, {mm(roundTo((own.percent / 100) * c.fullHeight, project.precision))} mm above the
-        floor. Other lowered sides use the project's {lowPct}%.
+        {mm(roundTo((own.percent / 100) * c.fullHeight, project.precision))} mm above the floor.
       </p>
     {:else}
-      <span class="hint">{lowPct}% of the {mm(c.fullHeight)} mm depth, {mm(lowTop)} mm above the floor: the project default, set under Construction</span>
+      <span class="hint">{lowPct}%, {mm(lowTop)} mm above the floor (default)</span>
       <button
         class="small"
         onclick={() => (c.node.lowerHeight = { percent: lowPct, sides: [...(c.node.lowered ?? [])] })}
-        data-tip="Give this compartment's lowered sides their own height; they are drawn in a different colour">Override</button
+        data-tip="Use a different height on some sides">Override</button
       >
     {/if}
   </div>
-  <p class="hint">
-    A lowered side is cut down along this compartment only, to reach in from that side. Lowered along its whole length, a piece is just cut from a narrower strip.
-  </p>
 </div>
 
 <style>
