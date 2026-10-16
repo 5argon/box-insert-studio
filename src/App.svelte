@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { migrateProject } from './core/defaults';
-  import { baseThickness, solveProject } from './core/layout';
+  import { layerBaseThickness, solveProject } from './core/layout';
   import { buildCutList, planCuts } from './core/pieces';
   import { designProblems } from './core/problems';
   import { buildScene } from './core/scene';
@@ -154,7 +154,7 @@
             <b>{layer.name}</b>
             <span class="hint">·</span>
           {/if}
-          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - baseThickness(studio.project)} mm tall</span>
+          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - layerBaseThickness(studio.project, layer)} mm tall</span>
         </div>
         <div class="canvas-wrap">
           <!-- A fixed 3/4 preview of the whole insert; loads three.js after the editor is up. -->

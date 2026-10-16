@@ -1,6 +1,6 @@
 import { newSection } from './defaults';
 import { roundTo } from './geom';
-import { baseThickness, solveProject, type Compartment } from './layout';
+import { baseThickness, layerBaseThickness, solveProject, type Compartment } from './layout';
 import type { Dir, Join, Layer, LayoutNode, Mm, Project, SectionNode, Side, SplitNode } from './types';
 
 export const MIN_REGION = 5;
@@ -342,7 +342,24 @@ export function splitJoin(project: Project, layer: Layer, sectionId: string): Jo
 /** Keep compartment depths when the material used for layer bases changes. */
 function adjustLayerBases(project: Project, before: Mm) {
   const delta = baseThickness(project) - before;
-  if (delta) for (const layer of project.layers) layer.height = Math.max(5, Math.round((layer.height + delta) * 100) / 100);
+  if (!delta) return;
+  for (const layer of project.layers) if (layerBaseThickness(project, layer)) layer.height = Math.max(5, Math.round((layer.height + delta) * 100) / 100);
+}
+
+/** Leave the base out from under the bottom layer, or put it back; its compartments keep their depth. */
+export function setNoBase(project: Project, on: boolean) {
+  const bottom = project.layers[0];
+  if (!bottom || !!project.noBase === on) return;
+  const delta = on ? -baseThickness(project) : baseThickness(project);
+  if (on) project.noBase = true;
+  else delete project.noBase;
+  bottom.height = Math.max(5, Math.round((bottom.height + delta) * 100) / 100);
+}
+
+/** Leave out every tray wall that meets the box, or build them again. */
+export function setNoOuterWalls(project: Project, on: boolean) {
+  if (on) project.noOuterWalls = true;
+  else delete project.noOuterWalls;
 }
 
 /** Configure the secondary thickness; removable-box heights continue to fit their wells. */

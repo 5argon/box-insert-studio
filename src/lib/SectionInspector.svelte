@@ -4,7 +4,7 @@
   import { mm } from '../core/geom';
   import { DEFAULT_ITEMS, fitItems } from '../core/items';
   import { hasLow, hasNotch, lowSharedWith, notchSharedWith, toggleLow, toggleNotch } from '../core/notches';
-  import { baseThickness, insertHeights, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, NOTCH_BOTTOM_DEFAULT, padLimit, usesLowOverride, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
+  import { insertHeights, layerBaseThickness, insertLidAllowance, insertLidThickness, LOWERED_DEFAULT, NOTCH_BOTTOM_DEFAULT, padLimit, usesLowOverride, usesNotchOverride, usesSharedLid, type Compartment, type Solved, type SolvedLayer } from '../core/layout';
   import { roundTo } from '../core/geom';
   import type { CutList } from '../core/pieces';
   import type { Dir, Layer, Project, Side, SplitNode } from '../core/types';
@@ -37,7 +37,7 @@
 
   const T = $derived(project.material.thickness);
   /** The layer's base, which can be thinner than everything else. */
-  const B = $derived(baseThickness(project));
+  const B = $derived(layerBaseThickness(project, layer));
   const tray = $derived(solved.trays.find((t) => t.id === c.trayId));
   /** The compartment a box stands in: this one if it holds a box, or the one around this box. */
   const well = $derived(c.wellId ? solved.compartments.find((x) => x.id === c.wellId) : c.node.insert ? c : undefined);
@@ -132,12 +132,14 @@
     const wellPad = well?.pad ? ` − ${mm(well.padHeight)} mm raised floor` : '';
     const pad = c.pad ? ` − ${c.pad} × ${mm(T)} mm raised floor` : '';
     const lid = boxLid ? pair ? ` − ${mm(lidAllowance)} mm share of the ${sharedLid ? 'shared' : 'top'} lid` : ` − ${mm(boxLid)} mm ${sharedLid ? 'shared lid' : 'lid'}` : '';
+    // A tray standing on the box floor has no floor of its own to take off.
+    const floor = (what: string) => (B ? ` − ${mm(B)} mm ${what}` : '');
     if (c.depth === 1 && c.stacked)
-      return `In each box: (${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm${lid} − ${mm(boxBase)} mm box floor${pad}`;
+      return `In each box: (${total}${floor('tray floor')}${wellPad}) ÷ 2 = ${mm(boxHeight)} mm${lid} − ${mm(boxBase)} mm box floor${pad}`;
     if (c.depth === 1 && emptyAbove)
-      return `(${total} − ${mm(B)} mm tray floor${wellPad}) ÷ 2 = ${mm(boxHeight)} mm box${lid} − ${mm(boxBase)} mm box floor${pad}; the half above stays empty`;
-    if (c.depth === 1) return `${total} − ${mm(B)} mm tray floor${wellPad}${lid} − ${mm(boxBase)} mm box floor${pad}`;
-    return `${total} − ${mm(B)} mm floor${pad}`;
+      return `(${total}${floor('tray floor')}${wellPad}) ÷ 2 = ${mm(boxHeight)} mm box${lid} − ${mm(boxBase)} mm box floor${pad}; the half above stays empty`;
+    if (c.depth === 1) return `${total}${floor('tray floor')}${wellPad}${lid} − ${mm(boxBase)} mm box floor${pad}`;
+    return `${total}${floor('floor')}${pad}`;
   });
   /** Sides whose divider stands lower than the walls, with how much lower. */
   const lowSides = $derived(
@@ -457,14 +459,16 @@
       <button
         class="small"
         class:on={notched}
-        disabled={blocked}
+        disabled={blocked || !p}
         onclick={() => toggleNotch(solved, c, side)}
-        data-tip={blocked
+        data-tip={!p
+          ? `No wall on the ${side}`
+          : blocked
           ? `The ${side} side is lowered; a side cannot have a notch too`
           : `Cut a finger notch into the ${p?.kind === 'divider' ? 'divider' : 'wall'} on the ${side} (piece #${p ? cut.groupOf.get(p.id)?.number : '?'})`}
       >
         {cap(side)}
-        <span class="piece-ref">#{p ? cut.groupOf.get(p.id)?.number : '?'}</span>
+        {#if p}<span class="piece-ref">#{cut.groupOf.get(p.id)?.number}</span>{/if}
       </button>
     {/each}
   </div>
@@ -538,14 +542,16 @@
       <button
         class="small"
         class:on={low}
-        disabled={blocked}
+        disabled={blocked || !p}
         onclick={() => toggleLow(solved, c, side)}
-        data-tip={blocked
+        data-tip={!p
+          ? `No wall on the ${side}`
+          : blocked
           ? `The ${side} side has a finger notch; a side cannot be lowered too`
           : `Cut the ${p?.kind === 'divider' ? 'divider' : 'wall'} on the ${side} down beside this compartment (piece #${p ? cut.groupOf.get(p.id)?.number : '?'})`}
       >
         {cap(side)}
-        <span class="piece-ref">#{p ? cut.groupOf.get(p.id)?.number : '?'}</span>
+        {#if p}<span class="piece-ref">#{cut.groupOf.get(p.id)?.number}</span>{/if}
       </button>
     {/each}
   </div>

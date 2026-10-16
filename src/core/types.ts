@@ -191,6 +191,13 @@ export interface Project {
   clearance: Mm;
   /** `under`: walls stand on the base. `inside`: walls wrap around the base. */
   base: 'under' | 'inside';
+  /** The bottom layer's trays have no base and stand on the box floor. */
+  noBase?: boolean;
+  /**
+   * Trays have no wall where they meet the box, e.g. to keep a clear box see-through: dividers run
+   * out to the box instead. Walls between neighbouring trays and removable boxes are unchanged.
+   */
+  noOuterWalls?: boolean;
   /** Cut every layer's tray bases from the secondary material when it is configured. */
   secondaryBase?: boolean;
   /** Which pair of outer walls runs the full length: `x` = back and front, `y` = left and right. */

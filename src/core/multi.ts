@@ -6,7 +6,7 @@
 import { DEFAULT_ITEMS } from './items';
 import { findSplit, insertHost, setCompartmentSize, setDividerSecondary, setEmptyAbove, setInsertLid, setPad, setStacked } from './edit';
 import { hasLow, hasNotch, toggleLow, toggleNotch } from './notches';
-import { baseThickness, insertHeights, padLimit, type Compartment, type Solved, type SolvedLayer } from './layout';
+import { insertHeights, layerBaseThickness, padLimit, type Compartment, type Solved, type SolvedLayer } from './layout';
 import type { Dir, ItemSpec, Layer, Mm, Project, Side } from './types';
 
 /** A field whose selected things disagree. */
@@ -109,7 +109,7 @@ export function setDividersSecondary(layer: Layer, picks: DividerPick[], seconda
 export function maxDividerLower(project: Project, layer: Layer, solvedLayer: SolvedLayer, splitId: string): Mm {
   const host = insertHost(layer.root, splitId);
   const well = host ? solvedLayer.compartments.find((c) => c.id === host.id) : undefined;
-  const depth = host && well ? insertHeights(project, host, well.fullHeight, well.padHeight).inside : layer.height - baseThickness(project);
+  const depth = host && well ? insertHeights(project, host, well.fullHeight, well.padHeight).inside : layer.height - layerBaseThickness(project, layer);
   return Math.max(0, depth - 5);
 }
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SECONDARY_THICKNESS_PRESETS, THICKNESS_PRESETS, layerColor, newLayer } from '../core/defaults';
-  import { setLayerBaseSecondary, setSecondaryThickness, setConstruction } from '../core/edit';
+  import { setLayerBaseSecondary, setSecondaryThickness, setConstruction, setNoBase, setNoOuterWalls } from '../core/edit';
   import { mm } from '../core/geom';
   import { baseThickness, LOWERED_DEFAULT, type Solved } from '../core/layout';
   import type { Project } from '../core/types';
@@ -17,6 +17,9 @@
   const separate = $derived(project.construction === 'separate');
   const B = $derived(baseThickness(project));
   const secondary = $derived(project.material.secondaryThickness !== undefined);
+  /** Whether any tray has a base at all, to offer the choices about bases only then. */
+  const anyBase = $derived(!project.noBase || project.layers.length > 1);
+  const anyWall = $derived(solved.pieces.some((p) => p.kind === 'wall'));
   /** Starting value: the thickest preset thinner than the walls. */
   const thinner = $derived(SECONDARY_THICKNESS_PRESETS.filter((t) => t < T).pop() ?? T);
   let readme: ReadmeDialog | undefined = $state();
@@ -125,7 +128,7 @@
       hint="Height of the tray from the bottom of its base to the top of its walls"
       onchange={(v) => (only.height = v)}
     />
-    <p class="hint">Includes the {mm(B)} mm base.</p>
+    {#if !project.noBase}<p class="hint">Includes the {mm(B)} mm base.</p>{/if}
   {:else}
     {#each project.layers as layer, i (layer.id)}
       {@const current = layer.id === studio.layerId}
@@ -149,9 +152,9 @@
         <button class="small" onclick={(e) => (e.stopPropagation(), removeLayer(layer.id))} aria-label="Remove {layer.name}" data-tip="Remove this layer">✕</button>
       </div>
     {/each}
-    <p class="hint">Heights include each layer's {mm(B)} mm base.</p>
+    <p class="hint">Heights include each layer's {mm(B)} mm base{project.noBase ? ', except the bottom one' : ''}.</p>
   {/if}
-  {#if secondary}
+  {#if secondary && anyBase}
     <label class="check layer-base" data-tip="Cut every layer's base from the secondary material">
       <input type="checkbox" checked={!!project.secondaryBase} onchange={(e) => setLayerBaseSecondary(project, e.currentTarget.checked)} />
       Use secondary material for bases
@@ -181,20 +184,32 @@
       >
     </div>
   </div>
-  <div class="choice">
-    <span>Base</span>
-    <div class="row">
-      <button class="small" class:on={project.base === 'under'} onclick={() => (project.base = 'under')}>Walls on base</button>
-      <button class="small" class:on={project.base === 'inside'} onclick={() => (project.base = 'inside')}>Base inside walls</button>
+  <label class="check option" data-tip={project.layers.length > 1 ? 'The bottom layer stands on the floor of the box' : 'The tray stands on the floor of the box'}>
+    <input type="checkbox" checked={!!project.noBase} onchange={(e) => setNoBase(project, e.currentTarget.checked)} />
+    No base
+  </label>
+  <label class="check option" data-tip="Dividers run out to the sides of the box">
+    <input type="checkbox" checked={!!project.noOuterWalls} onchange={(e) => setNoOuterWalls(project, e.currentTarget.checked)} />
+    No outer walls
+  </label>
+  {#if anyBase && anyWall}
+    <div class="choice">
+      <span>Base</span>
+      <div class="row">
+        <button class="small" class:on={project.base === 'under'} onclick={() => (project.base = 'under')}>Walls on base</button>
+        <button class="small" class:on={project.base === 'inside'} onclick={() => (project.base = 'inside')}>Base inside walls</button>
+      </div>
     </div>
-  </div>
-  <div class="choice">
-    <span>Full-length walls</span>
-    <div class="row">
-      <button class="small" class:on={project.fullWalls === 'x'} onclick={() => (project.fullWalls = 'x')}>Back &amp; front</button>
-      <button class="small" class:on={project.fullWalls === 'y'} onclick={() => (project.fullWalls = 'y')}>Left &amp; right</button>
+  {/if}
+  {#if anyWall}
+    <div class="choice">
+      <span>Full-length walls</span>
+      <div class="row">
+        <button class="small" class:on={project.fullWalls === 'x'} onclick={() => (project.fullWalls = 'x')}>Back &amp; front</button>
+        <button class="small" class:on={project.fullWalls === 'y'} onclick={() => (project.fullWalls = 'y')}>Left &amp; right</button>
+      </div>
     </div>
-  </div>
+  {/if}
   <h2 class="sub">Finger notch</h2>
   <NotchFields size={project.notch} />
   <h2 class="sub">Lowered sides</h2>
@@ -251,6 +266,12 @@
   }
   .thick {
     width: 56px;
+  }
+  .option {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin: 6px 0;
   }
   .layer-base {
     display: flex;

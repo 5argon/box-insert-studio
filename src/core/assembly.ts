@@ -1,7 +1,7 @@
 import { mm } from './geom';
 import type { PieceInst, Solved, Tray } from './layout';
 import { materialLabel, twoMaterials, type CutList } from './pieces';
-import type { MaterialKind, Mm, Project } from './types';
+import type { MaterialKind, Mm, Project, Side } from './types';
 
 /** A detail of a step that is easy to miss, shown with a bold label in the diagram's colour. */
 export interface StepNote {
@@ -19,8 +19,11 @@ export interface Step {
   groups: number[];
   /** Ids of the pieces this step puts in place, to point them out on the tray's diagram. */
   pieces: string[];
-  /** Where a divider goes: how far it stands from the inner face of the wall it is nearer to. */
-  measure?: { wall: 'left' | 'right' | 'back' | 'front'; distance: Mm };
+  /**
+   * Where a divider goes: how far it stands from the nearer side of its tray. `from` names what it
+   * is measured from, as the text says it, and `edge` is where that is in the box.
+   */
+  measure?: { wall: Side; distance: Mm; from: string; edge: Mm };
   notes: StepNote[];
 }
 
@@ -31,6 +34,7 @@ function list(labels: string[]): string {
 
 function refs(pieces: PieceInst[], cut: CutList): string {
   const nums = pieces.map((p) => cut.groupOf.get(p.id)!.number);
+  if (nums.length === 1) return `#${nums[0]}`;
   return nums.every((n) => n === nums[0]) ? `#${nums[0]} ×${nums.length}` : nums.map((n) => `#${n}`).join(' and ');
 }
 
@@ -87,7 +91,10 @@ function pieceNotes(p: PieceInst, who = ''): StepNote[] {
   return notes;
 }
 
-/** Glue order for one tray: base, full-length walls, short walls, then dividers from the outside in. */
+/**
+ * Glue order for one tray: base, full-length walls, short walls, then dividers from the outside in.
+ * A tray without a base is built from its walls, or from its dividers standing in the box.
+ */
 export function trayInstructions(project: Project, solved: Solved, cut: CutList, tray: Tray): Step[] {
   const pieces = trayAssemblyPieces(solved, tray);
   const num = (p: PieceInst) => cut.groupOf.get(p.id)!.number;
@@ -95,44 +102,64 @@ export function trayInstructions(project: Project, solved: Solved, cut: CutList,
   /** Which material a piece is from, said only when the design has two to choose between. */
   const of = (p: PieceInst, how: string, after = '') => (twoMaterials(project) ? `, ${how} ${materialLabel(p.material, p.thickness).toLowerCase()}${after}` : '');
 
-  const base = pieces.find((p) => p.kind === 'base')!;
-  steps.push({ text: `Start with base #${num(base)}${of(base, 'cut from')}.`, material: base.material, groups: [num(base)], pieces: [base.id], notes: [] });
-
+  const base = pieces.find((p) => p.kind === 'base');
   const walls = pieces.filter((p) => p.kind === 'wall');
-  const wallNotes = (ws: PieceInst[]) => ws.flatMap((p) => pieceNotes(p, `${cap(p.role)} #${num(p)}`));
-  const full = walls.slice(0, 2);
-  const short = walls.slice(2);
-  const fullNames = project.fullWalls === 'x' ? 'back and front' : 'left and right';
-  const shortNames = project.fullWalls === 'x' ? 'left and right' : 'back and front';
-  const where = project.base === 'under' ? 'on top of the base, flush with its edges' : 'around the edges of the base';
-  steps.push({
-    text: `Glue the ${fullNames} walls ${wallRefs(full, cut)} ${where}.`,
-    groups: full.map(num),
-    pieces: full.map((p) => p.id),
-    notes: wallNotes(full),
-  });
-  steps.push({
-    text: `Glue the ${shortNames} walls ${wallRefs(short, cut)} between them.`,
-    groups: short.map(num),
-    pieces: short.map((p) => p.id),
-    notes: wallNotes(short),
-  });
+  const dividers = pieces.filter((p) => p.kind === 'divider');
+  const open = new Set(tray.open ?? []);
+  if (base) {
+    steps.push({ text: `Start with base #${num(base)}${of(base, 'cut from')}.`, material: base.material, groups: [num(base)], pieces: [base.id], notes: [] });
+  } else if (walls.length) {
+    steps.push({ strong: 'This tray has no base.', text: 'Build it on a flat surface; it stands on the floor of the box.', groups: [], pieces: [], notes: [] });
+  } else if (dividers.length) {
+    steps.push({ strong: 'This tray has no base or walls.', text: 'Build it standing in the box: the box holds the dividers in place.', groups: [], pieces: [], notes: [] });
+  }
 
-  for (const d of pieces.filter((p) => p.kind === 'divider')) {
+  const sideOf = (p: PieceInst) => p.role.split(' ')[0] as Side;
+  const names = (ws: PieceInst[]) => `${ws.map(sideOf).join(' and ')} wall${ws.length > 1 ? 's' : ''}`;
+  const wallNotes = (ws: PieceInst[]) => ws.flatMap((p) => pieceNotes(p, `${cap(p.role)} #${num(p)}`));
+  // Walls come full-length ones first; either pair can be missing a side, or all of it.
+  const fullSides: Side[] = project.fullWalls === 'x' ? ['back', 'front'] : ['left', 'right'];
+  const full = walls.filter((p) => fullSides.includes(sideOf(p)));
+  const short = walls.filter((p) => !fullSides.includes(sideOf(p)));
+  const edges = (n: number) => (n > 1 ? 'its edges' : 'its edge');
+  const first = (n: number) =>
+    !base ? (n > 1 ? 'upright, facing each other' : 'upright') : project.base === 'under' ? `on top of the base, flush with ${edges(n)}` : `around the ${n > 1 ? 'edges' : 'edge'} of the base`;
+  for (const [ws, i] of [[full, 0], [short, 1]] as const) {
+    if (!ws.length) continue;
+    const verb = base ? 'Glue' : i === 0 || !full.length ? 'Stand' : 'Glue';
+    // With one full-length wall, the short walls go on its ends.
+    const ends = ws.length > 1 ? 'to its ends' : `to its ${sideOf(ws[0]!)} end`;
+    const where = i === 1 && full.length ? (full.length > 1 ? 'between them' : ends) : first(ws.length);
+    steps.push({ text: `${verb} the ${names(ws)} ${wallRefs(ws, cut)} ${where}.`, groups: ws.map(num), pieces: ws.map((p) => p.id), notes: wallNotes(ws) });
+  }
+
+  for (const d of dividers) {
     const vertical = d.axis === 'y';
-    // Measured from the nearer of the two walls it stands between: a shorter distance to mark.
+    // Measured from the nearer of the two sides it stands between: a shorter distance to mark.
     const before = vertical ? d.footprint.x - tray.inner.x : d.footprint.y - tray.inner.y;
     const after = vertical ? tray.inner.x + tray.inner.w - (d.footprint.x + d.footprint.w) : tray.inner.y + tray.inner.h - (d.footprint.y + d.footprint.h);
-    const near = before <= after + 1e-6;
-    const offset = near ? before : after;
-    const wall = vertical ? (near ? 'left' : 'right') : near ? 'back' : 'front';
+    const sides: [Side, Side] = vertical ? ['left', 'right'] : ['back', 'front'];
+    // A tray built on the bench without a base is measured from a wall where it has one.
+    const prefer = !base && walls.length ? sides.filter((side) => !open.has(side)) : [];
+    const near = prefer.length === 1 ? prefer[0] === sides[0] : before <= after + 1e-6;
+    const wall = near ? sides[0] : sides[1];
+    const innerEdge = vertical ? (near ? tray.inner.x : tray.inner.x + tray.inner.w) : near ? tray.inner.y : tray.inner.y + tray.inner.h;
+    // An open side is the base's edge, or with no base the box itself, half the clearance further out.
+    const toBox = open.has(wall) && !base ? project.clearance / 2 : 0;
+    const offset = (near ? before : after) + toBox;
+    const edge = innerEdge + (wall === 'left' || wall === 'back' ? -toBox : toBox);
+    const from = !open.has(wall) ? `from the ${wall} wall` : base ? `from the ${wall} edge of the base` : `from the ${wall} side of the box`;
+    // With no base, a divider meeting nothing but the box at both ends is stood there, not glued.
+    const ends: [Side, Mm][] = vertical ? [['back', d.start], ['front', d.start + d.length]] : [['left', d.start], ['right', d.start + d.length]];
+    const atEdge = (side: Side, at: Mm) => open.has(side) && Math.abs(at - (side === 'back' ? tray.inner.y : side === 'front' ? tray.inner.y + tray.inner.h : side === 'left' ? tray.inner.x : tray.inner.x + tray.inner.w)) < 1e-6;
+    const loose = !base && ends.every(([side, at]) => atEdge(side, at));
     const between = d.sides ? ` between ${list(d.sides[0])} and ${list(d.sides[1])}` : '';
     steps.push({
-      text: `Glue divider #${num(d)}${notched(d, cut)}${between}, ${mm(offset)} mm from the ${wall} wall${of(d, 'using')}.`,
+      text: `${loose ? 'Stand' : 'Glue'} divider #${num(d)}${notched(d, cut)}${between}, ${mm(offset)} mm ${from}${of(d, 'using')}.`,
       material: d.material,
       groups: [num(d)],
       pieces: [d.id],
-      measure: { wall, distance: offset },
+      measure: { wall, distance: offset, from, edge },
       notes: pieceNotes(d),
     });
   }

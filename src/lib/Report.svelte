@@ -228,11 +228,12 @@
     const across = measure.wall === 'left' || measure.wall === 'right';
     const mid = across ? p.footprint.y + p.footprint.h / 2 : p.footprint.x + p.footprint.w / 2;
     const f = p.footprint;
+    const e = measure.edge;
     const ends: Record<typeof measure.wall, [Point, Point]> = {
-      left: [[t.inner.x, mid], [f.x, mid]],
-      right: [[t.inner.x + t.inner.w, mid], [f.x + f.w, mid]],
-      back: [[mid, t.inner.y], [mid, f.y]],
-      front: [[mid, t.inner.y + t.inner.h], [mid, f.y + f.h]],
+      left: [[e, mid], [f.x, mid]],
+      right: [[e, mid], [f.x + f.w, mid]],
+      back: [[mid, e], [mid, f.y]],
+      front: [[mid, e], [mid, f.y + f.h]],
     };
     const [a, b] = ends[measure.wall];
     const text = `${mm(measure.distance)} mm`;
@@ -282,7 +283,7 @@
 
 <!-- An assembly step: point at it to see its pieces on the diagram; the wall a distance is from in bold. -->
 {#snippet assemblyStep(diagram: string, step: Step, lead: boolean)}
-  {@const from = step.measure ? `from the ${step.measure.wall} wall` : undefined}
+  {@const from = step.measure?.from}
   {#snippet words()}{#if from}{#each step.text.split(from) as bit, i (i)}{#if i}<b>{from}</b>{/if}{@render refs(bit)}{/each}{:else}{@render refs(step.text)}{/if}{/snippet}
   {#snippet sentence()}{#if step.strong}<b class="strong">{@render refs(step.strong)}</b>{' '}{/if}{#if lead || step.material === 'secondary'}<b class:secondary-material={step.material === 'secondary'}>{@render words()}</b>{:else}{@render words()}{/if}{/snippet}
   {#if step.pieces.length}<span class="cut-step" role="presentation" onmouseenter={() => (pointedStep = { diagram, step })} onmouseleave={() => (pointedStep = undefined)}>{@render sentence()}</span>{:else}{@render sentence()}{/if}

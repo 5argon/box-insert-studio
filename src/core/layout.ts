@@ -102,8 +102,10 @@ export interface Tray {
   /** Total height including the base and any lid. */
   height: Mm;
   wallHeight: Mm;
-  /** Thickness of its base. */
+  /** Thickness of its base, or zero for a tray standing on the box floor. */
   base: Mm;
+  /** Sides with no wall, where the tray meets the box. */
+  open?: Side[];
   /** Thickness of its own lid, or zero for an open box or a box beneath a shared lid. */
   lid: Mm;
   /** For a box inside a compartment: that compartment's id and the tray it sits in. */
@@ -208,6 +210,19 @@ export const MIN_BOX_INSIDE = 5;
 /** Thickness of the base under each layer's trays. */
 export function baseThickness(project: Project): Mm {
   return materialThickness(project, project.secondaryBase);
+}
+
+/** Thickness of the base under this layer's trays: none under the bottom layer without bases. */
+export function layerBaseThickness(project: Project, layer: Layer): Mm {
+  return project.noBase && project.layers[0]?.id === layer.id ? 0 : baseThickness(project);
+}
+
+/** Whether a cell of the box's floor plan reaches the box on this side. */
+function atBox(project: Project, cell: Rect, side: Side): boolean {
+  if (side === 'left') return cell.x <= 1e-6;
+  if (side === 'back') return cell.y <= 1e-6;
+  if (side === 'right') return cell.x + cell.w >= project.box.width - 1e-6;
+  return cell.y + cell.h >= project.box.depth - 1e-6;
 }
 
 /**
@@ -352,7 +367,7 @@ type PieceInput = Omit<PieceInst, 'id' | 'order' | 'layerId' | 'trayId' | 'thick
 function solveLayer(project: Project, layer: Layer): SolvedLayer {
   const T = project.material.thickness;
   const c = project.clearance;
-  const B = baseThickness(project);
+  const B = layerBaseThickness(project, layer);
   const wallHeight = project.base === 'under' ? layer.height - B : layer.height;
   const trays: Tray[] = [];
   const raw: RawCompartment[] = [];
@@ -396,7 +411,15 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
 
   function makeTray(node: LayoutNode, cell: Rect, ctx: TrayCtx) {
     const outer = inset(cell, c / 2);
-    const inner = inset(outer, T);
+    // Without outer walls, a tray's sides against the box stay open and its dividers run out to them.
+    const open = new Set(ctx.depth === 0 && project.noOuterWalls ? SIDES.filter((side) => atBox(project, cell, side)) : []);
+    const wallT = (side: Side) => (open.has(side) ? 0 : T);
+    const inner: Rect = {
+      x: outer.x + wallT('left'),
+      y: outer.y + wallT('back'),
+      w: outer.w - wallT('left') - wallT('right'),
+      h: outer.h - wallT('back') - wallT('front'),
+    };
     const lid = ctx.lid ?? 0;
     const bodyHeight = ctx.height - lid;
     const trayWall = project.base === 'under' ? bodyHeight - ctx.base : bodyHeight;
@@ -411,6 +434,7 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       height: ctx.height,
       wallHeight: trayWall,
       base: ctx.base,
+      ...(open.size ? { open: SIDES.filter((side) => open.has(side)) } : {}),
       lid,
       wellId: ctx.wellId,
       parentTrayId: ctx.parentTrayId,
@@ -420,6 +444,9 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     };
     trays.push(tray);
     if ((inner.w <= 0 || inner.h <= 0) && !ctx.copy) issues.push({ level: 'error', message: 'A tray is too small to hold anything.' });
+    if (!ctx.base && open.size === 4 && node.kind === 'section' && !ctx.copy) {
+      issues.push({ level: 'warn', message: 'With no base and no outer walls, a tray without dividers has nothing to build.', trayId: tray.id });
+    }
     let order = 0;
     const add = (p: PieceInput): PieceInst => {
       const material = p.material ?? materialFor(project, p.kind === 'base' && ctx.secondaryBase);
@@ -430,19 +457,24 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       return piece;
     };
 
-    const b = project.base === 'under' ? outer : inner;
-    add({ kind: 'base', role: 'base', length: b.w, height: b.h, footprint: b, axis: 'x', start: b.x });
+    if (ctx.base > 0) {
+      const b = project.base === 'under' ? outer : inner;
+      add({ kind: 'base', role: 'base', length: b.w, height: b.h, footprint: b, axis: 'x', start: b.x });
+    }
 
+    // Short walls fit between the full-length ones, or run to the tray's edge where one is left out.
     const fullX = project.fullWalls === 'x';
     const walls: Record<Side, Rect> = {
-      back: fullX ? { x: outer.x, y: outer.y, w: outer.w, h: T } : { x: outer.x + T, y: outer.y, w: outer.w - 2 * T, h: T },
-      front: fullX ? { x: outer.x, y: outer.y + outer.h - T, w: outer.w, h: T } : { x: outer.x + T, y: outer.y + outer.h - T, w: outer.w - 2 * T, h: T },
-      left: fullX ? { x: outer.x, y: outer.y + T, w: T, h: outer.h - 2 * T } : { x: outer.x, y: outer.y, w: T, h: outer.h },
-      right: fullX ? { x: outer.x + outer.w - T, y: outer.y + T, w: T, h: outer.h - 2 * T } : { x: outer.x + outer.w - T, y: outer.y, w: T, h: outer.h },
+      back: fullX ? { x: outer.x, y: outer.y, w: outer.w, h: T } : { x: inner.x, y: outer.y, w: inner.w, h: T },
+      front: fullX ? { x: outer.x, y: outer.y + outer.h - T, w: outer.w, h: T } : { x: inner.x, y: outer.y + outer.h - T, w: inner.w, h: T },
+      left: fullX ? { x: outer.x, y: inner.y, w: T, h: inner.h } : { x: outer.x, y: outer.y, w: T, h: outer.h },
+      right: fullX ? { x: outer.x + outer.w - T, y: inner.y, w: T, h: inner.h } : { x: outer.x + outer.w - T, y: outer.y, w: T, h: outer.h },
     };
     const wallOrder: Side[] = fullX ? ['back', 'front', 'left', 'right'] : ['left', 'right', 'back', 'front'];
-    const bounds = {} as Record<Side, string>;
+    // An open side has no piece: nothing there to notch or lower.
+    const bounds: Record<Side, string> = { back: '', front: '', left: '', right: '' };
     for (const side of wallOrder) {
+      if (open.has(side)) continue;
       const fp = walls[side];
       const alongX = side === 'back' || side === 'front';
       bounds[side] = add({
@@ -860,7 +892,7 @@ export function solveProject(project: Project): Solved {
       const pair = boxes === 2 && !c.node.insert?.emptyAbove;
       if (boxes && insertHeights(project, c.node, c.fullHeight, 0).inside < MIN_BOX_INSIDE) {
         // Each box needs its floor, any lid and MIN_BOX_INSIDE; stacked boxes need that twice.
-        const need = boxes * (boxBase + boxLid + MIN_BOX_INSIDE) + baseThickness(project);
+        const need = boxes * (boxBase + boxLid + MIN_BOX_INSIDE) + layerBaseThickness(project, sl.layer);
         c.issues.push({
           level: 'error',
           message: `Too shallow for ${pair ? 'two stacked boxes' : boxes === 2 ? 'a half-height box' : 'a box'}: the layer needs to be at least ${need} mm tall${boxes === 2 ? ', or use one full-height box' : ''}.`,

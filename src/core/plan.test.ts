@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { defaultCutSetup, migrateProject, SHEET_PRESETS } from './defaults';
-import { setConstruction, setInsert, setInsertBaseSecondary, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked } from './edit';
+import { setConstruction, setInsert, setNoBase, setNoOuterWalls, setInsertBaseSecondary, setInsertLid, setInsertSharedLid, setJoin, setLayerBaseSecondary, setPad, setSecondaryThickness, setStacked } from './edit';
 import { blankProject, doomExample, testSetup } from './fixtures';
 import { roundTo, type Rect } from './geom';
 import { solveProject } from './layout';
@@ -154,6 +154,18 @@ const designs: [string, () => Planned][] = [
   ['separate trays', () => {
     const p = doomExample();
     setConstruction(p, 'separate');
+    return on(p);
+  }],
+  ['no base and no outer walls', () => {
+    const p = doomExample();
+    setNoBase(p, true);
+    setNoOuterWalls(p, true);
+    return on(p);
+  }],
+  ['separate trays without outer walls', () => {
+    const p = withStackedBoxes();
+    setConstruction(p, 'separate');
+    setNoOuterWalls(p, true);
     return on(p);
   }],
   ['secondary bases and shared lids over stacked boxes', () => on(withStackedBoxes())],
