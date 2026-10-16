@@ -161,7 +161,7 @@
       let cursor = row ? sp.rect.x : sp.rect.y;
       const spans = sp.childSizes.map((size, i) => {
         const from = trays ? cursor + c / 2 : cursor;
-        cursor += trays ? size + c : size + dividerThickness(project, sp.node, i);
+        cursor += trays ? size + c / 2 : size + dividerThickness(project, sp.node, i);
         return { from, to: from + size, label: mm(size) };
       });
       return row ? { x: spans, y: [] } : { x: [], y: spans };

@@ -167,7 +167,7 @@ describe('foam solver', () => {
     expect(s.pieces.find((x) => x.role === 'back wall')!.length).toBe(275);
   });
 
-  it('makes separate trays with their own walls and a clearance gap', () => {
+  it('makes separate trays with their own walls and a gap of half the clearance', () => {
     const p = doomExample();
     const layer = newLayer('Trays', 40);
     p.layers = [layer];
@@ -176,9 +176,11 @@ describe('foam solver', () => {
     expect(setJoin(layer, layer.root, 'trays', 5)).toBe(true);
     const s = solveProject(p);
     expect(s.trays).toHaveLength(2);
-    expect(s.trays[0].outer.w).toBeCloseTo(142, 6);
-    expect(s.trays[1].outer.x - (s.trays[0].outer.x + s.trays[0].outer.w)).toBeCloseTo(p.clearance, 6);
-    expect(summary(p, 0)).toEqual(['2× 285x142', '4× 275x35', '4× 142x35']);
+    // Half the clearance at each side of the box and between the trays.
+    expect(s.trays[0].outer.w).toBeCloseTo((p.box.width - 1.5 * p.clearance) / 2, 6);
+    expect(s.trays[0].outer.x).toBeCloseTo(p.clearance / 2, 6);
+    expect(s.trays[1].outer.x - (s.trays[0].outer.x + s.trays[0].outer.w)).toBeCloseTo(p.clearance / 2, 6);
+    expect(summary(p, 0)).toEqual(['2× 285x142.5', '4× 275x35', '4× 142.5x35']);
   });
 
   it('only allows separate trays where every enclosing split is separate trays', () => {
@@ -518,7 +520,7 @@ describe('boxes inside compartments', () => {
     const boxes = s.trays.filter((t) => t.wellId === g.id);
     expect(boxes).toHaveLength(2);
     expect(s.pieces.filter((x) => boxes.some((b) => b.id === x.trayId) && x.kind === 'divider')).toHaveLength(0);
-    expect(boxes[1].outer.x - (boxes[0].outer.x + boxes[0].outer.w)).toBeCloseTo(p.clearance, 6);
+    expect(boxes[1].outer.x - (boxes[0].outer.x + boxes[0].outer.w)).toBeCloseTo(p.clearance / 2, 6);
   });
 
   it('allows only one level of boxes and removes the box with its last compartment', () => {

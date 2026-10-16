@@ -380,7 +380,9 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
     if (node.kind === 'split' && node.join === 'trays') {
       const horizontal = node.dir === 'row';
       const n = node.children.length;
-      const { sizes, issue } = allocate((horizontal ? cell.w : cell.h) - n * c, node.children.map((ch) => ch.size));
+      // One half-clearance gap at each end and between neighbours: every tray keeps half the
+      // clearance on each side, and neighbours share theirs. Their cells overlap by that much.
+      const { sizes, issue } = allocate((horizontal ? cell.w : cell.h) - ((n + 1) * c) / 2, node.children.map((ch) => ch.size));
       if (!ctx.copy) {
         if (issue) issues.push({ level: 'error', message: issue });
         splits.push({ id: node.id, node, rect: cell, childSizes: sizes });
@@ -389,15 +391,15 @@ function solveLayer(project: Project, layer: Layer): SolvedLayer {
       node.children.forEach((ch, i) => {
         const size = sizes[i] + c;
         const r: Rect = horizontal ? { x: cursor, y: cell.y, w: size, h: cell.h } : { x: cell.x, y: cursor, w: cell.w, h: size };
-        cursor += size;
+        cursor += size - c / 2;
         if (i < n - 1 && !ctx.copy) {
           bars.push({
             splitId: node.id,
             index: i,
             dir: node.dir,
             join: 'trays',
-            pos: cursor,
-            thickness: c,
+            pos: cursor + c / 4,
+            thickness: c / 2,
             from: horizontal ? cell.y : cell.x,
             to: horizontal ? cell.y + cell.h : cell.x + cell.w,
           });

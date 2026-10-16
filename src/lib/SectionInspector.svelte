@@ -91,12 +91,12 @@
   const splitsTrays = $derived(splitJoin(project, layer, c.id) === 'trays');
 
   function split(dir: Dir) {
-    const id = splitsTrays ? splitSection(layer, c.id, dir, project.clearance, 'trays') : splitSection(layer, c.id, dir, T);
+    const id = splitsTrays ? splitSection(layer, c.id, dir, project.clearance / 2, 'trays') : splitSection(layer, c.id, dir, T);
     if (id) onselect({ kind: 'section', id });
   }
 
   function addBeside() {
-    const id = addSibling(layer, c.id, project.clearance);
+    const id = addSibling(layer, c.id, parent?.split.join === 'trays' ? project.clearance / 2 : T);
     if (id) onselect({ kind: 'section', id });
   }
 

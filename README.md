@@ -80,7 +80,7 @@ Finally the assembly. The steps should tell you exactly how many millimeters fro
 ## Feature Overview
 
 - Use a thinner secondary material for the bases (the bottom piece of each tray) to increase headroom. The secondary material can also be used for lids, bases of removable boxes and individual dividers, and can have its own sheet size.
-- Can choose between each layer being one glued tray of several compartments, or separate trays where every compartment is its own tray with the clearance between them.
+- Can choose between each layer being one glued tray of several compartments, or separate trays where every compartment is its own tray, with a gap of half the clearance between neighbours.
 - No base: the bottom layer stands on the floor of the box, saving material and giving back the base's height as headroom. The assembly then starts from the walls instead of the base.
 - No outer walls: trays have no wall where they meet the box, and the dividers run out to the box's sides instead, for a clear box you still want to see through. Combined with no base, the bottom layer is only dividers glued to each other, standing in the box.
 - Mark a compartment's width or depth as Locked or Flex, whether it will receive changes when other nearby compartment changes in size or not.

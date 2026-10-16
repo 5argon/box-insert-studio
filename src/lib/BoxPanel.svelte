@@ -74,7 +74,7 @@
     value={project.clearance}
     min={0}
     step={0.5}
-    hint="Total gap between a tray and the box or its neighbours"
+    hint="Room for a tray to drop in, half on each side"
     onchange={(v) => (project.clearance = v)}
   />
 </div>

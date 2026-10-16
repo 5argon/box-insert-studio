@@ -187,7 +187,10 @@ export interface Project {
   };
   /** Piece sizes are rounded to this step, so near-identical pieces become one cut size. */
   precision: Mm;
-  /** Total gap between a tray and its neighbours or the box. */
+  /**
+   * Room a tray has to drop in: half of it on each side. Neighbouring trays share the half between
+   * them, so every gap is half this.
+   */
   clearance: Mm;
   /** `under`: walls stand on the base. `inside`: walls wrap around the base. */
   base: 'under' | 'inside';
