@@ -123,6 +123,9 @@
     return Math.min((px * (sheetWidth + 4)) / 200, h * 0.7, w / (0.75 * text.length));
   }
 
+  /** Height of the small sheets on the packing choices, in pixels. */
+  const THUMB = 56;
+
   /** Assembly diagrams are drawn 240 px wide, and no taller than this: a long box is scaled down to fit. */
   const DIAGRAM_MAX_HEIGHT = 320;
   /** One screen pixel on a tray's diagram, in millimetres. */
@@ -292,6 +295,28 @@
   {/each}
 {/snippet}
 
+<!-- Every sheet of a plan, small, to compare packing choices by eye; the picked cut size stands out. -->
+{#snippet sheetThumbs(alt: CutPlan)}
+  <span class="thumbs" aria-hidden="true">
+    {#each alt.sheets as sheet (sheet.index)}
+      {@const W = sheet.sheet.width}
+      {@const H = sheet.sheet.height}
+      <svg viewBox="0 0 {W} {H}" class="thumb" style:width="{(THUMB * W) / H}px" style:height="{THUMB}px">
+        <rect width={W} height={H} class="thumb-paper" />
+        {#each sheet.items as item, i (i)}
+          {#if item.kind === 'base'}
+            <rect x={item.x} y={item.y} width={item.w} height={item.h} class="thumb-piece" class:secondary={sheet.material === 'secondary'} class:picked={highlight.picked === item.group?.number} />
+          {:else}
+            {#each segments(item) as seg, j (j)}
+              <rect x={seg.x} y={seg.y} width={seg.w} height={seg.h} class="thumb-piece" class:secondary={sheet.material === 'secondary'} class:picked={highlight.picked === seg.group} />
+            {/each}
+          {/if}
+        {/each}
+      </svg>
+    {/each}
+  </span>
+{/snippet}
+
 {#snippet stepLine(sheet: number, parts: StepPart[])}
   {#each parts as part, i (i)}{#if part.cuts}<span class="cut-step" role="presentation" onmouseenter={() => (pointed = { sheet, part })} onmouseleave={() => (pointed = undefined)}>{@render refs(part.text)}</span>{:else}{@render refs(part.text)}{/if}{/each}
 {/snippet}
@@ -409,6 +434,7 @@
             <button class="packing" class:on={packing.value === l.value} aria-pressed={packing.value === l.value} onclick={() => setPacking(packing.material, l.value)}>
               <b>{l.name}</b>
               <span>{sheetSummary(alt)}, {Math.round(alt.efficiency * 100)}% used</span>
+              {@render sheetThumbs(alt)}
             </button>
           {/each}
         </div>
@@ -423,6 +449,7 @@
             <button class="packing" class:on={along === a.value} aria-pressed={along === a.value} onclick={() => (setup.cutAlong = a.value)}>
               <b>{a.name}</b>
               <span>{sheetSummary(a.plan)}, {Math.round(a.plan.efficiency * 100)}% used</span>
+              {@render sheetThumbs(a.plan)}
             </button>
           {/each}
         </div>
@@ -1231,6 +1258,36 @@
   .packing span {
     font-size: 11.5px;
     color: var(--muted);
+  }
+  .packing .thumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+  }
+  .thumb {
+    display: block;
+  }
+  .thumb-paper,
+  .thumb-piece {
+    vector-effect: non-scaling-stroke;
+  }
+  .thumb-paper {
+    fill: #f7f5f0;
+    stroke: #8a8378;
+    stroke-width: 1px;
+  }
+  .thumb-piece {
+    fill: #d9d2c3;
+    stroke: #22201c;
+    stroke-width: 0.5px;
+  }
+  .thumb-piece.secondary {
+    fill: #dfd6f1;
+    stroke: #60418a;
+  }
+  .thumb-piece.picked {
+    fill: #ffd34d;
   }
   .placement {
     display: grid;
