@@ -310,6 +310,11 @@ export interface PlanSheet {
   /** Holds pieces of removable boxes only, when those are cut from sheets of their own. */
   boxes?: boolean;
   items: SheetItem[];
+  /**
+   * Edge-to-edge packings: the part of the sheet left whole once the last first-level cut has taken
+   * its piece off. Everything else counts as used, scraps inside those pieces included.
+   */
+  leftover?: Rect;
 }
 
 export interface CutPlan {
@@ -319,7 +324,10 @@ export interface CutPlan {
   counts: { material: MaterialKind; thickness: Mm; sheet: SheetSpec; sheets: number; boxes?: boolean }[];
   strips: Strip[];
   issues: Issue[];
-  /** Share of the sheets' area that ends up in pieces. */
+  /**
+   * Share of the sheets' area used up. Fewest sheets: the pieces alone. Strips and edge-to-edge
+   * cuts: everything but each sheet's `leftover`.
+   */
   efficiency: number;
 }
 
@@ -531,6 +539,46 @@ function cutOrder(all: SheetItem[], usable: Rect, kerf: Mm): Offcut[] {
   return out;
 }
 
+/**
+ * The part of an edge-to-edge sheet left whole: first-level cuts, made as `cutOrder` makes them, take
+ * pieces off the sheet one after another; the last frees the last of them with one cut past its far
+ * edge, whichever way leaves the larger offcut.
+ */
+function leftoverOf(all: SheetItem[], usable: Rect, kerf: Mm): Rect | undefined {
+  const EPS = 1e-6;
+  type Axis = 'x' | 'y';
+  const hi = (o: Rect, axis: Axis) => o[axis] + (axis === 'x' ? o.w : o.h);
+  const span = (r: Rect, axis: Axis, from: Mm, to: Mm): Rect => (axis === 'x' ? { ...r, x: from, w: to - from } : { ...r, y: from, h: to - from });
+  let items = all;
+  let r = usable;
+  for (;;) {
+    const axes: Axis[] = r.w >= r.h ? ['x', 'y'] : ['y', 'x'];
+    let next: { axis: Axis; at: Mm } | undefined;
+    for (const axis of axes) {
+      for (const c of items.map((o) => hi(o, axis)).sort((a, b) => a - b)) {
+        const before = items.filter((o) => hi(o, axis) <= c + EPS);
+        if (before.length === items.length || items.some((o) => o[axis] < c - EPS && hi(o, axis) > c + EPS)) continue;
+        next = { axis, at: c };
+        break;
+      }
+      if (next) break;
+    }
+    if (!next) break;
+    const { axis, at } = next;
+    items = items.filter((o) => hi(o, axis) > at + EPS);
+    r = span(r, axis, Math.min(at + kerf, hi(r, axis)), hi(r, axis));
+  }
+  if (!items.length) return r.w > EPS && r.h > EPS ? r : undefined;
+  let best: Rect | undefined;
+  for (const axis of ['x', 'y'] as Axis[]) {
+    const from = Math.max(...items.map((o) => hi(o, axis))) + kerf;
+    if (from >= hi(r, axis) - EPS) continue;
+    const off = span(r, axis, from, hi(r, axis));
+    if (!best || off.w * off.h > best.w * best.h) best = off;
+  }
+  return best;
+}
+
 /** The longest cut it takes to free a piece and cut up what is on it. */
 function longestOf(o: Offcut): Mm {
   const length = (c: CutLine) => Math.abs(c.x2 - c.x1) + Math.abs(c.y2 - c.y1);
@@ -594,13 +642,14 @@ export function planCuts(project: Project, cut: CutList, setup: CutSetup): CutPl
     const thickness = groups[0]?.thickness ?? project.material.thickness;
     const sheet = sheetFor(setup, material, boxes);
     const part = planSheets(setup, { ...cut, groups }, cutPacking(setup, material), sheet);
-    for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, sheet, ...(boxes ? { boxes } : {}), items: s.items });
+    for (const s of part.sheets) sheets.push({ index: sheets.length, material, thickness, sheet, ...(boxes ? { boxes } : {}), items: s.items, ...(s.leftover ? { leftover: s.leftover } : {}) });
     // A material's two kinds of sheet number their strips alike; keep every strip's id its own.
     if (boxes) for (const s of part.strips) s.id = `boxes:${s.id}`;
     strips.push(...part.strips);
     issues.push(...part.issues);
-    usedArea += part.usedArea;
-    sheetArea += part.sheets.length * sheet.width * sheet.height;
+    const area = part.sheets.length * sheet.width * sheet.height;
+    usedArea += cutPacking(setup, material) === 'fewest' ? part.usedArea : area - part.sheets.reduce((a, s) => a + (s.leftover ? s.leftover.w * s.leftover.h : 0), 0);
+    sheetArea += area;
     counts.push({ material, thickness, sheet, sheets: part.sheets.length, ...(boxes ? { boxes } : {}) });
   }
   const efficiency = sheetArea ? usedArea / sheetArea : 0;
@@ -661,7 +710,7 @@ function planSheets(setup: CutSetup, cut: CutList, packing: CutLayout, sheet: Sh
   }
   const { strips, items, result } = best!;
 
-  const sheets = Array.from({ length: result.sheetCount }, (_, index) => ({ index, items: [] as SheetItem[] }));
+  const sheets = Array.from({ length: result.sheetCount }, (_, index) => ({ index, items: [] as SheetItem[], leftover: undefined as Rect | undefined }));
   const baseById = new Map(bases.map((b) => [b.id, b.g]));
   const stripById = new Map(strips.map((s) => [`s${s.id}`, s]));
   const itemById = new Map(items.map((i) => [i.id, i]));
@@ -676,6 +725,7 @@ function planSheets(setup: CutSetup, cut: CutList, packing: CutLayout, sheet: Sh
     // Only the pieces count as used: the kerf between a strip's cuts is waste.
     usedArea += s ? s.cuts.reduce((a, c) => a + c.length, 0) * s.height : it.w * it.h;
   }
+  if (packing === 'guillotine') for (const s of sheets) s.leftover = leftoverOf(s.items, usable, kerf);
   if (result.unplaced.length) {
     const lostGroups = new Map<number, number>();
     for (const id of result.unplaced) {
@@ -740,11 +790,15 @@ function planBands(setup: CutSetup, cut: CutList, bases: { id: string; g: PieceG
     band.items.push(it);
   }
 
-  const sheets = Array.from({ length: across.length }, (_, index) => ({ index, items: [] as SheetItem[] }));
-  const strips: Strip[] = [];
-  let usedArea = 0;
   const rect = (along: Mm, at: Mm, len: Mm, ht: Mm) =>
     longX ? { x: trim + along, y: trim + at, w: len, h: ht } : { x: trim + at, y: trim + along, w: ht, h: len };
+  // Every band is used up; what lies beyond the last one, across the sheet, is left whole.
+  const sheets = across.map((reach, index) => {
+    const from = reach + kerf;
+    return { index, items: [] as SheetItem[], leftover: from < S - EPS ? rect(0, from, L, S - from) : undefined };
+  });
+  const strips: Strip[] = [];
+  let usedArea = 0;
   bands.forEach((b, bi) => {
     let pos = 0;
     let run: Strip | undefined;

@@ -9,7 +9,7 @@ import { setConstruction, setInsert, setNoBase, setNoOuterWalls, setInsertBaseSe
 import { blankProject, doomExample, testSetup } from './fixtures';
 import { roundTo, type Rect } from './geom';
 import { solveProject } from './layout';
-import { buildCutList, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem, type SheetStep, type StepPart } from './pieces';
+import { buildCutList, cutPacking, planCuts, sheetSteps, type CutList, type CutPlan, type SheetItem, type SheetStep, type StepPart } from './pieces';
 import type { CutAlong, CutLayout, CutSetup, Project, SectionNode, SplitNode } from './types';
 // Every design in examples/, whatever it is called: they are working files and change, so they are
 // only held to rules, never to their exact pieces.
@@ -118,6 +118,16 @@ function planProblems(setup: CutSetup, cut: CutList, plan: CutPlan): string[] {
     for (const r of rects) {
       if (r.x < trim - EPS || r.y < trim - EPS || r.x + r.w > s.sheet.width - trim + EPS || r.y + r.h > s.sheet.height - trim + EPS) out.push(`${r.what} in the trimmed edge`);
     }
+    // A leftover is part of the usable sheet, clear of every piece and a kerf from it.
+    const left = s.leftover;
+    if (left) {
+      if (left.x < trim - EPS || left.y < trim - EPS || left.x + left.w > s.sheet.width - trim + EPS || left.y + left.h > s.sheet.height - trim + EPS) out.push(`leftover of sheet ${s.index} in the trimmed edge`);
+      for (const r of rects) {
+        const apart = r.x + r.w + kerf <= left.x + EPS || left.x + left.w <= r.x + EPS || r.y + r.h + kerf <= left.y + EPS || left.y + left.h <= r.y + EPS;
+        if (!apart) out.push(`${r.what} in the leftover of sheet ${s.index}`);
+      }
+    }
+    if (left && cutPacking(setup, s.material) === 'fewest') out.push(`sheet ${s.index} has a leftover with fewest sheets`);
     for (let i = 0; i < rects.length; i++) {
       for (let j = i + 1; j < rects.length; j++) {
         const a = rects[i]!;
@@ -138,7 +148,14 @@ function planProblems(setup: CutSetup, cut: CutList, plan: CutPlan): string[] {
   }
   const area = plan.sheets.flatMap((s) => s.items).reduce((a, it) => a + (it.kind === 'base' ? it.w * it.h : it.strip!.cuts.reduce((l, c) => l + c.length, 0) * it.strip!.height), 0);
   const sheetArea = plan.sheets.reduce((a, s) => a + s.sheet.width * s.sheet.height, 0);
-  if (plan.sheets.length && Math.abs(plan.efficiency - area / sheetArea) > 1e-9) out.push(`efficiency ${plan.efficiency} is not the pieces' share`);
+  // Fewest sheets counts the pieces; edge-to-edge packings everything but the leftovers.
+  const used = plan.sheets.reduce((a, s) => {
+    const sheet = s.sheet.width * s.sheet.height;
+    if (cutPacking(setup, s.material) !== 'fewest') return a + sheet - (s.leftover ? s.leftover.w * s.leftover.h : 0);
+    return a + s.items.reduce((u, it) => u + (it.kind === 'base' ? it.w * it.h : it.strip!.cuts.reduce((l, c) => l + c.length, 0) * it.strip!.height), 0);
+  }, 0);
+  if (plan.sheets.length && Math.abs(plan.efficiency - used / sheetArea) > 1e-9) out.push(`efficiency ${plan.efficiency} is not the share used`);
+  if (plan.efficiency < area / sheetArea - 1e-9) out.push(`efficiency ${plan.efficiency} is below the pieces' share`);
   return out;
 }
 
@@ -413,5 +430,40 @@ describe('cutting plans', () => {
     expect(roundTo(48.75, 0.5)).toBe(49);
     expect(roundTo(0.35, 0.1)).toBe(0.4);
     expect(roundTo(87.49999999999999, 0.5)).toBe(87.5);
+  });
+});
+
+describe('share of the sheets used', () => {
+  /** One base on an A2 sheet with no trim or kerf, packed each way. */
+  function oneBase(layout: CutLayout) {
+    const p = blankProject();
+    p.box = { width: 200, depth: 100, height: 40 };
+    p.clearance = 0;
+    p.layers[0]!.height = 30;
+    const setup = { ...testSetup(), trim: 0, kerf: 0, layout, secondaryLayout: layout, sheet: { preset: 'A2', width: 420, height: 594 } };
+    const cut = buildCutList(solveProject(p), p.precision);
+    return { cut, plan: planCuts(p, cut, setup) };
+  }
+
+  it('counts only the pieces with fewest sheets', () => {
+    const { cut, plan } = oneBase('fewest');
+    const area = cut.groups.reduce((a, g) => a + g.length * g.height * g.pieces.length, 0);
+    expect(plan.efficiency).toBeCloseTo(area / (420 * 594), 9);
+    expect(plan.sheets[0]!.leftover).toBeUndefined();
+  });
+
+  it('counts every strip cut across the sheet, leaving the rest whole', () => {
+    const { plan } = oneBase('strips');
+    const left = plan.sheets[0]!.leftover!;
+    // Strips run the sheet's full short edge: the leftover is as wide as the sheet.
+    expect(left.w).toBe(420);
+    expect(plan.efficiency).toBeCloseTo(1 - (left.w * left.h) / (420 * 594), 9);
+  });
+
+  it('tells packings apart that use as many sheets', () => {
+    const shares = (['fewest', 'strips', 'guillotine'] as const).map((l) => oneBase(l).plan);
+    expect(new Set(shares.map((s) => s.sheets.length)).size).toBe(1);
+    expect(shares[1]!.efficiency).toBeGreaterThan(shares[0]!.efficiency);
+    expect(shares[2]!.efficiency).toBeGreaterThan(shares[0]!.efficiency);
   });
 });

@@ -295,14 +295,20 @@
   {/each}
 {/snippet}
 
-<!-- Every sheet of a plan, small, to compare packing choices by eye; the picked cut size stands out. -->
-{#snippet sheetThumbs(alt: CutPlan)}
+<!--
+  Every sheet of a plan, small, to compare packing choices by eye; the picked cut size stands out.
+  Edge-to-edge sheets are shaded as used, all but the part left whole.
+-->
+{#snippet sheetThumbs(alt: CutPlan, packingOf: (material: MaterialKind) => CutLayout)}
   <span class="thumbs" aria-hidden="true">
     {#each alt.sheets as sheet (sheet.index)}
       {@const W = sheet.sheet.width}
       {@const H = sheet.sheet.height}
       <svg viewBox="0 0 {W} {H}" class="thumb" style:width="{(THUMB * W) / H}px" style:height="{THUMB}px">
-        <rect width={W} height={H} class="thumb-paper" />
+        <rect width={W} height={H} class="thumb-paper" class:spent={packingOf(sheet.material) !== 'fewest'} />
+        {#if sheet.leftover}
+          <rect x={sheet.leftover.x} y={sheet.leftover.y} width={sheet.leftover.w} height={sheet.leftover.h} class="thumb-left" />
+        {/if}
         {#each sheet.items as item, i (i)}
           {#if item.kind === 'base'}
             <rect x={item.x} y={item.y} width={item.w} height={item.h} class="thumb-piece" class:secondary={sheet.material === 'secondary'} class:picked={highlight.picked === item.group?.number} />
@@ -434,7 +440,7 @@
             <button class="packing" class:on={packing.value === l.value} aria-pressed={packing.value === l.value} onclick={() => setPacking(packing.material, l.value)}>
               <b>{l.name}</b>
               <span>{sheetSummary(alt)}, {Math.round(alt.efficiency * 100)}% used</span>
-              {@render sheetThumbs(alt)}
+              {@render sheetThumbs(alt, () => l.value)}
             </button>
           {/each}
         </div>
@@ -449,7 +455,7 @@
             <button class="packing" class:on={along === a.value} aria-pressed={along === a.value} onclick={() => (setup.cutAlong = a.value)}>
               <b>{a.name}</b>
               <span>{sheetSummary(a.plan)}, {Math.round(a.plan.efficiency * 100)}% used</span>
-              {@render sheetThumbs(a.plan)}
+              {@render sheetThumbs(a.plan, (m) => cutPacking(setup, m))}
             </button>
           {/each}
         </div>
@@ -1271,6 +1277,12 @@
   .thumb-paper,
   .thumb-piece {
     vector-effect: non-scaling-stroke;
+  }
+  .thumb-paper.spent {
+    fill: #b7af9f;
+  }
+  .thumb-left {
+    fill: #f7f5f0;
   }
   .thumb-paper {
     fill: #f7f5f0;

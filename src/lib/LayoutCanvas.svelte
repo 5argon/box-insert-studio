@@ -299,7 +299,9 @@
       {@const place = labelLayout(c.rect, labelSize(c.rect.w, c.rect.h), label.length, !!c.node.arrow)}
       {@const size = place.size}
       {@const dimsText = `${mm(c.rect.w)} × ${mm(c.rect.h)}`}
-      {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3)))}
+      <!-- At least about 9.5 px on screen, as wide as the compartment allows, below the letter. -->
+      {@const dims = fitText(dimsText, c.rect.w, Math.max(3, Math.min(5, size * 0.3), 9.5 / pxPerMm))}
+      {@const dimsY = c.rect.y + c.rect.h / 2 + Math.max(size * 0.5, size * 0.3 + dims * 0.5)}
       {#if size > 0}
         <text x={place.letterX} y={c.rect.y + c.rect.h / 2 - size * 0.12} font-size={size} style:fill={sectionInk(c.tint)} class="letter"
           >{c.label}{c.stacked ? '²' : ''}{#if c.pad}<tspan dy="-0.35em" font-size="0.65em">*</tspan>{/if}</text
@@ -314,8 +316,8 @@
           />
         {/if}
       {/if}
-      {#if !readonly && c.rect.h > 14 && readable(dims)}
-        <text x={c.rect.x + c.rect.w / 2} y={c.rect.y + c.rect.h / 2 + size * 0.5} font-size={dims} style:fill={sectionInk(c.tint)} class="dims">{dimsText}</text>
+      {#if !readonly && dimsY + dims * 0.5 <= c.rect.y + c.rect.h - 1 && readable(dims)}
+        <text x={c.rect.x + c.rect.w / 2} y={dimsY} font-size={dims} style:fill={sectionInk(c.tint)} class="dims">{dimsText}</text>
       {/if}
     {/each}
   {/each}
