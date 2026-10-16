@@ -110,8 +110,8 @@
                     "children": [
                       {
                         "size": {
-                          "mode": "flex",
-                          "weight": 68
+                          "mode": "fixed",
+                          "mm": 65
                         },
                         "node": {
                           "kind": "section",
@@ -167,8 +167,8 @@
                       },
                       {
                         "size": {
-                          "mode": "flex",
-                          "weight": 68
+                          "mode": "fixed",
+                          "mm": 65
                         },
                         "node": {
                           "kind": "section",
@@ -192,8 +192,8 @@
                       },
                       {
                         "size": {
-                          "mode": "fixed",
-                          "mm": 36
+                          "mode": "flex",
+                          "weight": 36
                         },
                         "node": {
                           "kind": "section",
@@ -228,17 +228,43 @@
                     "notches": [],
                     "insert": {
                       "root": {
-                        "kind": "section",
-                        "id": "s-53gun6",
-                        "notches": [],
-                        "items": {
-                          "on": false,
-                          "shape": "cylinder",
-                          "width": 27,
-                          "height": 91,
-                          "thickness": 5,
-                          "spare": 2
-                        }
+                        "kind": "split",
+                        "id": "p-s-ksx3w4",
+                        "dir": "row",
+                        "join": "divider",
+                        "lower": 0,
+                        "children": [
+                          {
+                            "size": {
+                              "mode": "flex",
+                              "weight": 100
+                            },
+                            "node": {
+                              "kind": "section",
+                              "id": "s-53gun6",
+                              "notches": [],
+                              "items": {
+                                "on": false,
+                                "shape": "cylinder",
+                                "width": 27,
+                                "height": 91,
+                                "thickness": 5,
+                                "spare": 2
+                              }
+                            }
+                          },
+                          {
+                            "size": {
+                              "mode": "fixed",
+                              "mm": 64
+                            },
+                            "node": {
+                              "kind": "section",
+                              "id": "s-ksx3w4",
+                              "notches": []
+                            }
+                          }
+                        ]
                       },
                       "lid": true
                     }
@@ -250,7 +276,7 @@
           {
             "size": {
               "mode": "fixed",
-              "mm": 40
+              "mm": 45
             },
             "node": {
               "kind": "section",
@@ -316,6 +342,6 @@
   "material": {
     "thickness": 5
   },
-  "readme": "**Author :** 5argon,  https://arkham-starter.com\n\nI'm pretty content with the \"Starter's Insert\" design for Core 2026 as a generic template for most beginners. But there's one thing it can't do: It can't store an act / agenda stand (not longer than the long edge of A4 paper). I've been playing with the slitted wooden block card stand for years and I can't left it out of my setup. (It holds act, agenda, and the vertical scenario reference card in one block.)\n\nSo I tried adding that and it's a wrench that ruins everything in the \"Starter's Insert\" design! That insert was based on the box was able to hold 2x 100 mm wide columns side by side with a little leftover column. With that column now widened to contain the card stand, it is now impossible to have 2 columns. I had to give up something.\n\nNaturally I went sideways instead. In this design, there are only 2 card storage **A1 and A2** divided equally. Each one can fit all Core 2026 encounter cards plus 3 Brethren of Ash scenarios, or large amount of random basic weakness. (Fits all basic weakness in complete Chapter 1 collection.) And so deck building player cards shall be somewhere else. Personally I'd also not store Core 2026 encounter cards here as I prefer them in the campaign box instead. I can use the space for dices and other custom things, or maybe the active player's decks.\n\nThe 4 stacked removable token trays in \"Starter's Insert\" design makes their comeback in a slightly larger size in **B1 and B2**. Since a smaller one in Starter's Insert was proven to be able to store every tokens except chaos tokens, this one is strictly better. The **B3** narrow slot is for tucking in your active chaos bag with active chaos tokens inside. This slot your hand can't reach the bottom so I think this is the best use of it.\n\nThe **C** slot stores all remaining inactive chaos tokens. This is also a removable box so you can take it out and pour the contents. You can also not make the removable box, but you'd have to dig inside the core box.\n\nLastly **D1 and D2** are removable box that serve as a padding for the card stand to sit above them and press down their shared lid. The inner height is 2 cm so you can store some dices up to that size.",
+  "readme": "**Author :** 5argon,  https://arkham-starter.com\n\nI'm pretty content with the \"Starter's Insert\" design for Core 2026 as a generic template for most beginners. But there's one thing it can't do: It can't store an act / agenda stand (not longer than the long edge of A4 paper). I've been playing with the slitted wooden block card stand for years and I can't left it out of my setup. (It holds act, agenda, and the vertical scenario reference card in one block.)\n\nSo I tried a new design with a slot that runs along the long edge of the box. It became a wrench that ruins everything in the \"Starter's Insert\" design! That insert was based on the box was able to hold 2x 100 mm wide columns side by side with a little leftover column. With that column now widened to contain the card stand, it is now impossible to have 2 columns.\n\nNaturally I went sideways instead. In this design, there are only 2 card storage **A1 and A2** divided equally. Each one can fit all Core 2026 encounter cards plus 3 Brethren of Ash scenarios, or large amount of random basic weakness. (Fits all basic weakness in complete Chapter 1 collection.) And so deck building player cards shall be somewhere else. Personally I'd also not store Core 2026 encounter cards here as I prefer them in the campaign box instead. I can use the space for other custom things, or maybe the active player's decks.\n\nThe 4 stacked removable token trays in \"Starter's Insert\" design makes their comeback in a slightly larger size in **B1 and B2**. Since a smaller one in Starter's Insert was proven to be able to store every tokens except chaos tokens, this one should be even better to put your hand in. The **B3** narrow slot is for tucking in your active chaos bag with active chaos tokens inside. Your hand can't reach the bottom of **B3** so I think this is the best use of it.\n\nThe **C1 and C2** slot stores all remaining inactive chaos tokens. This is also a removable box so you can take it out and pour the contents. You can also not make the removable box, but you'd have to dig inside the core box. The width of it should be able to fit just one capsuled token. The divider is positioned like that so the **C1** stores 3 stacks and **C2** stores 2 stacks of tokens. One stack assuming each token 5 mm thick should be able to fit 10 tokens. Therefore overall this removable box should fit 30 + 20 = 50 tokens. Game comes with 44 tokens. But if in the future they add 10 Blesses and 10 Curses, you need some tokens left in the bag slot in order to fit the rest here. The **C2** slot is future proofed for Bless and Curse as that one should fit 20 tokens exactly.\n\nLastly **D1 and D2** are removable box that serve as a padding for the card stand to sit above them and press down their shared lid. The inner height is 2 cm so you can store some dices up to that size. The inner width of the box 33 mm is designed for D6s which is normally 16x16x16 mm so you can fit 2 side by side. If it's only D6s you should be able to fit 7x2 = 14 dices per box. The act / agenda stand can be as long as the box, less than 45 mm wide, and less than 20 mm tall. If you are lacking about 5 mm to fit in you can remove the cover lid to get height equal to material's thickness, but the content might spill out if the stand doesn't exactly block the content fully.",
   "secondaryBase": true
 }

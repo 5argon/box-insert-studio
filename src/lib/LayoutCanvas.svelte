@@ -19,6 +19,7 @@
     showNumbers,
     onselect,
     readonly = false,
+    avoidRight = 0,
   }: {
     project: Project;
     layer: Layer;
@@ -32,6 +33,8 @@
     onselect: (s: Selection, add?: boolean) => void;
     /** Static reference plan, including in printed reports. */
     readonly?: boolean;
+    /** Pixels at the right covered by something drawn over the canvas, for the plan to keep clear of where it can. */
+    avoidRight?: number;
   } = $props();
 
   let svg: SVGSVGElement;
@@ -54,6 +57,18 @@
   const tierInner = $derived(-fs * 1.3);
   const W = $derived(project.box.width);
   const D = $derived(project.box.depth);
+
+  /**
+   * The plan's view, widened to the canvas's shape: centred, or moved left of `avoidRight` as far as
+   * the space beside it allows.
+   */
+  const viewBox = $derived.by(() => {
+    const vb = { x: -padStart, y: -padStart, w: W + padStart + padEnd, h: D + padStart + fs * 2.4 };
+    const scale = Math.min(viewPx.w / vb.w, viewPx.h / vb.h);
+    const free = viewPx.w - vb.w * scale;
+    const offset = Math.min(free / 2, Math.max(0, viewPx.w - avoidRight - vb.w * scale));
+    return `${vb.x - offset / scale} ${vb.y} ${viewPx.w / scale} ${vb.h}`;
+  });
 
   let drag: { bar: Bar; start: number; sizes: number[]; targets: number[] } | null = null;
 
@@ -183,7 +198,7 @@
   bind:this={svg}
   class="canvas"
   class:readonly
-  viewBox="{-padStart} {-padStart} {W + padStart + padEnd} {D + padStart + fs * 2.4}"
+  {viewBox}
   onpointermove={move}
   onpointerup={up}
   onpointercancel={up}

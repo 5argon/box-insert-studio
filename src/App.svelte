@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { migrateProject } from './core/defaults';
-  import { layerBaseThickness, solveProject } from './core/layout';
+  import { solveProject } from './core/layout';
   import { buildCutList, planCuts } from './core/pieces';
   import { designProblems } from './core/problems';
   import { buildScene } from './core/scene';
@@ -9,6 +9,7 @@
   import BoxPanel from './lib/BoxPanel.svelte';
   import NewDialog from './lib/NewDialog.svelte';
   import CompSquare from './lib/CompSquare.svelte';
+  import HeightDiagram from './lib/HeightDiagram.svelte';
   import LayerIcon from './lib/LayerIcon.svelte';
   import Tooltip from './lib/Tooltip.svelte';
   import { layerInfo } from './lib/layers';
@@ -84,6 +85,8 @@
 
 
   let newDialog: NewDialog | undefined = $state();
+  /** Width of the previews over the plan's top-right corner. */
+  let previewWidth = $state(0);
 
   // Nothing saved yet: set the design up first.
   onMount(() => {
@@ -148,28 +151,31 @@
         <BoxPanel project={studio.project} {solved} />
       </aside>
       <main class="stage">
-        <div class="caption">
-          {#if studio.project.layers.length > 1}
+        {#if studio.project.layers.length > 1}
+          <div class="caption">
             <LayerIcon color={layerInfo(studio.project, layer.id).color} size={14} />
             <b>{layer.name}</b>
-            <span class="hint">·</span>
-          {/if}
-          <span class="hint">Walls {solvedLayer.wallHeight} mm, dividers {layer.height - layerBaseThickness(studio.project, layer)} mm tall</span>
-        </div>
+          </div>
+        {:else}
+          <div></div>
+        {/if}
         <div class="canvas-wrap">
           <!-- A fixed 3/4 preview of the whole insert; loads three.js after the editor is up. -->
-          <div class="thumb-slot">
+          <div class="thumb-slot" bind:clientWidth={previewWidth}>
             {#if studio.previewCollapsed}
               <button class="small thumb-pill" onclick={() => setPreviewCollapsed(false)} data-tip="Show the 3D preview" aria-label="Show the 3D preview">
                 3D <span aria-hidden="true">▾</span>
               </button>
             {:else}
-              {#await import('./lib/three/Thumbnail3D.svelte') then { default: Thumbnail3D }}
-                <Thumbnail3D model={thumbModel} dark={isDark()} items={studio.view3d.items} onopen={() => (studio.view = '3d')} />
-                <button class="thumb-collapse" onclick={() => setPreviewCollapsed(true)} data-tip="Collapse the 3D preview" aria-label="Collapse the 3D preview"
-                  >–</button
-                >
-              {/await}
+              <div class="thumb-3d">
+                {#await import('./lib/three/Thumbnail3D.svelte') then { default: Thumbnail3D }}
+                  <Thumbnail3D model={thumbModel} dark={isDark()} items={studio.view3d.items} onopen={() => (studio.view = '3d')} />
+                  <button class="thumb-collapse" onclick={() => setPreviewCollapsed(true)} data-tip="Collapse the 3D preview" aria-label="Collapse the 3D preview"
+                    >–</button
+                  >
+                {/await}
+              </div>
+              <HeightDiagram project={studio.project} {solved} layerId={layer.id} />
             {/if}
           </div>
           <LayoutCanvas
@@ -181,6 +187,7 @@
             hoverGroup={studio.hoverGroup}
             showNumbers={studio.showNumbers}
             onselect={select}
+            avoidRight={previewWidth + 12}
           />
         </div>
         <PiecesBar project={studio.project} {solved} {cut} {plan} layerId={layer.id} />
@@ -354,6 +361,12 @@
     top: 8px;
     right: 12px;
     z-index: 2;
+    display: grid;
+    gap: 6px;
+  }
+  .thumb-3d {
+    position: relative;
+    min-height: 132px;
   }
   .thumb-collapse {
     position: absolute;

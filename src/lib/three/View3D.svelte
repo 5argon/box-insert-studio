@@ -7,6 +7,7 @@
   import type { Preset, TrayStyle } from './meshes';
   import Viewer3D from './Viewer3D.svelte';
   import CompSquare from '../CompSquare.svelte';
+  import HeightDiagram from '../HeightDiagram.svelte';
   import LayerIcon from '../LayerIcon.svelte';
   import { layerColor } from '../../core/defaults';
 
@@ -65,6 +66,7 @@
   <div class="stage">
     <Viewer3D bind:this={viewer} {model} {styleOf} outer={v.outer} ortho={v.ortho} dark={isDark()} items={v.items} glass={v.glass} />
     <div class="hint">Drag to rotate · scroll or pinch to zoom</div>
+    <div class="heights"><HeightDiagram {project} {solved} layerId={studio.layerId} /></div>
     {#if !v.panel}
       <button class="small show-tools" onclick={() => (v.panel = true)}>Show tools</button>
     {/if}
@@ -193,6 +195,11 @@
     font-size: 12px;
     color: var(--muted);
     pointer-events: none;
+  }
+  .heights {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
   }
   .show-tools {
     position: absolute;
